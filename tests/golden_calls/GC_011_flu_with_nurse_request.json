@@ -1,0 +1,97 @@
+{
+    "case_id": "GC_011",
+    "title": "Flu Symptoms with Nurse Request",
+    "metadata": {
+        "category": "moderate",
+        "complaint_type": "flu",
+        "expected_disposition": "SCHEDULE",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Thomas Alvarez",
+        "age": 36,
+        "sex": "male",
+        "context": "Works in healthcare; concerned about transmitting illness"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "Hello, what brings you in today?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I have a high fever, body aches, cough, and sore throat. I think I have the flu. Can I talk to a nurse?"
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "I understand you'd like to speak with a nurse. Let me gather some information first so the nurse has all the details and you don't have to repeat yourself. When did your symptoms start?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "They started about 2 days ago"
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "How high is your fever?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "101.5 degrees"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "Are you having any shortness of breath or difficulty breathing?"
+        },
+        {
+            "turn": 8,
+            "speaker": "caller",
+            "text": "No, just the cough and sore throat"
+        },
+        {
+            "turn": 9,
+            "speaker": "assistant",
+            "text": "Great. Do you have any medical conditions or take any medications?"
+        },
+        {
+            "turn": 10,
+            "speaker": "caller",
+            "text": "No medical conditions, but I take a multivitamin and occasionally take ibuprofen"
+        },
+        {
+            "turn": 11,
+            "speaker": "assistant",
+            "text": "Thank you. Based on your symptoms, a nurse will call you back. They can discuss antiviral options and supportive care. In the meantime, stay hydrated and get rest. I'm connecting you with nurse triage now."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "SCHEDULE",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "Adult male with 2-day history of high fever (101.5°F), cough, sore throat, and body aches; suspicious for influenza",
+            "background": "36-year-old male, healthcare worker, no significant medical history, takes multivitamin and occasional ibuprofen",
+            "assessment": "Likely viral illness (influenza), patient is stable without respiratory compromise; outpatient management appropriate",
+            "recommendation": "Schedule with PCP within 24 hours for antiviral evaluation; supportive care (hydration, rest); monitor for respiratory symptoms"
+        },
+        "min_turns_to_escalate": 6,
+        "max_turns_before_escalate": 12
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": true,
+        "assistant_must_not": [
+            "escalate_immediately_on_nurse_request"
+        ]
+    }
+}

@@ -1,0 +1,29 @@
+{
+    "id": "PROTO-006",
+    "title": "Allergic Reaction Triage Protocol",
+    "keywords": [
+        "allergic reaction",
+        "allergy",
+        "anaphylaxis",
+        "hives",
+        "swelling",
+        "rash",
+        "itching",
+        "epinephrine",
+        "epipen",
+        "throat swelling",
+        "tongue swelling",
+        "bee sting",
+        "food allergy",
+        "drug reaction"
+    ],
+    "body": "Allergic reaction assessment: Determine trigger if known (food, medication, insect sting, environmental), onset timing after exposure, and symptoms. Assess for anaphylaxis signs: airway compromise (throat tightness, voice change, stridor), breathing difficulty (wheeze, dyspnea), circulation (dizziness, hypotension, tachycardia), skin (widespread hives, flushing, angioedema). Ask about prior anaphylaxis history and epipen availability. Determine if epipen has been used. Red flags: any airway or breathing involvement, facial or tongue swelling, dizziness or feeling faint, rapid progression of symptoms, prior anaphylaxis history with similar exposure.",
+    "disposition_notes": "Any airway involvement or suspected anaphylaxis → ER_NOW (call 911). Widespread hives with no airway/breathing symptoms → URGENT_CARE. Localized mild rash or hives → SAME_DAY. Known mild allergy with localized reaction → SELF_CARE with antihistamine guidance.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Allergy & Immunology Department"
+}

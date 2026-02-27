@@ -1,0 +1,45 @@
+.env
+.env.local
+.env.production
+.env.staging
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.DS_Store
+.idea/
+# Ignore most of .vscode but keep the shared interpreter + test settings
+.vscode/*
+!.vscode/settings.json
+*.log
+
+# TLS / signing keys
+*.pem
+*.key
+*.crt
+*.p12
+
+# Credentials and sensitive files
+**/credentials.md
+CREDENTIALS.md
+
+# Runtime-generated reports (keep folder, ignore contents)
+reports/*
+!reports/.gitkeep
+
+# Archive: ignore heavy generated/data artifacts
+archive/ml_experiments/artifacts/*
+archive/ml_experiments/data/*
+archive/data_exploration/*
+!archive/**/.gitkeep

@@ -1,0 +1,19 @@
+{
+    // Python interpreter: always use the project-local venv.
+    // This path is RELATIVE (${workspaceFolder}) so it works on any machine
+    // after running the one-time setup commands in README § "Local Dev Setup".
+    "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
+    // Test discovery
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": [
+        "tests",
+        "--ignore=tests/test_intake_flow.py"
+    ],
+    // Editor quality-of-life
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "python.analysis.typeCheckingMode": "basic"
+}

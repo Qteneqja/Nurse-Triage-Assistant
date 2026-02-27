@@ -1,0 +1,37 @@
+title = "Nurse Triage Assistant - Gitleaks Config"
+
+# Extend the default gitleaks ruleset
+[extend]
+useDefault = true
+
+# Custom rules
+[[rules]]
+id = "deepseek-api-key"
+description = "DeepSeek API Key"
+regex = '''sk-[0-9a-f]{32,}'''
+tags = ["key", "deepseek"]
+
+[[rules]]
+id = "twilio-account-sid"
+description = "Twilio Account SID"
+regex = '''AC[0-9a-f]{32}'''
+tags = ["key", "twilio"]
+
+[[rules]]
+id = "twilio-auth-token"
+description = "Twilio Auth Token (32-char hex after known labels)"
+regex = '''(?i)(twilio.{0,20}(auth|token|secret).{0,10})[0-9a-f]{32}'''
+tags = ["key", "twilio"]
+
+# Allow-list: ignore false positives from scikit-learn CSS, test fixtures, etc.
+[allowlist]
+paths = [
+  '''archive/data_exploration/.*\.html''',
+  '''archive/data_exploration/.*\.css''',
+  '''\.venv/''',
+  '''venv/''',
+]
+regexes = [
+  '''sklearn''',
+  '''scikit''',
+]

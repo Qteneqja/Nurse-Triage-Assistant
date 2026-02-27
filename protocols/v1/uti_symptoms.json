@@ -1,0 +1,29 @@
+{
+    "id": "PROTO-008",
+    "title": "UTI Symptoms Triage Protocol",
+    "keywords": [
+        "UTI",
+        "urinary",
+        "burning urination",
+        "frequent urination",
+        "painful urination",
+        "dysuria",
+        "bladder",
+        "kidney",
+        "flank pain",
+        "blood in urine",
+        "hematuria",
+        "urinary tract infection",
+        "cloudy urine",
+        "urgency"
+    ],
+    "body": "UTI assessment: Determine symptoms — dysuria (burning with urination), frequency, urgency, suprapubic pain, hematuria, and urine changes (cloudy, foul-smelling). Ask about associated symptoms: fever, flank/back pain, nausea, vomiting, rigors (suggest upper tract / pyelonephritis). Ask about pregnancy status, diabetes, immunosuppression, recurrent UTI history, recent catheterization. In males, UTI is less common and may need broader workup. Red flags: high fever with flank pain (pyelonephritis), rigors, inability to keep fluids down, pregnant with UTI symptoms, urinary retention.",
+    "disposition_notes": "Fever with flank pain or rigors → URGENT_CARE or ER_NOW if sepsis suspected. Pregnant with UTI symptoms → URGENT_CARE. Uncomplicated lower UTI symptoms in non-pregnant female → SAME_DAY. Mild recurrent symptoms in known UTI-prone patient → ROUTINE or SAME_DAY.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Urology Department"
+}

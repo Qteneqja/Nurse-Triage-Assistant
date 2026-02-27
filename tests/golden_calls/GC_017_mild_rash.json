@@ -1,0 +1,74 @@
+{
+    "case_id": "GC_017",
+    "title": "Mild Rash",
+    "metadata": {
+        "category": "mild",
+        "complaint_type": "rash",
+        "expected_disposition": "SELF_CARE",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Rebecca White",
+        "age": 27,
+        "sex": "female",
+        "context": "No medical conditions"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "Hi, what's going on?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I have a small itchy rash on my arm, it started a couple hours ago"
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "Is it raised or flat?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "A little raised, and it's red"
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "Do you have any other symptoms like fever, difficulty breathing, or swelling?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "No, just the itchy rash"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "This is likely a minor irritant reaction. Use cool compresses and over-the-counter antihistamine cream. If it spreads or you develop other symptoms, call back."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "SELF_CARE",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "27-year-old female with localized itchy red raised rash on arm, 2-hour duration",
+            "background": "27-year-old female, healthy, no medical conditions",
+            "assessment": "Likely localized irritant or allergic reaction; patient stable, no systemic symptoms or respiratory involvement",
+            "recommendation": "Supportive care: avoid irritant, cool compresses, OTC antihistamine cream; monitor for spread or systemic symptoms"
+        },
+        "min_turns_to_escalate": 4,
+        "max_turns_before_escalate": 8
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": false
+    }
+}

@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+*.egg-info
+dist
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Archives and data
+archive/
+reports/
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Development files
+tests/
+*.md
+start_server.bat
+scripts/

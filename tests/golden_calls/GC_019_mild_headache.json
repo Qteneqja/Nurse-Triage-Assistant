@@ -1,0 +1,74 @@
+{
+    "case_id": "GC_019",
+    "title": "Mild Headache",
+    "metadata": {
+        "category": "mild",
+        "complaint_type": "headache",
+        "expected_disposition": "SELF_CARE",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Amanda Lee",
+        "age": 31,
+        "sex": "female",
+        "context": "Occasional headaches, typically stress-related"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "Hello, what's bothering you?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I have a mild headache, about 3 out of 10 in severity"
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "Is this a new type of headache or similar to ones you've had before?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "No, it's my usual stress headache. I didn't sleep well last night."
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "Do you have any fever, neck stiffness, or vision changes?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "No, just the usual headache"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "Try rest, hydration, and over-the-counter pain relief. Get some sleep and your headache should improve."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "SELF_CARE",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "31-year-old female with mild headache (3/10), typical stress-related pattern, associated with poor sleep",
+            "background": "31-year-old female, occasional stress-related headaches, recent poor sleep",
+            "assessment": "Mild tension headache, likely stress and fatigue related; no red flag features",
+            "recommendation": "Supportive care: rest, hydration, sleep, OTC analgesics as needed; monitor for any new features"
+        },
+        "min_turns_to_escalate": 4,
+        "max_turns_before_escalate": 8
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": false
+    }
+}
