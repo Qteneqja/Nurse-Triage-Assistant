@@ -1,0 +1,574 @@
+"""
+Twilio Voice Routes — Phase 5 SaaS Infrastructure
+
+All session state goes through SessionRepository → StorageFactory.
+All LLM calls go through Orchestrator → GuardedLLM → SafetyGate.
+Twilio signature validation enforced via router-level dependency.
+"""
+import logging
+import json
+from datetime import datetime
+from pathlib import Path
+from xml.sax import saxutils
+from fastapi import APIRouter, Depends, Request, Form, HTTPException, BackgroundTasks
+from fastapi.responses import Response
+from typing import Optional
+
+from src.storage.session_repository import get_session_repository
+from src.orchestrator.orchestrator import get_orchestrator
+from src.orchestrator.schemas import ConversationTurn
+from src.safety.phi_masking import mask_phi
+from src.config import STORE_PHI
+from src.security.twilio_signature import validate_twilio_signature
+from src.utils.report_naming import generate_report_filename, generate_report_path, ensure_year_folders
+
+logger = logging.getLogger(__name__)
+router = APIRouter(dependencies=[Depends(validate_twilio_signature)])
+
+# Create reports directory and year/month folder structure
+REPORTS_DIR = Path("reports")
+REPORTS_DIR.mkdir(exist_ok=True)
+ensure_year_folders(REPORTS_DIR)
+
+
+async def generate_handoff_report_background(session_id: str, session_metadata: dict, conversation_history: list, triage_result):
+    """DEPRECATED — legacy handoff report path.
+
+    This function previously called DeepSeekClient directly (ungated).
+    All report generation now goes through _generate_orchestrator_report_background
+    which uses the gated orchestrator.finalize() path.
+
+    Raises RuntimeError if called — any caller should use the orchestrator path.
+    """
+    raise RuntimeError(
+        "generate_handoff_report_background is deprecated. "
+        "Use _generate_orchestrator_report_background which goes through the unified safety gate."
+    )
+
+
+async def _generate_orchestrator_report_background(
+    session_id: str,
+    orch_session,
+    session_metadata: dict,
+):
+    """Background task to save orchestrator audit trace and SBAR report.
+
+    This runs AFTER the TwiML response is returned to Twilio, so it
+    does not block the caller experience.
+    """
+    try:
+        logger.info(f"[BACKGROUND] Saving orchestrator report for session {session_id}")
+
+        # If finalize hasn't run yet, either run the LLM or use a lightweight
+        # fallback.  For early-turn escalations (≤2 dynamic turns) the session
+        # has too little data for the LLM to add meaningful value; skip the
+        # extra API round-trip and fall back to the deterministic default.
+        if orch_session.finalize_output is None:
+            if orch_session.turn_count <= 2:
+                from src.orchestrator.validators import safe_finalize_default
+                logger.info(
+                    f"[BACKGROUND] Skipping LLM finalize for early-turn escalation "
+                    f"(turn_count={orch_session.turn_count}) — using safe default"
+                )
+                orch_session.finalize_output = safe_finalize_default()
+            else:
+                orchestrator = get_orchestrator()
+                await orchestrator.finalize(orch_session)
+
+        finalize = orch_session.finalize_output
+
+        # Persist final state
+        repo = get_session_repository()
+        repo.persist_session(orch_session)
+
+        # Build structured report
+        structured = {
+            "patient": {
+                "name": session_metadata.get("patient_name", "Unknown"),
+                "age": session_metadata.get("patient_age", "Unknown"),
+                "sex": session_metadata.get("patient_sex", "Unknown"),
+            },
+            "chief_complaint": orch_session.intake_state.chief_complaint or "Not documented",
+            "disposition": {
+                "level": finalize.disposition.value if finalize else "HUMAN_REVIEW",
+                "reasoning": finalize.disposition_reasoning if finalize else "Report generation unavailable",
+            },
+            "intake_state": orch_session.intake_state.model_dump(exclude_none=True),
+            "safety_flags": [f.model_dump() for f in orch_session.safety_flags],
+            "audit_trace": {
+                "entries": [e.model_dump(mode="json") for e in orch_session.audit_trace.entries],
+                "deterministic_rules_triggered": orch_session.audit_trace.deterministic_rules_triggered,
+            },
+        }
+
+        sbar_text = finalize.sbar_report if finalize else "SBAR generation unavailable."
+
+        patient_name = session_metadata.get("patient_name", "")
+        disposition = finalize.disposition.value if finalize else "HUMAN_REVIEW"
+
+        filename = generate_report_filename(
+            session_id=session_id,
+            patient_name=patient_name,
+            disposition=disposition,
+        )
+        report_base = generate_report_path(
+            reports_dir=REPORTS_DIR,
+            session_id=session_id,
+            patient_name=patient_name,
+            disposition=disposition,
+        )
+        report_json_path = report_base.with_suffix(".json")
+        report_txt_path = report_base.with_suffix(".txt")
+
+        with open(report_json_path, "w") as f:
+            json.dump(structured, f, indent=2, default=str)
+
+        # Apply PHI masking to file-written text when STORE_PHI is disabled
+        sbar_for_file = sbar_text if STORE_PHI else mask_phi(sbar_text)
+
+        with open(report_txt_path, "w") as f:
+            f.write(f"Triage Handoff Report (Orchestrator)\n")
+            f.write(f"Session ID: {session_id}\n")
+            f.write(f"Generated: {datetime.now().isoformat()}\n")
+            f.write(f"{'=' * 80}\n\n")
+            f.write(sbar_for_file)
+            if finalize and finalize.safety_net_instructions:
+                instructions = chr(10).join(finalize.safety_net_instructions)
+                if not STORE_PHI:
+                    instructions = mask_phi(instructions)
+                f.write(f"\n\nSafety-Net Instructions:\n{instructions}")
+
+        logger.info(f"[BACKGROUND] Orchestrator report saved: {report_json_path}")
+
+    except Exception as e:
+        logger.error(f"[BACKGROUND] Failed to generate orchestrator report: {e}", exc_info=True)
+
+
+# Single-word responses that STT commonly produces when a caller
+# greets or acknowledges the system rather than saying their name.
+_NAME_BLOCKLIST: frozenset[str] = frozenset({
+    # Honorifics / titles
+    "sir", "maam", "miss", "mister", "mr", "mrs", "ms", "dr",
+    # Greetings / filler
+    "hello", "hi", "hey", "yo", "um", "uh", "hmm", "hm",
+    # Affirmations / negations
+    "yes", "no", "ok", "okay", "nope", "yep", "yeah", "nah", "sure",
+    # Courtesy filler
+    "thanks", "thank", "please", "sorry", "excuse", "pardon",
+    # Generic question / filler words
+    "what", "who", "well",
+})
+
+
+def _looks_like_name(text: str) -> bool:
+    """Return True if *text* plausibly represents a person's name.
+
+    Rejects obvious STT garbage such as sentence fragments, excessive word
+    counts, mid-phrase commas, or well-known single-word non-names (e.g.
+    ``'Heartbreak sing, man.'`` or ``'Ma\'am.'``).
+    """
+    stripped = text.strip().rstrip('.')  # STT often appends a trailing period
+    if not stripped:
+        return False
+    words = stripped.split()
+    # More than 5 words is almost certainly not a name
+    if len(words) > 5:
+        return False
+    # A comma after more than one word indicates a sentence fragment, not a name
+    # ("Last, First" format is fine — only one word before the comma)
+    if ',' in stripped:
+        before_comma = stripped[:stripped.index(',')].strip()
+        if len(before_comma.split()) > 1:
+            return False
+    # At least 80 % of non-space characters should be alphabetic or name-safe
+    core_chars = [c for c in stripped if not c.isspace()]
+    if not core_chars:
+        return False
+    alpha_count = sum(1 for c in core_chars if c.isalpha() or c in "-'")
+    if alpha_count / len(core_chars) < 0.80:
+        return False
+    # Reject single-word salutations / honorifics the STT engine commonly
+    # produces when a caller says "Ma'am", "Yes", "Hello", etc.
+    if len(words) == 1:
+        normalized = words[0].lower().replace("'", "")
+        if normalized in _NAME_BLOCKLIST:
+            return False
+    return True
+
+
+# Stage definitions for scripted intake
+STAGE_GREETING = "GREET"
+STAGE_NAME = "NAME"
+STAGE_AGE = "AGE"
+STAGE_SEX = "SEX"
+STAGE_CHIEF_COMPLAINT = "CHIEF_COMPLAINT"
+STAGE_DYNAMIC = "DYNAMIC"
+
+
+def generate_twiml_say(text: str) -> str:
+    """Generate TwiML <Say> with voice settings"""
+    return f'<Say voice="Polly.Joanna">{text}</Say>'
+
+
+def generate_twiml_gather(prompt: str, action_url: str, timeout: int = 6) -> str:
+    """Generate TwiML with <Gather> for speech input.
+
+    NOTE: No fallback <Say> is placed outside <Gather>.  When the caller is
+    silent for ``timeout`` seconds Twilio follows the <Redirect> which POSTs
+    back to the server with SpeechResult absent.  The server-side
+    empty-speech handler (handle_gather) speaks the single canonical apology
+    and re-gathers — this prevents duplicate apology sentences that would
+    occur if both TwiML and the server tried to reprompt at the same time.
+    """
+    escaped_prompt = saxutils.escape(prompt)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="speech" speechTimeout="auto" timeout="{timeout}" action="{action_url}" method="POST">
+        <Say voice="Polly.Joanna">{escaped_prompt}</Say>
+    </Gather>
+    <Redirect method="POST">{action_url}</Redirect>
+</Response>"""
+
+
+def generate_twiml_say_and_hangup(text: str) -> str:
+    """Generate TwiML that says something and hangs up"""
+    escaped_text = saxutils.escape(text)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Joanna">{escaped_text}</Say>
+    <Hangup/>
+</Response>"""
+
+
+def generate_twiml_handoff(text: str) -> str:
+    """Speak a closing message then transfer or hang up.
+
+    If ``NURSE_TRANSFER_NUMBER`` is set (e.g. ``+18005551234``), the call is
+    transferred via Twilio ``<Dial>`` so the caller reaches the nurse queue
+    without dead air.  Falls back to ``<Hangup>`` when unconfigured.
+    """
+    from src.config import NURSE_TRANSFER_NUMBER
+    escaped_text = saxutils.escape(text)
+    if NURSE_TRANSFER_NUMBER:
+        num = saxutils.escape(NURSE_TRANSFER_NUMBER)
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Response>\n'
+            f'    <Say voice="Polly.Joanna">{escaped_text}</Say>\n'
+            f'    <Dial>{num}</Dial>\n'
+            '</Response>'
+        )
+    return generate_twiml_say_and_hangup(text)
+
+
+@router.post("/incoming")
+async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
+    """
+    Handle incoming Twilio call — create session via SessionRepository
+    and start scripted intake.
+    """
+    try:
+        logger.info(f"[TWILIO] Incoming call: {CallSid}")
+
+        repo = get_session_repository()
+        session = repo.create_session(call_sid=CallSid)
+
+        # Track scripted intake stage
+        session.channel_metadata["stage"] = STAGE_GREETING
+
+        # Generate greeting
+        greeting = (
+            "Hello, this is Astra. A clinical triage assistant. "
+            "This is a decision-support tool, not a diagnostic service. "
+            "If you are experiencing a life-threatening emergency, please hang up and call 9 1 1 immediately. "
+            "I will be asking you a series of questions to help assess your symptoms and determine the appropriate level of care. "
+        )
+
+        # Store greeting in conversation
+        session.conversation.append(ConversationTurn(role="assistant", text=greeting))
+
+        # Move to NAME stage
+        session.channel_metadata["stage"] = STAGE_NAME
+        first_question = "Can I please first start with your full name?"
+        session.conversation.append(ConversationTurn(role="assistant", text=first_question))
+
+        repo.persist_session(session)
+
+        # Return TwiML with greeting + gather for name
+        full_prompt = greeting + first_question
+        twiml = generate_twiml_gather(full_prompt, "/api/v1/voice/gather", timeout=8)
+
+        logger.info(f"[TWILIO] Session {session.session_id} started for call {CallSid}")
+        return Response(content=twiml, media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"[TWILIO] Error in incoming call: {e}", exc_info=True)
+        error_twiml = generate_twiml_say_and_hangup("Sorry, we encountered a technical error. Please try again later.")
+        return Response(content=error_twiml, media_type="application/xml")
+
+
+@router.post("/gather")
+async def handle_gather(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    CallSid: str = Form(...),
+    SpeechResult: Optional[str] = Form(None)
+):
+    """
+    Handle Twilio <Gather> results — all state in OrchestratorSession via SessionRepository.
+    """
+    try:
+        logger.info(f"[TWILIO] Gather from {CallSid}: speech_len={len(SpeechResult) if SpeechResult else 0}")
+
+        repo = get_session_repository()
+        session = repo.load_session_by_call(CallSid)
+
+        if not session:
+            logger.error(f"[TWILIO] No session found for call {CallSid}")
+            twiml = generate_twiml_say_and_hangup("Sorry, your session has expired. Please call back.")
+            return Response(content=twiml, media_type="application/xml")
+
+        session_id = session.session_id
+
+        # Handle empty speech result
+        # Speak EXACTLY one apology sentence and re-run the same stage question
+        # already embedded in the next <Gather>.  Do NOT append the stage
+        # question here — that would double-prompt the caller.
+        if not SpeechResult or SpeechResult.strip() == "":
+            logger.warning(f"[TWILIO] Empty speech result from {CallSid}")
+            twiml = generate_twiml_gather(
+                "Sorry, I didn't catch that. Can you please repeat your answer?",
+                "/api/v1/voice/gather",
+            )
+            return Response(content=twiml, media_type="application/xml")
+
+        # Store patient's answer in conversation
+        session.conversation.append(ConversationTurn(role="caller", text=SpeechResult.strip()))
+
+        # Get current stage
+        current_stage = session.channel_metadata.get("stage", STAGE_NAME)
+        logger.info(f"[TWILIO] Session {session_id} current stage: {current_stage}")
+
+        # Process scripted intake stages
+        if current_stage == STAGE_NAME:
+            name_input = SpeechResult.strip()
+            if not _looks_like_name(name_input):
+                # STT produced garbage — re-prompt without advancing the stage
+                logger.warning(
+                    f"[TWILIO] Name rejected (STT garbage): '{mask_phi(name_input[:80])}'"
+                )
+                twiml = generate_twiml_gather(
+                    "I'm sorry, I didn't quite catch your name. "
+                    "Could you please say just your first and last name?",
+                    "/api/v1/voice/gather",
+                )
+                return Response(content=twiml, media_type="application/xml")
+            session.intake_state.caller_name = name_input
+            session.channel_metadata["stage"] = STAGE_AGE
+            next_question = "Thank you. What is your age?"
+            session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+            repo.persist_session(session)
+            twiml = generate_twiml_gather(next_question, "/api/v1/voice/gather")
+            return Response(content=twiml, media_type="application/xml")
+
+        elif current_stage == STAGE_AGE:
+            try:
+                session.intake_state.caller_age = int(SpeechResult.strip())
+            except (ValueError, TypeError):
+                session.channel_metadata["patient_age_raw"] = SpeechResult.strip()
+            session.channel_metadata["stage"] = STAGE_SEX
+            next_question = "What is your biological sex?"
+            session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+            repo.persist_session(session)
+            twiml = generate_twiml_gather(next_question, "/api/v1/voice/gather")
+            return Response(content=twiml, media_type="application/xml")
+
+        elif current_stage == STAGE_SEX:
+            session.intake_state.caller_sex = SpeechResult.strip().lower()
+            session.channel_metadata["stage"] = STAGE_CHIEF_COMPLAINT
+            next_question = "Thank you. Now, what brings you in today? Please describe your main symptom or concern."
+            session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+            repo.persist_session(session)
+            twiml = generate_twiml_gather(next_question, "/api/v1/voice/gather", timeout=10)
+            return Response(content=twiml, media_type="application/xml")
+
+        elif current_stage == STAGE_CHIEF_COMPLAINT:
+            chief_complaint = SpeechResult.strip()
+            session.intake_state.chief_complaint = chief_complaint
+            session.channel_metadata["stage"] = STAGE_DYNAMIC
+            logger.info(f"[TWILIO] Session {session_id} entering DYNAMIC stage")
+            logger.info(f"[TWILIO] Chief complaint stored (len={len(chief_complaint)})")
+            repo.persist_session(session)
+            # Fall through to dynamic processing
+
+        # DYNAMIC stage — multi-agent orchestrator
+        if session.channel_metadata.get("stage") == STAGE_DYNAMIC:
+            orchestrator = get_orchestrator()
+            result = await orchestrator.process_turn(session, SpeechResult.strip())
+            repo.persist_session(session)
+
+            action = result["action"]
+            spoken_message = result["message"]
+
+            if action == "escalate":
+                logger.info(f"[TWILIO] Deterministic escalation for session {session_id}")
+                session.is_finalized = True
+                repo.persist_session(session)
+
+                # Schedule background finalization for SBAR report
+                background_tasks.add_task(
+                    _generate_orchestrator_report_background,
+                    session_id=session_id,
+                    orch_session=session,
+                    session_metadata=_build_session_metadata(session),
+                )
+
+                twiml = generate_twiml_say_and_hangup(spoken_message)
+                return Response(content=twiml, media_type="application/xml")
+
+            elif action == "finalize":
+                logger.info(f"[TWILIO] Finalizing session {session_id}")
+                session.is_finalized = True
+                repo.persist_session(session)
+
+                background_tasks.add_task(
+                    _generate_orchestrator_report_background,
+                    session_id=session_id,
+                    orch_session=session,
+                    session_metadata=_build_session_metadata(session),
+                )
+
+                # Use warm-transfer TwiML; falls back to hangup if no
+                # NURSE_TRANSFER_NUMBER is configured.
+                twiml = generate_twiml_handoff(spoken_message)
+                return Response(content=twiml, media_type="application/xml")
+
+            else:
+                # action == "ask" — continue with next question
+                twiml = generate_twiml_gather(spoken_message, "/api/v1/voice/gather", timeout=8)
+                return Response(content=twiml, media_type="application/xml")
+
+        # Should not reach here
+        logger.error(f"[TWILIO] Unexpected state for session {session_id}")
+        twiml = generate_twiml_say_and_hangup("Thank you for answering our questions. All information has been securely recorded and will be passed on to a nurse for review. A nurse will contact you promptly. If your symptoms worsen, please go to the emergency room or call emergency services.")
+        return Response(content=twiml, media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"[TWILIO] Error in gather: {e}", exc_info=True)
+        error_twiml = generate_twiml_say_and_hangup("Sorry, we encountered an error. Please try again later.")
+        return Response(content=error_twiml, media_type="application/xml")
+
+
+def _build_session_metadata(session) -> dict:
+    """Extract metadata dict from OrchestratorSession for report generation."""
+    return {
+        "patient_name": session.intake_state.caller_name or "Unknown",
+        "patient_age": str(session.intake_state.caller_age) if session.intake_state.caller_age else "Unknown",
+        "patient_sex": session.intake_state.caller_sex or "Unknown",
+        "chief_complaint": session.intake_state.chief_complaint or "Unknown",
+    }
+
+
+def _get_stage_question(stage: str) -> str:
+    """Get the question for a given stage"""
+    questions = {
+        STAGE_NAME: "What is your full name?",
+        STAGE_AGE: "What is your age?",
+        STAGE_SEX: "What is your biological sex? Please say male, female, or prefer not to say.",
+        STAGE_CHIEF_COMPLAINT: "What brings you in today? Please describe your main symptom or concern.",
+        STAGE_DYNAMIC: "Can you tell me more about your symptoms?"
+    }
+    return questions.get(stage, "Can you tell me more?")
+
+
+def _find_report_files(identifier: str) -> tuple[Path | None, Path | None]:
+    """Find report JSON and TXT files by session_id, filename stem, or partial match.
+
+    Searches recursively through year/month subdirectories.
+
+    Search order:
+    1. Exact filename match in any subdirectory
+    2. Partial match — identifier appears anywhere in filename (e.g. patient name or short ID)
+    """
+    # Search recursively for files containing the identifier
+    matches = sorted(REPORTS_DIR.rglob(f"*{identifier}*.json"))
+    if matches:
+        json_path = matches[-1]  # Most recent (sorted alphabetically = chronologically)
+        txt_path = json_path.with_suffix(".txt")
+        return json_path, txt_path if txt_path.exists() else None
+
+    return None, None
+
+
+@router.get("/reports")
+async def list_reports(limit: int = 50, month: Optional[str] = None, year: Optional[int] = None):
+    """List all available reports, most recent first.
+
+    Optional filters:
+        year: Filter by year (e.g. 2026)
+        month: Filter by month number or name (e.g. "01", "January", "01-January")
+    """
+    if year or month:
+        # Build specific search path
+        search_dir = REPORTS_DIR
+        if year:
+            search_dir = search_dir / str(year)
+        if month:
+            # Allow "01", "January", or "01-January"
+            month_dirs = sorted(search_dir.glob(f"*{month}*")) if search_dir.exists() else []
+            if month_dirs:
+                search_dir = month_dirs[0]
+        json_files = sorted(search_dir.rglob("*.json"), reverse=True) if search_dir.exists() else []
+    else:
+        json_files = sorted(REPORTS_DIR.rglob("*.json"), reverse=True)
+
+    reports = []
+    for f in json_files[:limit]:
+        # Show path relative to reports dir for context
+        rel_path = f.relative_to(REPORTS_DIR)
+        reports.append({
+            "filename": f.stem,
+            "path": str(rel_path),
+            "created": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+            "size_bytes": f.stat().st_size,
+        })
+    return {"count": len(reports), "reports": reports}
+
+
+@router.get("/reports/{identifier}")
+async def get_report(identifier: str):
+    """
+    Retrieve handoff report for a completed triage session.
+    Accepts: full filename stem, legacy UUID, partial patient name, or short ID.
+    """
+    try:
+        json_path, txt_path = _find_report_files(identifier)
+
+        if json_path is None or not json_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Report not found for '{identifier}'"
+            )
+
+        with open(json_path, "r") as f:
+            structured_data = json.load(f)
+
+        sbar_text = ""
+        if txt_path and txt_path.exists():
+            with open(txt_path, "r") as f:
+                sbar_text = f.read()
+
+        return {
+            "filename": json_path.stem,
+            "structured": structured_data,
+            "sbar": sbar_text,
+            "report_files": {
+                "json": str(json_path),
+                "txt": str(txt_path) if txt_path else None,
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[REPORTS] Error retrieving report for {identifier}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error retrieving report")

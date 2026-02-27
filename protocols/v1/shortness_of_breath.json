@@ -1,0 +1,26 @@
+{
+    "id": "PROTO-002",
+    "title": "Shortness of Breath Triage Protocol",
+    "keywords": [
+        "shortness of breath",
+        "breathing difficulty",
+        "dyspnea",
+        "can't breathe",
+        "trouble breathing",
+        "breathless",
+        "winded",
+        "wheezing",
+        "gasping",
+        "air hunger",
+        "respiratory distress"
+    ],
+    "body": "Dyspnea assessment: Determine onset (acute vs chronic/progressive), severity (at rest vs exertional), position dependency (orthopnea), associated symptoms (chest pain, cough, fever, leg swelling, wheezing). Ask about known asthma, COPD, heart failure, or recent immobilization/surgery (PE risk). Assess ability to speak in full sentences. Red flags: inability to speak in sentences, cyanosis, tripod positioning, stridor, acute onset at rest, associated chest pain, or history suggesting PE/anaphylaxis.",
+    "disposition_notes": "Severe dyspnea at rest or inability to speak → ER_NOW. Acute onset with fever/cough → URGENT_CARE. Mild exertional dyspnea, chronic and stable → SAME_DAY or ROUTINE.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Pulmonology Department"
+}

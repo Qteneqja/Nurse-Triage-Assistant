@@ -1,0 +1,29 @@
+{
+    "id": "PROTO-003",
+    "title": "Abdominal Pain Triage Protocol",
+    "keywords": [
+        "abdominal pain",
+        "stomach pain",
+        "belly pain",
+        "stomach ache",
+        "stomach hurts",
+        "stomach",
+        "tummy",
+        "cramping",
+        "nausea",
+        "vomiting",
+        "diarrhea",
+        "appendicitis",
+        "right lower quadrant",
+        "epigastric"
+    ],
+    "body": "Abdominal pain assessment: Determine location (RUQ, LUQ, RLQ, LLQ, epigastric, periumbilical, diffuse), onset (sudden vs gradual), character (sharp, crampy, colicky, burning), severity (0-10), radiation, and timing (constant vs intermittent). Associated symptoms: nausea, vomiting, diarrhea, constipation, fever, bloody stool, urinary symptoms. Ask about last menstrual period in females of reproductive age. Red flags: sudden severe pain, rigid abdomen, rebound tenderness described, bloody vomit or stool, fever with severe pain, possible pregnancy with pain.",
+    "disposition_notes": "Sudden severe pain or rigid abdomen → ER_NOW. Moderate pain with fever or vomiting → URGENT_CARE. Mild cramping without alarm features → SAME_DAY. Chronic mild symptoms → ROUTINE.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Gastroenterology Department"
+}

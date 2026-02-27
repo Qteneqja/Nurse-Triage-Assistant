@@ -1,0 +1,26 @@
+{
+    "id": "PROTO-001",
+    "title": "Chest Pain Triage Protocol",
+    "keywords": [
+        "chest pain",
+        "chest tightness",
+        "chest pressure",
+        "heart",
+        "angina",
+        "radiating pain",
+        "left arm pain",
+        "jaw pain",
+        "crushing",
+        "squeezing",
+        "substernal"
+    ],
+    "body": "Chest pain assessment: Determine onset (sudden vs gradual), location (central, left-sided, radiating), character (sharp, dull, pressure, crushing), severity (0-10), and associated symptoms (shortness of breath, diaphoresis, nausea, dizziness). Ask about exertional vs rest onset. History of cardiac disease, hypertension, diabetes, smoking, or family cardiac history increases risk. Red flags: sudden crushing/pressure pain, radiation to left arm or jaw, associated diaphoresis, syncope, or dyspnea at rest. Any suspicion of acute coronary syndrome warrants immediate ER referral.",
+    "disposition_notes": "Sudden onset with red flags → ER_NOW. Exertional chest pain resolving at rest → URGENT_CARE. Mild reproducible chest wall pain without red flags → SAME_DAY.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Emergency Medicine Department"
+}

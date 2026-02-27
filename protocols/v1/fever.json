@@ -1,0 +1,25 @@
+{
+    "id": "PROTO-004",
+    "title": "Fever Triage Protocol",
+    "keywords": [
+        "fever",
+        "temperature",
+        "chills",
+        "sweating",
+        "hot",
+        "febrile",
+        "high temperature",
+        "burning up",
+        "rigors",
+        "night sweats"
+    ],
+    "body": "Fever assessment: Determine temperature if known, duration, pattern (constant vs intermittent), and associated symptoms (cough, sore throat, urinary symptoms, rash, headache, neck stiffness, confusion). Ask about recent travel, sick contacts, immunocompromised status, recent surgery, or indwelling devices. In children: assess age (under 3 months with fever is always urgent), feeding, activity level, rash. Red flags: temperature over 103F/39.4C with rigors, neck stiffness with fever, petechial rash, altered mental status, immunocompromised patient with fever, infant under 3 months with any fever.",
+    "disposition_notes": "Fever with neck stiffness or petechial rash or altered mental status → ER_NOW. Infant under 3 months with any fever → ER_NOW. High fever with rigors in immunocompromised → URGENT_CARE. Moderate fever with mild URI symptoms → SAME_DAY. Low-grade fever under 48 hours without alarm features → SELF_CARE.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Internal Medicine Department"
+}

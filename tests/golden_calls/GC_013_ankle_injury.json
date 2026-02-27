@@ -1,0 +1,84 @@
+{
+    "case_id": "GC_013",
+    "title": "Mild Injury with Nurse Handoff Request",
+    "metadata": {
+        "category": "moderate",
+        "complaint_type": "injury",
+        "expected_disposition": "SCHEDULE",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Kevin Anderson",
+        "age": 24,
+        "sex": "male",
+        "context": "No medical conditions"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "Hello, what happened?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I twisted my ankle playing basketball yesterday"
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "I'm sorry to hear that. Can you walk on it?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "A little bit, but it hurts a lot and the swelling is still pretty bad"
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "How severe is the pain on a scale of 1 to 10?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "About a 7, but I've been icing it"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "Good idea with the ice. Do you have any numbness, tingling, or color changes in your foot or toes?"
+        },
+        {
+            "turn": 8,
+            "speaker": "caller",
+            "text": "No, it's just painful and swollen"
+        },
+        {
+            "turn": 9,
+            "speaker": "assistant",
+            "text": "I'll get a nurse to review this. It may be a simple sprain or a fracture, so a nurse can help determine if you need to be seen in person for x-rays."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "SCHEDULE",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "24-year-old male with ankle injury from basketball, sustained yesterday, persistent pain (7/10) and swelling despite ice",
+            "background": "24-year-old healthy male, no medical conditions",
+            "assessment": "Ankle inversion injury with pain and swelling; rule out fracture with imaging; likely ankle sprain",
+            "recommendation": "Urgent care or orthopedic clinic for x-rays and evaluation; continue RICE (rest, ice, compression, elevation); crutches if weight-bearing not tolerated"
+        },
+        "min_turns_to_escalate": 6,
+        "max_turns_before_escalate": 10
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": false
+    }
+}

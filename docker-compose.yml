@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: triage_db
+      POSTGRES_USER: triage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-triage_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U triage -d triage_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # One-shot migration runner (use: docker compose run --rm migrate)
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://triage:${POSTGRES_PASSWORD:-triage_pass}@postgres:5432/triage_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: [ "python", "-m", "alembic", "upgrade", "head" ]
+    profiles:
+      - tools
+
+  # Triage API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - STORAGE_BACKEND=postgres
+      - DATABASE_URL=postgresql://triage:${POSTGRES_PASSWORD:-triage_pass}@postgres:5432/triage_db
+      - STORE_PHI=${STORE_PHI:-false}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - PROTOCOL_VERSION=${PROTOCOL_VERSION:-v1}
+      - CONFIDENCE_MIN_THRESHOLD=${CONFIDENCE_MIN_THRESHOLD:-0.60}
+      - REDFLAG_SCORE_THRESHOLD=${REDFLAG_SCORE_THRESHOLD:-10}
+      - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
+      - RATE_LIMIT=${RATE_LIMIT:-60/minute}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_WEBHOOK_BASE_URL=${TWILIO_WEBHOOK_BASE_URL:-}
+      - TWILIO_VALIDATE_SIGNATURE=${TWILIO_VALIDATE_SIGNATURE:-false}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - USE_MOCK_LLM=${USE_MOCK_LLM:-false}
+      - RUN_MIGRATIONS_ON_STARTUP=${RUN_MIGRATIONS_ON_STARTUP:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local

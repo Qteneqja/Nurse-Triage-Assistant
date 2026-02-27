@@ -1,0 +1,74 @@
+{
+    "case_id": "GC_016",
+    "title": "Common Cold",
+    "metadata": {
+        "category": "mild",
+        "complaint_type": "cold",
+        "expected_disposition": "SELF_CARE",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Susan Richards",
+        "age": 34,
+        "sex": "female",
+        "context": "No medical conditions"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "Hello, what can I help you with?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I have a runny nose, mild cough, and a little bit of a sore throat. I think I'm getting a cold."
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "When did it start?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "This morning"
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "Do you have a fever?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "I don't think so, I feel normal otherwise"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "You likely have an early cold. Rest, stay hydrated, and use over-the-counter cold remedies as needed. Call back if your symptoms get worse or you develop fever."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "SELF_CARE",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "34-year-old female with upper respiratory symptoms: runny nose, mild cough, sore throat, onset this morning",
+            "background": "34-year-old female, healthy, no medical conditions",
+            "assessment": "Likely viral upper respiratory infection (common cold); patient stable, no systemic symptoms",
+            "recommendation": "Supportive care: rest, fluids, OTC decongestants/throat lozenges; monitor for worsening symptoms or fever"
+        },
+        "min_turns_to_escalate": 5,
+        "max_turns_before_escalate": 8
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": false
+    }
+}

@@ -1,0 +1,31 @@
+{
+    "id": "PROTO-007",
+    "title": "Neurological / Stroke Signs Triage Protocol",
+    "keywords": [
+        "stroke",
+        "numbness",
+        "weakness",
+        "facial droop",
+        "slurred speech",
+        "confusion",
+        "vision loss",
+        "headache worst ever",
+        "seizure",
+        "dizziness",
+        "vertigo",
+        "fainting",
+        "tingling",
+        "paralysis",
+        "can't move",
+        "FAST"
+    ],
+    "body": "Neurological assessment using FAST screening: Face (ask about facial droop or asymmetry), Arms (arm weakness or drift), Speech (slurred or garbled speech), Time (when did symptoms start — last known normal time is critical). Also assess: sudden severe headache ('worst headache of my life'), sudden vision loss or double vision, sudden confusion or difficulty understanding, sudden loss of balance or coordination, seizure activity, level of consciousness. Ask about recent head trauma. Red flags: any acute focal neurological deficit (one-sided weakness, speech difficulty, vision loss), sudden thunderclap headache, seizure in non-epileptic patient, altered consciousness, acute onset of any FAST-positive sign.",
+    "disposition_notes": "Any FAST-positive sign or acute neurological deficit → ER_NOW (call 911, time-critical for stroke intervention). Thunderclap headache → ER_NOW. New seizure → ER_NOW. Chronic stable dizziness or tingling → SAME_DAY or ROUTINE.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Neurology Department"
+}

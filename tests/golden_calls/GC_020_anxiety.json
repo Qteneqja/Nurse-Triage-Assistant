@@ -1,0 +1,74 @@
+{
+    "case_id": "GC_020",
+    "title": "Anxiety Symptoms",
+    "metadata": {
+        "category": "mild",
+        "complaint_type": "anxiety",
+        "expected_disposition": "SELF_CARE",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Daniel Park",
+        "age": 38,
+        "sex": "male",
+        "context": "History of anxiety disorder, on sertraline"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "Hi, what's going on?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I'm having an anxiety attack, my heart is racing, and I feel like I can't breathe"
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "Do you have a history of anxiety or panic attacks?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "Yes, I have an anxiety disorder and I'm on sertraline"
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "Do you have chest pain, dizziness, or any other concerning symptoms beyond the racing heart and breathing difficulty?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "No chest pain, I'm just anxious and it feels hard to breathe"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "This sounds like an anxiety episode. Try deep breathing, find a quiet place, and ground yourself. These symptoms typically pass in 15-30 minutes. If you experience chest pain or symptoms persist, contact us back."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "SELF_CARE",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "38-year-old male with palpitations and sensation of dyspnea in context of anxiety attack",
+            "background": "38-year-old male with anxiety disorder, on sertraline",
+            "assessment": "Anxiety/panic attack with associated palpitations and hyperventilation; no cardiac red flags; consistent with prior episodes",
+            "recommendation": "Supportive care: grounding techniques, deep breathing, safe quiet environment; monitor for resolution; contact back if worsening or new symptoms"
+        },
+        "min_turns_to_escalate": 4,
+        "max_turns_before_escalate": 8
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": false
+    }
+}

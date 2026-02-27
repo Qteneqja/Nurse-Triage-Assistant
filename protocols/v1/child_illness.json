@@ -1,0 +1,28 @@
+{
+    "id": "PROTO-005",
+    "title": "Child Illness General Triage Protocol",
+    "keywords": [
+        "child",
+        "baby",
+        "infant",
+        "toddler",
+        "pediatric",
+        "kid",
+        "son",
+        "daughter",
+        "newborn",
+        "fussy",
+        "crying",
+        "not eating",
+        "lethargic child"
+    ],
+    "body": "Pediatric illness assessment: Determine child's age (especially under 3 months, under 1 year, under 5 years), presenting symptoms, duration, feeding and fluid intake, urine output (wet diapers), activity level, and vaccination status. Ask about fever, rash, vomiting, diarrhea, cough, difficulty breathing, and any change in consciousness. Red flags: age under 3 months with fever, inconsolable crying, bulging fontanelle, lethargy or floppiness, poor feeding in infant, signs of dehydration (no wet diapers for 6+ hours, dry mouth, no tears), petechial or purpuric rash, difficulty breathing, seizure.",
+    "disposition_notes": "Any red flag in infant under 3 months → ER_NOW. Dehydration signs or lethargy in any child → ER_NOW or URGENT_CARE. Moderate symptoms with adequate hydration → SAME_DAY. Mild cold symptoms with good activity and feeding → SELF_CARE with return precautions.",
+    "last_updated": "2026-01-15",
+    "version": "1.0",
+    "status": "approved",
+    "effective_date": "2026-01-15",
+    "reviewed_by": "Clinical Safety Board",
+    "reviewed_at": "2026-01-14T10:00:00",
+    "owner": "Pediatrics Department"
+}

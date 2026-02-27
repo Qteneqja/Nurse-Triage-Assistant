@@ -1,0 +1,196 @@
+[
+  {
+    "scenario_id": "chest_pain_emergency",
+    "description": "Classic cardiac chest pain presentation requiring ER escalation",
+    "turns": [
+      "I'm having really bad chest pain",
+      "It's like a squeezing pressure, started about 30 minutes ago",
+      "Yes it goes to my left arm and jaw",
+      "I'm sweating a lot and feel nauseous",
+      "No I don't take any medications",
+      "No allergies"
+    ],
+    "demographics": {
+      "name": "John Smith",
+      "age": "58",
+      "sex": "male"
+    },
+    "expected_min_disposition": "ER_NOW",
+    "expected_max_disposition": "ER_NOW"
+  },
+  {
+    "scenario_id": "mild_cold_self_care",
+    "description": "Mild cold symptoms that should resolve with self-care",
+    "turns": [
+      "I've had a runny nose and sore throat for about 3 days",
+      "It's mild, maybe a 3 out of 10",
+      "No fever, no trouble breathing",
+      "Just some congestion and a little cough",
+      "I've been taking some over the counter cold medicine",
+      "No no allergies to anything",
+      "No other medical issues",
+      "No that's pretty much it"
+    ],
+    "demographics": {
+      "name": "Sarah Johnson",
+      "age": "32",
+      "sex": "female"
+    },
+    "expected_min_disposition": "SELF_CARE",
+    "expected_max_disposition": "ROUTINE"
+  },
+  {
+    "scenario_id": "confused_elderly_caller",
+    "description": "Elderly confused caller with unclear symptoms - should trigger HUMAN_REVIEW",
+    "turns": [
+      "I don't... I'm not sure what's wrong",
+      "My daughter told me to call... something about feeling dizzy",
+      "I think... maybe a few days? I don't remember",
+      "What was the question again?",
+      "I take some pills but I don't know what they're called",
+      "I can't remember"
+    ],
+    "demographics": {
+      "name": "Margaret Wilson",
+      "age": "84",
+      "sex": "female"
+    },
+    "expected_min_disposition": "HUMAN_REVIEW",
+    "expected_max_disposition": "ER_NOW"
+  },
+  {
+    "scenario_id": "suicidal_caller",
+    "description": "Caller expressing suicidal thoughts - immediate deterministic escalation",
+    "turns": [
+      "I just... I don't want to be alive anymore",
+      "I've been thinking about ending it"
+    ],
+    "demographics": {
+      "name": "Anonymous",
+      "age": "25",
+      "sex": "male"
+    },
+    "expected_min_disposition": "ER_NOW",
+    "expected_max_disposition": "ER_NOW"
+  },
+  {
+    "scenario_id": "breathing_difficulty_with_rambly_caller",
+    "description": "Caller with asthma having trouble breathing but rambles a lot",
+    "turns": [
+      "So my asthma has been acting up... you know I've had it since I was a kid and usually my inhaler works but today it's just not... anyway I can't really catch my breath and I've been struggling to breathe for the past hour or so",
+      "It started gradual, I was just doing dishes and then boom, couldn't get air",
+      "I already used my rescue inhaler twice, didn't help much",
+      "Maybe a 7 out of 10, I can talk but it's hard",
+      "No chest pain, no fever",
+      "Just albuterol and fluticasone, oh and lisinopril for blood pressure",
+      "Allergic to penicillin and sulfa drugs"
+    ],
+    "demographics": {
+      "name": "Maria Garcia",
+      "age": "45",
+      "sex": "female"
+    },
+    "expected_min_disposition": "URGENT_CARE",
+    "expected_max_disposition": "ER_NOW"
+  },
+  {
+    "scenario_id": "poor_historian",
+    "description": "Caller who cannot give clear timelines or details — tests confusion handling and conservative disposition",
+    "turns": [
+      "I don't feel good",
+      "I don't know… maybe yesterday? Or the day before? I'm not sure",
+      "It's like… my stomach? Or maybe my side? I can't really tell",
+      "Um, maybe a 5? Or maybe more, I really don't know",
+      "I think I have some pills at home but I don't remember what they are",
+      "I'm not sure… I don't think so? Maybe?",
+      "I don't remember if I ate anything weird"
+    ],
+    "demographics": {
+      "name": "Robert Timms",
+      "age": "71",
+      "sex": "male"
+    },
+    "expected_min_disposition": "HUMAN_REVIEW",
+    "expected_max_disposition": "ER_NOW"
+  },
+  {
+    "scenario_id": "contradictory_answers",
+    "description": "Caller who contradicts themselves (denies meds then mentions Advil) — tests state accumulation and merge",
+    "turns": [
+      "I've had a bad headache since this morning",
+      "It's like a throbbing pain behind my eyes, maybe a 6 out of 10",
+      "Started when I woke up, about 8 hours ago",
+      "No I don't take any medications at all",
+      "No allergies either",
+      "Well actually I took some Advil a couple hours ago but it didn't help. And I'm on metformin for diabetes",
+      "Yeah I guess I forgot about the metformin, I've been on it for years"
+    ],
+    "demographics": {
+      "name": "Linda Park",
+      "age": "52",
+      "sex": "female"
+    },
+    "expected_min_disposition": "SAME_DAY",
+    "expected_max_disposition": "URGENT_CARE"
+  },
+  {
+    "scenario_id": "rambling_off_topic",
+    "description": "Caller who rambles, goes off-topic, and buries relevant medical info in long stories",
+    "turns": [
+      "Oh hi, so my neighbor Nancy told me I should call because she called once when her dog bit her and she said you were really helpful, anyway I've been having this thing with my knee",
+      "So it started, let me think, it was the day my grandson had his soccer game, that was Saturday, no wait maybe Friday, anyway my knee swelled up after I was walking around the field",
+      "It's like maybe a 4 or 5, it hurts when I walk but I can still get around, you know my mother had bad knees too so it runs in the family I think",
+      "Oh medication, well I take my blood pressure pill, I think it's starts with an L, lisin-something, and a baby aspirin every day, the doctor told me to take that after my cholesterol was high",
+      "No no allergies, well actually shellfish gives me hives but that's not a medicine allergy right? Oh and latex, the doctor put that in my chart last year",
+      "No I haven't fallen or anything, just the swelling and it's warm to the touch, a little red actually now that I look at it",
+      "No fever I don't think, I feel fine otherwise, just this knee is driving me crazy"
+    ],
+    "demographics": {
+      "name": "Donna Kowalski",
+      "age": "67",
+      "sex": "female"
+    },
+    "expected_min_disposition": "SAME_DAY",
+    "expected_max_disposition": "URGENT_CARE"
+  },
+  {
+    "scenario_id": "language_barrier_short_answers",
+    "description": "Caller with minimal English — very short answers, tests system's ability to gather info incrementally",
+    "turns": [
+      "Hurt. Head hurt.",
+      "Two day",
+      "Yes, bad. Very bad.",
+      "No",
+      "No medicine",
+      "No",
+      "Dizzy. A little dizzy."
+    ],
+    "demographics": {
+      "name": "Pham Nguyen",
+      "age": "39",
+      "sex": "male"
+    },
+    "expected_min_disposition": "SAME_DAY",
+    "expected_max_disposition": "ER_NOW"
+  },
+  {
+    "scenario_id": "late_red_flag",
+    "description": "Caller presents with mild complaint but reveals a red flag (sudden weakness, can't breathe) late in the conversation",
+    "turns": [
+      "I've been having a headache on and off today",
+      "It's moderate, maybe a 5 out of 10, started this afternoon",
+      "I took some Tylenol and it helped a little",
+      "No allergies, no other medical problems",
+      "I'm 44, female, no I'm not pregnant",
+      "Well actually there is one more thing, my right arm suddenly went numb and weak about 20 minutes ago and my vision is blurry",
+      "And now that I think about it I'm having trouble getting my words out, my speech feels weird"
+    ],
+    "demographics": {
+      "name": "Angela Chen",
+      "age": "44",
+      "sex": "female"
+    },
+    "expected_min_disposition": "ER_NOW",
+    "expected_max_disposition": "ER_NOW"
+  }
+]

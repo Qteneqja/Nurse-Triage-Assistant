@@ -1,0 +1,44 @@
+{
+  "red_flag": {
+    "confusion": 9,
+    "seizure": 9,
+    "chest pain": 8,
+    "shortness of breath": 8,
+    "vision loss": 8,
+    "slurred speech": 8,
+    "numbness": 7
+  },
+  "mental_health": {
+    "suicidal thoughts": 9,
+    "anxiety": 4,
+    "depression": 4,
+    "insomnia": 3
+  },
+  "chronic_related": {
+    "asthma attack": 7,
+    "low blood sugar": 7,
+    "high blood sugar": 6,
+    "hypertension": 5,
+    "back pain": 3,
+    "joint swelling": 3
+  },
+  "common": {
+    "fever": 4,
+    "headache": 3,
+    "cough": 3,
+    "sore throat": 2,
+    "fatigue": 3,
+    "runny nose": 2,
+    "muscle aches": 2,
+    "nausea": 3,
+    "vomiting": 4,
+    "diarrhea": 3
+  },
+  "other": {
+    "dizziness": 4,
+    "rash": 2,
+    "UTI symptoms": 4,
+    "allergic reaction": 6,
+    "ear pain": 2
+  }
+}

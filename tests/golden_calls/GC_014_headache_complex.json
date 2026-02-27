@@ -1,0 +1,94 @@
+{
+    "case_id": "GC_014",
+    "title": "Complex Diagnosis - Difficult Differentiation",
+    "metadata": {
+        "category": "moderate",
+        "complaint_type": "headache",
+        "expected_disposition": "HUMAN_REVIEW",
+        "expected_red_flags": [],
+        "author": "Clinical Safety Team",
+        "created_date": "2026-02-22",
+        "version": "1.0"
+    },
+    "caller_profile": {
+        "name": "Margaret Sullivan",
+        "age": 48,
+        "sex": "female",
+        "context": "History of migraines, diabetes, hypertension"
+    },
+    "conversation": [
+        {
+            "turn": 1,
+            "speaker": "assistant",
+            "text": "What's bothering you today?"
+        },
+        {
+            "turn": 2,
+            "speaker": "caller",
+            "text": "I have a severe headache, worse than my usual migraines, and I'm worried about my blood pressure"
+        },
+        {
+            "turn": 3,
+            "speaker": "assistant",
+            "text": "When did this headache start?"
+        },
+        {
+            "turn": 4,
+            "speaker": "caller",
+            "text": "This morning, suddenly, like nothing I've had before"
+        },
+        {
+            "turn": 5,
+            "speaker": "assistant",
+            "text": "Do you have any neck stiffness, sensitivity to light, or any weakness anywhere?"
+        },
+        {
+            "turn": 6,
+            "speaker": "caller",
+            "text": "No neck stiffness but the light is bothering me"
+        },
+        {
+            "turn": 7,
+            "speaker": "assistant",
+            "text": "Do you have any nausea or vomiting?"
+        },
+        {
+            "turn": 8,
+            "speaker": "caller",
+            "text": "Some nausea but no vomiting"
+        },
+        {
+            "turn": 9,
+            "speaker": "assistant",
+            "text": "When was your last blood pressure check and what was it?"
+        },
+        {
+            "turn": 10,
+            "speaker": "caller",
+            "text": "I don't remember exactly, but my doctor said it was controlled"
+        },
+        {
+            "turn": 11,
+            "speaker": "assistant",
+            "text": "This needs nurse review. Your symptoms could be several things - severe migraine, high blood pressure, or something else. A nurse will help determine if you need urgent evaluation."
+        }
+    ],
+    "expected_outcomes": {
+        "disposition": "HUMAN_REVIEW",
+        "triggers_911": false,
+        "sbar_structure": {
+            "situation": "48-year-old female with sudden-onset severe headache described as worse than usual migraines, photophobia, and nausea",
+            "background": "48-year-old female with history of migraines, diabetes, hypertension; takes medications with possibly controlled blood pressure",
+            "assessment": "Sudden severe headache with photophobia; differential includes severe migraine versus hypertensive emergency versus meningitis; requires evaluation to rule out dangerous causes",
+            "recommendation": "Nurse or urgent care evaluation; consider blood pressure check; if any red flag features develop (neck stiffness, neurological symptoms), go to ER; consider imaging if not typical migraine presentation"
+        },
+        "min_turns_to_escalate": 8,
+        "max_turns_before_escalate": 12
+    },
+    "validation": {
+        "must_trigger_red_flags": [],
+        "must_not_proceed_to_full_intake": false,
+        "must_have_sbar": true,
+        "must_explain_escalation": false
+    }
+}
