@@ -23,8 +23,13 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Cache to avoid re-generating identical audio
-_audio_cache: dict[str, str] = {}
+# Cache: maps cache_key → (url, expiry_timestamp)
+_audio_cache: dict[str, tuple[str, float]] = {}
+
+# SAS token lifetime — 24 hours gives plenty of buffer
+_SAS_LIFETIME_HOURS = 24
+# Refresh cache entries when less than 1 hour remains
+_SAS_REFRESH_THRESHOLD_SECONDS = 3600
 
 # Reusable async client (created lazily)
 _async_client: Optional[httpx.AsyncClient] = None
@@ -164,9 +169,11 @@ def _upload_to_blob(audio_bytes: bytes, blob_name: str) -> Optional[str]:
         blob_name=blob_name,
         account_key=account_key,
         permission=BlobSasPermissions(read=True),
-        expiry=datetime.now(timezone.utc) + timedelta(hours=1),
+        expiry=datetime.now(timezone.utc) + timedelta(hours=_SAS_LIFETIME_HOURS),
     )
-    return f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+    url = f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+    expiry_ts = time.time() + (_SAS_LIFETIME_HOURS * 3600)
+    return url, expiry_ts
 
 
 async def text_to_speech_url(
@@ -185,8 +192,13 @@ async def text_to_speech_url(
     cache_k = _cache_key(text, voice)
 
     if cache_k in _audio_cache:
-        logger.debug(f"[AzureTTS] Cache hit: {cache_k}")
-        return _audio_cache[cache_k]
+        url, expiry_ts = _audio_cache[cache_k]
+        if time.time() < (expiry_ts - _SAS_REFRESH_THRESHOLD_SECONDS):
+            logger.debug(f"[AzureTTS] Cache hit: {cache_k}")
+            return url
+        else:
+            logger.info(f"[AzureTTS] Cache entry expiring soon, regenerating: {cache_k}")
+            del _audio_cache[cache_k]
 
     try:
         # Synthesize (up to 10s — DragonHD voices are slower for long text)
@@ -199,15 +211,17 @@ async def text_to_speech_url(
 
         # Blob upload in thread (up to 8s — first call creates container)
         blob_name = f"{cache_k}.mp3"
-        blob_url = await asyncio.wait_for(
+        result = await asyncio.wait_for(
             asyncio.to_thread(_upload_to_blob, audio_bytes, blob_name),
             timeout=8.0,
         )
 
-        if blob_url:
-            _audio_cache[cache_k] = blob_url
-            logger.info(f"[AzureTTS] Ready: {blob_name}")
-        return blob_url
+        if result:
+            blob_url, expiry_ts = result
+            _audio_cache[cache_k] = (blob_url, expiry_ts)
+            logger.info(f"[AzureTTS] Ready: {blob_name} (expires in {_SAS_LIFETIME_HOURS}h)")
+            return blob_url
+        return None
 
     except asyncio.TimeoutError:
         logger.warning("[AzureTTS] Pipeline timed out — falling back to Polly")
