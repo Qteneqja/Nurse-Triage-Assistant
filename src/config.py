@@ -142,6 +142,15 @@ CORS_ALLOWED_ORIGINS: list[str] = [
     if o.strip()
 ]
 
+# Azure Blob Storage (persistent report storage in production)
+AZURE_STORAGE_CONNECTION_STRING: Optional[str] = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+AZURE_BLOB_CONTAINER: str = os.getenv("AZURE_BLOB_CONTAINER", "triage-reports")
+
+# Azure Speech Service (TTS)
+AZURE_SPEECH_KEY: Optional[str] = os.getenv("AZURE_SPEECH_KEY")
+AZURE_SPEECH_REGION: str = os.getenv("AZURE_SPEECH_REGION", "eastus")
+AZURE_TTS_VOICE: str = os.getenv("AZURE_TTS_VOICE", "en-US-AvaMultilingualNeural")
+
 # Database migrations on startup (safe + idempotent via Alembic upgrade head)
 RUN_MIGRATIONS_ON_STARTUP: bool = os.getenv(
     "RUN_MIGRATIONS_ON_STARTUP", "false"
