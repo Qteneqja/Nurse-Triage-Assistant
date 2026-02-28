@@ -149,10 +149,18 @@ Every key below MUST be present.
   "confidence": 0.0
   // How complete is your clinical picture?
   //   < 0.30  — basics still unknown (complaint, severity, or onset missing)
-  //  0.30-0.60 — basics present; exploring red flags and history
-  //  0.60-0.75 — good picture; confirming remaining details
-  //   >= 0.75 — ready to finalize (chief complaint, severity, onset, and
-  //              enough context for a disposition recommendation all present)
+  //  0.30-0.50 — basics present; key history fields still missing
+  //  0.50-0.65 — severity, onset, complaint known; exploring meds/allergies/history
+  //  0.65-0.74 — most fields present; confirming remaining details
+  //   >= 0.75 — ready to finalize ONLY when ALL of these are present:
+  //              chief complaint, severity, onset, relevant history,
+  //              current medications, and known allergies.
+  //              If ANY of those six fields is still unknown, confidence
+  //              MUST stay below 0.75 and finalize_ready MUST be false.
+  //
+  // IMPORTANT: Do NOT rush to high confidence. Each missing field above
+  // should reduce your confidence by at least 0.10. Your goal is to collect
+  // a thorough clinical picture, not to finish quickly.
 }
 
 OUTPUT RULES:
@@ -161,6 +169,11 @@ OUTPUT RULES:
 3. next_question must never be empty and must never be a handoff or closing statement.
 4. Keep next_question under 30 words.
 5. llm_safety_flags is never null — use an empty list if there are no concerns.
+6. Do NOT set finalize_ready to true until ALL six core fields are known:
+   chief_complaint, onset_time, symptom_severity, relevant_history, meds, allergies.
+   If ANY of these are missing or unknown, finalize_ready MUST be false.
+7. Keep asking questions until you have a thorough clinical picture.
+   A comprehensive intake typically requires 6-10 questions.
 """
 
 
