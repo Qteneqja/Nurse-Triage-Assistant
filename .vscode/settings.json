@@ -3,6 +3,9 @@
     // This path is RELATIVE (${workspaceFolder}) so it works on any machine
     // after running the one-time setup commands in README § "Local Dev Setup".
     "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
+    // Load .env into terminals automatically
+    "python.envFile": "${workspaceFolder}/.env",
+    "python.terminal.useEnvFile": true,
     // Test discovery
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,

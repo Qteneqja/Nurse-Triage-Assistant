@@ -79,18 +79,26 @@ class StructuredLLMClient:
         messages: list[dict],
         max_tokens: int = 500,
         temperature: float = 0.3,
+        json_mode: bool = False,
     ) -> str:
         """Make a raw chat completion call and return the text content.
 
         Retries up to 2 attempts with exponential backoff.
+
+        Args:
+            json_mode: If True, request JSON output from the model.
+                       Eliminates need for repair cycles.
         """
         t0 = time.monotonic()
-        response = await self._client.chat.completions.create(
+        kwargs: dict = dict(
             model=self._model,
             messages=messages,  # type: ignore
             max_tokens=max_tokens,
             temperature=temperature,
         )
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        response = await self._client.chat.completions.create(**kwargs)
         elapsed = (time.monotonic() - t0) * 1000
         content = response.choices[0].message.content or ""
         logger.info(
@@ -131,9 +139,9 @@ class StructuredLLMClient:
         """
         cid = correlation_id or "no-cid"
 
-        # Step 1: raw call
+        # Step 1: raw call with JSON mode enabled for structured output
         try:
-            raw = await self._raw_call(messages, max_tokens, temperature)
+            raw = await self._raw_call(messages, max_tokens, temperature, json_mode=True)
         except Exception as e:
             logger.error(f"[LLM:{cid}] Raw call failed after retries: {e}")
             raise LLMCallError(f"LLM call failed: {e}") from e
@@ -212,7 +220,7 @@ class StructuredLLMClient:
         ]
 
         try:
-            raw = await self._raw_call(repair_messages, max_tokens, temperature=0.1)
+            raw = await self._raw_call(repair_messages, max_tokens, temperature=0.1, json_mode=True)
         except Exception as e:
             logger.error(f"[LLM:{cid}] Repair call failed: {e}")
             return None

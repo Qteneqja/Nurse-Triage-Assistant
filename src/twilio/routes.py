@@ -5,6 +5,7 @@ All session state goes through SessionRepository → StorageFactory.
 All LLM calls go through Orchestrator → GuardedLLM → SafetyGate.
 Twilio signature validation enforced via router-level dependency.
 """
+import asyncio
 import logging
 import json
 from datetime import datetime
@@ -21,6 +22,8 @@ from src.safety.phi_masking import mask_phi
 from src.config import STORE_PHI
 from src.security.twilio_signature import validate_twilio_signature
 from src.utils.report_naming import generate_report_filename, generate_report_path, ensure_year_folders
+from src.utils.blob_storage import upload_reports_to_blob
+from src.utils.azure_tts import text_to_speech_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(validate_twilio_signature)])
@@ -140,6 +143,14 @@ async def _generate_orchestrator_report_background(
 
         logger.info(f"[BACKGROUND] Orchestrator report saved: {report_json_path}")
 
+        # Upload to Azure Blob Storage (persistent across container restarts)
+        try:
+            blob_urls = upload_reports_to_blob(report_json_path, report_txt_path, REPORTS_DIR)
+            if blob_urls.get("json_url"):
+                logger.info(f"[BACKGROUND] Reports uploaded to blob storage")
+        except Exception as blob_exc:
+            logger.warning(f"[BACKGROUND] Blob upload failed (non-fatal): {blob_exc}")
+
     except Exception as e:
         logger.error(f"[BACKGROUND] Failed to generate orchestrator report: {e}", exc_info=True)
 
@@ -205,42 +216,81 @@ STAGE_CHIEF_COMPLAINT = "CHIEF_COMPLAINT"
 STAGE_DYNAMIC = "DYNAMIC"
 
 
-def generate_twiml_say(text: str) -> str:
-    """Generate TwiML <Say> with voice settings"""
-    return f'<Say voice="Polly.Joanna">{text}</Say>'
+# Voice used for all TwiML speech — Polly Ruth is calm and clear, ideal for healthcare
+_TTS_VOICE = "Polly.Ruth-Neural"
+
+# ---------------------------------------------------------------------------
+# Pending orchestrator tasks — background LLM processing with typing sounds
+# ---------------------------------------------------------------------------
+# Keyed by CallSid → asyncio.Task that resolves to (result_dict, session).
+# Single-worker in-memory storage (same pattern as session store).
+_pending_turns: dict[str, asyncio.Task] = {}
 
 
-def generate_twiml_gather(prompt: str, action_url: str, timeout: int = 6) -> str:
+def _get_azure_voice() -> str:
+    """Get the configured Azure TTS voice name."""
+    from src.config import AZURE_TTS_VOICE
+    return AZURE_TTS_VOICE
+
+
+async def generate_twiml_say(text: str) -> str:
+    """Generate TwiML <Say> or <Play> with Azure TTS (fallback to Polly)."""
+    audio_url = await text_to_speech_url(text, _get_azure_voice())
+    if audio_url:
+        return f'<Play>{saxutils.escape(audio_url)}</Play>'
+    return f'<Say voice="{_TTS_VOICE}">{saxutils.escape(text)}</Say>'
+
+
+async def generate_twiml_gather(prompt: str, action_url: str, timeout: int = 6) -> str:
     """Generate TwiML with <Gather> for speech input.
 
-    NOTE: No fallback <Say> is placed outside <Gather>.  When the caller is
-    silent for ``timeout`` seconds Twilio follows the <Redirect> which POSTs
-    back to the server with SpeechResult absent.  The server-side
-    empty-speech handler (handle_gather) speaks the single canonical apology
-    and re-gathers — this prevents duplicate apology sentences that would
-    occur if both TwiML and the server tried to reprompt at the same time.
+    Uses Azure TTS <Play> when available, falls back to Polly <Say>.
+    Uses enhanced phone_call speech model for better noise rejection and
+    accuracy on telephony audio.
     """
     escaped_prompt = saxutils.escape(prompt)
+    audio_url = await text_to_speech_url(prompt, _get_azure_voice())
+
+    if audio_url:
+        escaped_url = saxutils.escape(audio_url)
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="speech" speechTimeout="2" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true">
+        <Play>{escaped_url}</Play>
+    </Gather>
+    <Redirect method="POST">{action_url}</Redirect>
+</Response>"""
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" speechTimeout="auto" timeout="{timeout}" action="{action_url}" method="POST">
-        <Say voice="Polly.Joanna">{escaped_prompt}</Say>
+    <Gather input="speech" speechTimeout="2" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true">
+        <Say voice="{_TTS_VOICE}">{escaped_prompt}</Say>
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
 </Response>"""
 
 
-def generate_twiml_say_and_hangup(text: str) -> str:
-    """Generate TwiML that says something and hangs up"""
+async def generate_twiml_say_and_hangup(text: str) -> str:
+    """Generate TwiML that says/plays something and hangs up"""
     escaped_text = saxutils.escape(text)
+    audio_url = await text_to_speech_url(text, _get_azure_voice())
+
+    if audio_url:
+        escaped_url = saxutils.escape(audio_url)
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{escaped_url}</Play>
+    <Hangup/>
+</Response>"""
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Joanna">{escaped_text}</Say>
+    <Say voice="{_TTS_VOICE}">{escaped_text}</Say>
     <Hangup/>
 </Response>"""
 
 
-def generate_twiml_handoff(text: str) -> str:
+async def generate_twiml_handoff(text: str) -> str:
     """Speak a closing message then transfer or hang up.
 
     If ``NURSE_TRANSFER_NUMBER`` is set (e.g. ``+18005551234``), the call is
@@ -249,16 +299,22 @@ def generate_twiml_handoff(text: str) -> str:
     """
     from src.config import NURSE_TRANSFER_NUMBER
     escaped_text = saxutils.escape(text)
+    audio_url = await text_to_speech_url(text, _get_azure_voice())
+
     if NURSE_TRANSFER_NUMBER:
         num = saxutils.escape(NURSE_TRANSFER_NUMBER)
+        if audio_url:
+            speech_tag = f'    <Play>{saxutils.escape(audio_url)}</Play>'
+        else:
+            speech_tag = f'    <Say voice="{_TTS_VOICE}">{escaped_text}</Say>'
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<Response>\n'
-            f'    <Say voice="Polly.Joanna">{escaped_text}</Say>\n'
+            f'{speech_tag}\n'
             f'    <Dial>{num}</Dial>\n'
             '</Response>'
         )
-    return generate_twiml_say_and_hangup(text)
+    return await generate_twiml_say_and_hangup(text)
 
 
 @router.post("/incoming")
@@ -276,12 +332,15 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
         # Track scripted intake stage
         session.channel_metadata["stage"] = STAGE_GREETING
 
-        # Generate greeting
+        # Generate greeting — split into non-interruptible preamble +
+        # Gather for the name question.  This prevents barge-in from
+        # cutting off the legal disclaimer and ensures Jenny is used
+        # (long combined text was timing out TTS on cold start).
         greeting = (
-            "Hello, this is Astra. A clinical triage assistant. "
+            "Hello, this is Astra, a clinical triage assistant. "
             "This is a decision-support tool, not a diagnostic service. "
-            "If you are experiencing a life-threatening emergency, please hang up and call 9 1 1 immediately. "
-            "I will be asking you a series of questions to help assess your symptoms and determine the appropriate level of care. "
+            "If you are experiencing a life-threatening emergency, "
+            "please hang up and call 9 1 1 immediately. "
         )
 
         # Store greeting in conversation
@@ -289,21 +348,44 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
 
         # Move to NAME stage
         session.channel_metadata["stage"] = STAGE_NAME
-        first_question = "Can I please first start with your full name?"
+        first_question = "I will be asking you a series of questions to help assess your symptoms. Can I start with your full name?"
         session.conversation.append(ConversationTurn(role="assistant", text=first_question))
 
         repo.persist_session(session)
 
-        # Return TwiML with greeting + gather for name
-        full_prompt = greeting + first_question
-        twiml = generate_twiml_gather(full_prompt, "/api/v1/voice/gather", timeout=8)
+        # TTS: generate both audio URLs concurrently
+        greeting_url, question_url = await asyncio.gather(
+            text_to_speech_url(greeting, _get_azure_voice()),
+            text_to_speech_url(first_question, _get_azure_voice()),
+        )
+
+        # Build TwiML: Play greeting (non-interruptible), then
+        # Gather with the name question (allows caller to respond).
+        greeting_tag = (
+            f'<Play>{saxutils.escape(greeting_url)}</Play>'
+            if greeting_url
+            else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(greeting)}</Say>'
+        )
+        if question_url:
+            question_tag = f'<Play>{saxutils.escape(question_url)}</Play>'
+        else:
+            question_tag = f'<Say voice="{_TTS_VOICE}">{saxutils.escape(first_question)}</Say>'
+
+        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {greeting_tag}
+    <Gather input="speech" speechTimeout="2" timeout="8" action="/api/v1/voice/gather" method="POST" speechModel="phone_call" enhanced="true">
+        {question_tag}
+    </Gather>
+    <Redirect method="POST">/api/v1/voice/gather</Redirect>
+</Response>"""
 
         logger.info(f"[TWILIO] Session {session.session_id} started for call {CallSid}")
         return Response(content=twiml, media_type="application/xml")
         
     except Exception as e:
         logger.error(f"[TWILIO] Error in incoming call: {e}", exc_info=True)
-        error_twiml = generate_twiml_say_and_hangup("Sorry, we encountered a technical error. Please try again later.")
+        error_twiml = await generate_twiml_say_and_hangup("Sorry, we encountered a technical error. Please try again later.")
         return Response(content=error_twiml, media_type="application/xml")
 
 
@@ -325,7 +407,7 @@ async def handle_gather(
 
         if not session:
             logger.error(f"[TWILIO] No session found for call {CallSid}")
-            twiml = generate_twiml_say_and_hangup("Sorry, your session has expired. Please call back.")
+            twiml = await generate_twiml_say_and_hangup("Sorry, your session has expired. Please call back.")
             return Response(content=twiml, media_type="application/xml")
 
         session_id = session.session_id
@@ -336,7 +418,7 @@ async def handle_gather(
         # question here — that would double-prompt the caller.
         if not SpeechResult or SpeechResult.strip() == "":
             logger.warning(f"[TWILIO] Empty speech result from {CallSid}")
-            twiml = generate_twiml_gather(
+            twiml = await generate_twiml_gather(
                 "Sorry, I didn't catch that. Can you please repeat your answer?",
                 "/api/v1/voice/gather",
             )
@@ -357,7 +439,7 @@ async def handle_gather(
                 logger.warning(
                     f"[TWILIO] Name rejected (STT garbage): '{mask_phi(name_input[:80])}'"
                 )
-                twiml = generate_twiml_gather(
+                twiml = await generate_twiml_gather(
                     "I'm sorry, I didn't quite catch your name. "
                     "Could you please say just your first and last name?",
                     "/api/v1/voice/gather",
@@ -368,7 +450,7 @@ async def handle_gather(
             next_question = "Thank you. What is your age?"
             session.conversation.append(ConversationTurn(role="assistant", text=next_question))
             repo.persist_session(session)
-            twiml = generate_twiml_gather(next_question, "/api/v1/voice/gather")
+            twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
             return Response(content=twiml, media_type="application/xml")
 
         elif current_stage == STAGE_AGE:
@@ -380,7 +462,7 @@ async def handle_gather(
             next_question = "What is your biological sex?"
             session.conversation.append(ConversationTurn(role="assistant", text=next_question))
             repo.persist_session(session)
-            twiml = generate_twiml_gather(next_question, "/api/v1/voice/gather")
+            twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
             return Response(content=twiml, media_type="application/xml")
 
         elif current_stage == STAGE_SEX:
@@ -389,7 +471,7 @@ async def handle_gather(
             next_question = "Thank you. Now, what brings you in today? Please describe your main symptom or concern."
             session.conversation.append(ConversationTurn(role="assistant", text=next_question))
             repo.persist_session(session)
-            twiml = generate_twiml_gather(next_question, "/api/v1/voice/gather", timeout=10)
+            twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather", timeout=10)
             return Response(content=twiml, media_type="application/xml")
 
         elif current_stage == STAGE_CHIEF_COMPLAINT:
@@ -403,59 +485,157 @@ async def handle_gather(
 
         # DYNAMIC stage — multi-agent orchestrator
         if session.channel_metadata.get("stage") == STAGE_DYNAMIC:
-            orchestrator = get_orchestrator()
-            result = await orchestrator.process_turn(session, SpeechResult.strip())
-            repo.persist_session(session)
+            # Kick off the orchestrator in the background and return
+            # typing sounds immediately so the caller doesn't sit in silence.
+            speech_text = SpeechResult.strip()
 
-            action = result["action"]
-            spoken_message = result["message"]
+            async def _run_turn(sess, text):
+                """Background coroutine: run orchestrator + persist."""
+                import time as _t
+                _t0 = _t.monotonic()
+                orch = get_orchestrator()
+                res = await orch.process_turn(sess, text)
+                _ms = (_t.monotonic() - _t0) * 1000
+                logger.info(f"[TWILIO] Orchestrator completed in {_ms:.0f}ms for session {sess.session_id}")
+                r = get_session_repository()
+                r.persist_session(sess)
+                return res
 
-            if action == "escalate":
-                logger.info(f"[TWILIO] Deterministic escalation for session {session_id}")
-                session.is_finalized = True
-                repo.persist_session(session)
+            task = asyncio.create_task(_run_turn(session, speech_text))
+            _pending_turns[CallSid] = task
+            logger.info(f"[TWILIO] Started background orchestrator for {CallSid}")
 
-                # Schedule background finalization for SBAR report
-                background_tasks.add_task(
-                    _generate_orchestrator_report_background,
-                    session_id=session_id,
-                    orch_session=session,
-                    session_metadata=_build_session_metadata(session),
-                )
-
-                twiml = generate_twiml_say_and_hangup(spoken_message)
-                return Response(content=twiml, media_type="application/xml")
-
-            elif action == "finalize":
-                logger.info(f"[TWILIO] Finalizing session {session_id}")
-                session.is_finalized = True
-                repo.persist_session(session)
-
-                background_tasks.add_task(
-                    _generate_orchestrator_report_background,
-                    session_id=session_id,
-                    orch_session=session,
-                    session_metadata=_build_session_metadata(session),
-                )
-
-                # Use warm-transfer TwiML; falls back to hangup if no
-                # NURSE_TRANSFER_NUMBER is configured.
-                twiml = generate_twiml_handoff(spoken_message)
-                return Response(content=twiml, media_type="application/xml")
-
-            else:
-                # action == "ask" — continue with next question
-                twiml = generate_twiml_gather(spoken_message, "/api/v1/voice/gather", timeout=8)
-                return Response(content=twiml, media_type="application/xml")
+            # Return typing sounds → poll via /thinking
+            typing_url = "/api/v1/voice/audio/typing.wav"
+            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{typing_url}</Play>
+    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
+</Response>"""
+            return Response(content=twiml, media_type="application/xml")
 
         # Should not reach here
         logger.error(f"[TWILIO] Unexpected state for session {session_id}")
-        twiml = generate_twiml_say_and_hangup("Thank you for answering our questions. All information has been securely recorded and will be passed on to a nurse for review. A nurse will contact you promptly. If your symptoms worsen, please go to the emergency room or call emergency services.")
+        twiml = await generate_twiml_say_and_hangup("Thank you for answering our questions. All information has been securely recorded and will be passed on to a nurse for review. A nurse will contact you promptly. If your symptoms worsen, please go to the emergency room or call emergency services.")
         return Response(content=twiml, media_type="application/xml")
         
     except Exception as e:
         logger.error(f"[TWILIO] Error in gather: {e}", exc_info=True)
-        error_twiml = generate_twiml_say_and_hangup("Sorry, we encountered an error. Please try again later.")
+        error_twiml = await generate_twiml_say_and_hangup("Sorry, we encountered an error. Please try again later.")
+        return Response(content=error_twiml, media_type="application/xml")
+
+
+# ---------------------------------------------------------------------------
+# /thinking — poll loop that plays typing sounds until the LLM is ready
+# ---------------------------------------------------------------------------
+
+@router.post("/thinking")
+async def handle_thinking(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    CallSid: str = Form(...),
+):
+    """Poll endpoint: plays typing sounds while the orchestrator runs.
+
+    When the background orchestrator task completes, this endpoint returns
+    the actual TwiML response (Gather / Say+Hangup / Handoff).
+    While still processing, it plays another cycle of typing sounds and
+    redirects back to itself.
+    """
+    try:
+        task = _pending_turns.get(CallSid)
+
+        # No pending task — shouldn't happen, but recover gracefully
+        if task is None:
+            logger.warning(f"[TWILIO] /thinking called with no pending task for {CallSid}")
+            twiml = await generate_twiml_gather(
+                "Sorry about the wait. Can you repeat that for me?",
+                "/api/v1/voice/gather",
+                timeout=8,
+            )
+            return Response(content=twiml, media_type="application/xml")
+
+        # Task still running — play more typing sounds and loop back
+        if not task.done():
+            typing_url = "/api/v1/voice/audio/typing.wav"
+            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{typing_url}</Play>
+    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
+</Response>"""
+            return Response(content=twiml, media_type="application/xml")
+
+        # ── Task complete — deliver the result ────────────────────────────
+        del _pending_turns[CallSid]
+
+        # Check for exceptions
+        if task.cancelled():
+            logger.error(f"[TWILIO] Orchestrator task cancelled for {CallSid}")
+            twiml = await generate_twiml_say_and_hangup(
+                "I'm sorry, something went wrong. Please call back and we'll help you."
+            )
+            return Response(content=twiml, media_type="application/xml")
+
+        exc = task.exception()
+        if exc is not None:
+            logger.error(f"[TWILIO] Orchestrator task failed for {CallSid}: {exc}", exc_info=exc)
+            twiml = await generate_twiml_say_and_hangup(
+                "I'm sorry, something went wrong. Please call back and we'll help you."
+            )
+            return Response(content=twiml, media_type="application/xml")
+
+        result = task.result()
+        action = result["action"]
+        spoken_message = result["message"]
+
+        # Load session for finalization actions
+        repo = get_session_repository()
+        session = repo.load_session_by_call(CallSid)
+        session_id = session.session_id if session else CallSid
+
+        import time as _time
+        _t_tts = _time.monotonic()
+
+        if action == "escalate":
+            logger.info(f"[TWILIO] Deterministic escalation for session {session_id}")
+            if session:
+                session.is_finalized = True
+                repo.persist_session(session)
+                background_tasks.add_task(
+                    _generate_orchestrator_report_background,
+                    session_id=session_id,
+                    orch_session=session,
+                    session_metadata=_build_session_metadata(session),
+                )
+            twiml = await generate_twiml_say_and_hangup(spoken_message)
+            return Response(content=twiml, media_type="application/xml")
+
+        elif action == "finalize":
+            logger.info(f"[TWILIO] Finalizing session {session_id}")
+            if session:
+                session.is_finalized = True
+                repo.persist_session(session)
+                background_tasks.add_task(
+                    _generate_orchestrator_report_background,
+                    session_id=session_id,
+                    orch_session=session,
+                    session_metadata=_build_session_metadata(session),
+                )
+            twiml = await generate_twiml_handoff(spoken_message)
+            return Response(content=twiml, media_type="application/xml")
+
+        else:
+            # action == "ask" — continue with next question
+            twiml = await generate_twiml_gather(spoken_message, "/api/v1/voice/gather", timeout=8)
+            _tts_ms = (_time.monotonic() - _t_tts) * 1000
+            logger.info(f"[TWILIO] TTS={_tts_ms:.0f}ms for session {session_id}")
+            return Response(content=twiml, media_type="application/xml")
+
+    except Exception as e:
+        logger.error(f"[TWILIO] Error in /thinking: {e}", exc_info=True)
+        # Clean up pending task
+        _pending_turns.pop(CallSid, None)
+        error_twiml = await generate_twiml_say_and_hangup("Sorry, we encountered an error. Please try again later.")
         return Response(content=error_twiml, media_type="application/xml")
 
 

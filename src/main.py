@@ -98,6 +98,13 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting...")
 
+    # Pre-warm Azure TTS so the first call doesn't cold-start
+    try:
+        from src.utils.azure_tts import warm_up as _tts_warm_up
+        await _tts_warm_up()
+    except Exception as exc:
+        logger.warning(f"[STARTUP] TTS warm-up failed (non-fatal): {exc}")
+
     # Initialize storage backend (factory enforces Postgres in production)
     storage_backend = get_storage_backend()
     logger.info(f"[STARTUP] Storage backend: {STORAGE_BACKEND}")
@@ -155,6 +162,17 @@ async def root():
 async def health_check():
     """Liveness probe — confirms the process is up. No external deps."""
     return {"status": "healthy"}
+
+
+@app.get("/api/v1/voice/audio/typing.wav")
+async def serve_typing_sound():
+    """Serve the keyboard-typing hold sound (no auth — fetched by Twilio <Play>)."""
+    from src.utils.typing_sound import get_typing_sound_wav
+    return Response(
+        content=get_typing_sound_wav(),
+        media_type="audio/wav",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/ready")

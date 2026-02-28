@@ -41,12 +41,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.twilio.routes import generate_twiml_gather
 
 
+@pytest.mark.asyncio
 class TestGenerateTwimlGather:
     """Unit tests for the TwiML Gather builder."""
 
-    def test_gather_contains_prompt_inside_gather_tag(self):
+    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    async def test_gather_contains_prompt_inside_gather_tag(self, _mock_tts):
         """The prompt must be spoken *inside* <Gather> so Twilio captures speech."""
-        twiml = generate_twiml_gather("What is your name?", "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather("What is your name?", "/api/v1/voice/gather")
         assert "<Gather" in twiml
         assert "What is your name?" in twiml
         # The prompt must sit between <Gather …> and </Gather>
@@ -55,14 +57,15 @@ class TestGenerateTwimlGather:
         inner = twiml[gather_start:gather_end]
         assert "What is your name?" in inner
 
-    def test_no_fallback_say_outside_gather(self):
+    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    async def test_no_fallback_say_outside_gather(self, _mock_tts):
         """After the fix, there must be NO <Say> element outside </Gather>.
 
         This is the root cause of Bug 1: a <Say> outside the Gather plays an
         apology, then <Redirect> fires the server handler which produces a
         *second* apology + stage question.
         """
-        twiml = generate_twiml_gather("What is your name?", "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather("What is your name?", "/api/v1/voice/gather")
         gather_end_pos = twiml.index("</Gather>") + len("</Gather>")
         after_gather = twiml[gather_end_pos:]
         # Must not contain a second <Say> after </Gather>
@@ -71,23 +74,26 @@ class TestGenerateTwimlGather:
             f"Trailing TwiML:\n{after_gather}"
         )
 
-    def test_redirect_present_after_gather(self):
+    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    async def test_redirect_present_after_gather(self, _mock_tts):
         """A <Redirect> must follow </Gather> so the server handles silence."""
-        twiml = generate_twiml_gather("Test prompt.", "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather("Test prompt.", "/api/v1/voice/gather")
         gather_end_pos = twiml.index("</Gather>") + len("</Gather>")
         after_gather = twiml[gather_end_pos:]
         assert "<Redirect" in after_gather
 
-    def test_single_say_count_in_entire_twiml(self):
+    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    async def test_single_say_count_in_entire_twiml(self, _mock_tts):
         """The complete TwiML must have exactly ONE <Say> element (the prompt)."""
-        twiml = generate_twiml_gather("How old are you?", "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather("How old are you?", "/api/v1/voice/gather")
         say_count = twiml.count("<Say")
         assert say_count == 1, (
             f"Expected 1 <Say> in TwiML, found {say_count}.\n"
             "Multiple <Say> elements produce compound/double prompts."
         )
 
-    def test_empty_speech_twiml_contains_only_one_apology(self):
+    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    async def test_empty_speech_twiml_contains_only_one_apology(self, _mock_tts):
         """Verify the canonical apology TwiML emitted for empty speech.
 
         The empty-speech handler calls generate_twiml_gather with the single
@@ -95,13 +101,14 @@ class TestGenerateTwimlGather:
         sentence as text and must contain exactly one <Say>.
         """
         apology = "Sorry, I didn't catch that. Can you please repeat your answer?"
-        twiml = generate_twiml_gather(apology, "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather(apology, "/api/v1/voice/gather")
 
         assert apology in twiml
         # Only one <Say> — no stacked prompts
         assert twiml.count("<Say") == 1
 
-    def test_empty_speech_twiml_no_stage_question_text(self):
+    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    async def test_empty_speech_twiml_no_stage_question_text(self, _mock_tts):
         """The empty-speech TwiML must NOT contain stage question wording.
 
         Appending the stage question after the apology is the second half of
@@ -109,7 +116,7 @@ class TestGenerateTwimlGather:
         the single apology.
         """
         apology = "Sorry, I didn't catch that. Can you please repeat your answer?"
-        twiml = generate_twiml_gather(apology, "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather(apology, "/api/v1/voice/gather")
 
         forbidden_phrases = [
             "What is your full name",
