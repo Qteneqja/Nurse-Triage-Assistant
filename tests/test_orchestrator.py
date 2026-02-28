@@ -184,10 +184,40 @@ class TestNormalFlow:
 # Test: Finalize triggers
 # -----------------------------------------------------------------------
 
+def _make_complete_session(**kwargs) -> OrchestratorSession:
+    """Create a session that has passed the minimum turn & field gates.
+
+    This simulates a session that has already gone through 5+ turns and has
+    all required SBAR fields populated, so finalization tests can exercise
+    the confidence / finalize_ready / missing-fields logic without being
+    blocked by the hard gates.
+    """
+    defaults = {
+        "session_id": "test-session-001",
+        "max_turns": 12,
+        "confidence_threshold": 0.75,
+        "intake_state": StructuredIntakeState(
+            caller_age=45,
+            caller_sex="male",
+            chief_complaint="persistent headache",
+            onset_time="3 days ago",
+            symptom_severity="moderate",
+            relevant_history=["migraines"],
+            meds=["ibuprofen"],
+            allergies=["penicillin"],
+        ),
+    }
+    defaults.update(kwargs)
+    session = OrchestratorSession(**defaults)
+    # Simulate 5 prior turns so we pass the minimum-turn gate.
+    session.turn_count = 5
+    return session
+
+
 class TestFinalizeDecision:
     @pytest.mark.asyncio
     async def test_high_confidence_triggers_finalize(self):
-        """Confidence >= threshold should trigger finalization."""
+        """Confidence >= threshold should trigger finalization when SBAR fields are present."""
         mock_llm = MagicMock()
         intake_output = _make_intake_output(confidence=0.85)
         # finalize() is no longer called inline in process_turn — it is
@@ -197,7 +227,7 @@ class TestFinalizeDecision:
         mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output])
 
         orch = Orchestrator(llm_client=mock_llm)
-        session = _make_session()
+        session = _make_complete_session()
 
         result = await orch.process_turn(session, "Yes that's all")
 
@@ -222,7 +252,7 @@ class TestFinalizeDecision:
 
     @pytest.mark.asyncio
     async def test_no_missing_fields_triggers_finalize(self):
-        """If LLM reports no missing fields, should finalize."""
+        """If LLM reports no missing fields and SBAR fields are present, should finalize."""
         mock_llm = MagicMock()
         intake_output = _make_intake_output(
             missing_fields_prioritized=[],  # nothing missing
@@ -232,11 +262,45 @@ class TestFinalizeDecision:
         mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output, finalize_output])
 
         orch = Orchestrator(llm_client=mock_llm)
-        session = _make_session()
+        session = _make_complete_session()
 
         result = await orch.process_turn(session, "That's everything")
 
         assert result["action"] == "finalize"
+
+    @pytest.mark.asyncio
+    async def test_early_turn_blocks_finalize(self):
+        """High confidence on turn 1 should NOT finalize — minimum turn gate."""
+        mock_llm = MagicMock()
+        intake_output = _make_intake_output(confidence=0.85)
+        mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output])
+
+        orch = Orchestrator(llm_client=mock_llm)
+        session = _make_session()  # turn_count=0
+
+        result = await orch.process_turn(session, "I have a cough")
+
+        assert result["action"] == "ask", "Should continue asking on early turns"
+        assert session.is_finalized is False
+
+    @pytest.mark.asyncio
+    async def test_incomplete_sbar_blocks_finalize(self):
+        """High confidence with missing SBAR fields should NOT finalize."""
+        mock_llm = MagicMock()
+        intake_output = _make_intake_output(confidence=0.85)
+        mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output])
+
+        orch = Orchestrator(llm_client=mock_llm)
+        # Enough turns but missing severity and history
+        session = _make_session()
+        session.turn_count = 5
+        session.intake_state.chief_complaint = "cough"
+        session.intake_state.onset_time = "2 days ago"
+        # symptom_severity still "unknown", lists still empty
+
+        result = await orch.process_turn(session, "That's all")
+
+        assert result["action"] == "ask", "Should keep asking when SBAR fields missing"
 
 
 # -----------------------------------------------------------------------

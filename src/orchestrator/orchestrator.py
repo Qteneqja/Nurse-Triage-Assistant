@@ -1485,6 +1485,37 @@ class Orchestrator:
     # Stop condition logic
     # ------------------------------------------------------------------ #
 
+    # Minimum number of *caller* turns (not including greeting) before
+    # the system is allowed to finalize.  This prevents the LLM from
+    # short-circuiting data collection after one or two answers.
+    _MIN_TURNS_BEFORE_FINALIZE = 5
+
+    # Minimum number of filled intake fields required before finalization.
+    # This ensures the SBAR report has enough substance.  The field count
+    # comes from StructuredIntakeState.filled_field_count() which checks
+    # scalar fields for non-None and list fields for non-empty.
+    _MIN_FILLED_FIELDS_BEFORE_FINALIZE = 6
+
+    def _sbar_fields_complete(self, session: OrchestratorSession) -> bool:
+        """Check whether the minimum SBAR-critical fields are populated.
+
+        Required for finalization:
+          - chief_complaint
+          - onset_time
+          - symptom_severity (not 'unknown')
+          - filled_field_count >= _MIN_FILLED_FIELDS_BEFORE_FINALIZE
+        """
+        state = session.intake_state
+        if not state.chief_complaint:
+            return False
+        if not state.onset_time:
+            return False
+        if not state.symptom_severity or state.symptom_severity == "unknown":
+            return False
+        if state.filled_field_count() < self._MIN_FILLED_FIELDS_BEFORE_FINALIZE:
+            return False
+        return True
+
     def _should_finalize(
         self,
         session: OrchestratorSession,
@@ -1492,10 +1523,15 @@ class Orchestrator:
     ) -> bool:
         """Determine whether to stop questioning and finalize.
 
-        Stop if:
+        Hard gates (must pass before any finalization):
+        1. Minimum turn count (prevents premature cut-off)
+        2. Required SBAR fields populated
+
+        Then finalize if any of:
         - LLM confidence >= threshold
-        - Max turns reached
-        - No more missing fields
+        - LLM explicitly signals readiness (finalize_ready)
+        - Max turns reached (always finalizes — safety net)
+        - No missing fields reported by LLM
 
         Args:
             session: Current session.
@@ -1504,6 +1540,33 @@ class Orchestrator:
         Returns:
             True if should finalize.
         """
+        # ── Hard gate: max turns always forces finalize (safety net) ──
+        if session.turn_count >= session.max_turns:
+            logger.info(f"[ORCH] Finalizing: max turns ({session.max_turns}) reached")
+            return True
+
+        # ── Hard gate: minimum turn count ─────────────────────────────
+        if session.turn_count < self._MIN_TURNS_BEFORE_FINALIZE:
+            logger.debug(
+                f"[ORCH] Not finalizing: turn {session.turn_count} "
+                f"< minimum {self._MIN_TURNS_BEFORE_FINALIZE}"
+            )
+            return False
+
+        # ── Hard gate: required SBAR fields ───────────────────────────
+        if not self._sbar_fields_complete(session):
+            logger.debug(
+                "[ORCH] Not finalizing: required SBAR fields still missing "
+                f"(chief={bool(session.intake_state.chief_complaint)}, "
+                f"onset={bool(session.intake_state.onset_time)}, "
+                f"severity={session.intake_state.symptom_severity}, "
+                f"history={session.intake_state.relevant_history is not None}, "
+                f"meds={session.intake_state.meds is not None}, "
+                f"allergies={session.intake_state.allergies is not None})"
+            )
+            return False
+
+        # ── Soft signals (only after hard gates pass) ─────────────────
         # Confidence threshold
         if intake_output.confidence >= session.confidence_threshold:
             logger.info(
@@ -1515,11 +1578,6 @@ class Orchestrator:
         # LLM explicitly signals readiness
         if intake_output.finalize_ready:
             logger.info("[ORCH] Finalizing: LLM set finalize_ready=True")
-            return True
-
-        # Max turns
-        if session.turn_count >= session.max_turns:
-            logger.info(f"[ORCH] Finalizing: max turns ({session.max_turns}) reached")
             return True
 
         # No missing fields
