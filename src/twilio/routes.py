@@ -175,8 +175,12 @@ def _looks_like_name(text: str) -> bool:
     """Return True if *text* plausibly represents a person's name.
 
     Rejects obvious STT garbage such as sentence fragments, excessive word
-    counts, mid-phrase commas, or well-known single-word non-names (e.g.
-    ``'Heartbreak sing, man.'`` or ``'Ma\'am.'``).
+    counts, or well-known single-word non-names (e.g.
+    ``'Ma\'am.'``).
+
+    Note: commas are NOT used as a rejection signal because Twilio STT
+    frequently inserts commas into names ("Test Patient, Ten").
+    The 5-word max + 80% alpha ratio is sufficient to reject sentences.
     """
     stripped = text.strip().rstrip('.')  # STT often appends a trailing period
     if not stripped:
@@ -185,17 +189,11 @@ def _looks_like_name(text: str) -> bool:
     # More than 5 words is almost certainly not a name
     if len(words) > 5:
         return False
-    # A comma after more than one word indicates a sentence fragment, not a name
-    # ("Last, First" format is fine — only one word before the comma)
-    if ',' in stripped:
-        before_comma = stripped[:stripped.index(',')].strip()
-        if len(before_comma.split()) > 1:
-            return False
     # At least 80 % of non-space characters should be alphabetic or name-safe
     core_chars = [c for c in stripped if not c.isspace()]
     if not core_chars:
         return False
-    alpha_count = sum(1 for c in core_chars if c.isalpha() or c in "-'")
+    alpha_count = sum(1 for c in core_chars if c.isalpha() or c in "-',")
     if alpha_count / len(core_chars) < 0.80:
         return False
     # Reject single-word salutations / honorifics the STT engine commonly
@@ -214,6 +212,45 @@ STAGE_AGE = "AGE"
 STAGE_SEX = "SEX"
 STAGE_CHIEF_COMPLAINT = "CHIEF_COMPLAINT"
 STAGE_DYNAMIC = "DYNAMIC"
+
+# Maximum name re-prompts before accepting whatever was given
+_MAX_NAME_RETRIES = 3
+
+# Sex normalisation — maps common STT transcriptions to canonical values.
+# Twilio STT on phone audio frequently mishears "male" as "mail", "mel",
+# "men", etc.  This map + prefix stripping ("I'm male" → "male") ensures
+# robust recognition.
+_SEX_NORMALISATION: dict[str, str] = {
+    # Male
+    "male": "male", "mail": "male", "mel": "male", "men": "male",
+    "man": "male", "mael": "male", "mayo": "male", "mell": "male",
+    "m": "male",
+    # Female
+    "female": "female", "femail": "female", "fema": "female",
+    "women": "female", "woman": "female", "f": "female",
+    # Prefer not to say
+    "prefer not to say": "prefer not to say",
+    "rather not say": "prefer not to say",
+    "prefer not": "prefer not to say",
+    "i'd rather not": "prefer not to say",
+    "none": "prefer not to say",
+}
+
+
+def _normalise_sex(raw: str) -> str:
+    """Normalise STT sex response to 'male', 'female', or 'prefer not to say'.
+
+    Handles prefix stripping ('I am male' → 'male'), common STT confusions
+    ('mail' → 'male'), and single-letter answers ('m' → 'male').
+    Falls back to the raw lowered text if no match is found.
+    """
+    cleaned = raw.strip().lower().rstrip(".!?,;: ")
+    # Strip common conversational prefixes
+    for prefix in ("i am ", "i'm ", "my sex is ", "my biological sex is ", "it's ", "its "):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip()
+            break
+    return _SEX_NORMALISATION.get(cleaned, cleaned)
 
 
 # Voice used for all TwiML speech — Polly Ruth is calm and clear, ideal for healthcare
@@ -241,21 +278,37 @@ async def generate_twiml_say(text: str) -> str:
     return f'<Say voice="{_TTS_VOICE}">{saxutils.escape(text)}</Say>'
 
 
-async def generate_twiml_gather(prompt: str, action_url: str, timeout: int = 6) -> str:
+async def generate_twiml_gather(
+    prompt: str,
+    action_url: str,
+    timeout: int = 6,
+    hints: str | None = None,
+    speech_timeout: str = "3",
+) -> str:
     """Generate TwiML with <Gather> for speech input.
 
     Uses Azure TTS <Play> when available, falls back to Polly <Say>.
     Uses enhanced phone_call speech model for better noise rejection and
     accuracy on telephony audio.
+
+    Args:
+        prompt: Text to speak inside the Gather.
+        action_url: URL that receives the speech result.
+        timeout: Seconds of silence before Gather gives up (no speech at all).
+        hints: Comma-separated speech hints for STT biasing (e.g. "male,female").
+        speech_timeout: Seconds of silence after speech begins before ending.
+            "auto" lets Twilio decide; "3" is the default (up from "2" to
+            accommodate natural pauses, confused callers, and elderly speakers).
     """
     escaped_prompt = saxutils.escape(prompt)
     audio_url = await text_to_speech_url(prompt, _get_azure_voice())
+    hints_attr = f' hints="{saxutils.escape(hints)}"' if hints else ''
 
     if audio_url:
         escaped_url = saxutils.escape(audio_url)
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" speechTimeout="2" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true">
+    <Gather input="speech" speechTimeout="{speech_timeout}" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
         <Play>{escaped_url}</Play>
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
@@ -263,7 +316,7 @@ async def generate_twiml_gather(prompt: str, action_url: str, timeout: int = 6) 
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" speechTimeout="2" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true">
+    <Gather input="speech" speechTimeout="{speech_timeout}" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
         <Say voice="{_TTS_VOICE}">{escaped_prompt}</Say>
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
@@ -374,7 +427,7 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     {greeting_tag}
-    <Gather input="speech" speechTimeout="2" timeout="8" action="/api/v1/voice/gather" method="POST" speechModel="phone_call" enhanced="true">
+    <Gather input="speech" speechTimeout="3" timeout="8" action="/api/v1/voice/gather" method="POST" speechModel="phone_call" enhanced="true">
         {question_tag}
     </Gather>
     <Redirect method="POST">/api/v1/voice/gather</Redirect>
@@ -434,11 +487,30 @@ async def handle_gather(
         # Process scripted intake stages
         if current_stage == STAGE_NAME:
             name_input = SpeechResult.strip()
+            name_retries = session.channel_metadata.get("name_retries", 0)
             if not _looks_like_name(name_input):
+                name_retries += 1
+                session.channel_metadata["name_retries"] = name_retries
+                if name_retries >= _MAX_NAME_RETRIES:
+                    # Accept whatever was given after max retries to avoid
+                    # caller frustration and call abandonment.
+                    logger.warning(
+                        f"[TWILIO] Name accepted after {name_retries} failed "
+                        f"validations: '{mask_phi(name_input[:80])}'"
+                    )
+                    session.intake_state.caller_name = name_input
+                    session.channel_metadata["stage"] = STAGE_AGE
+                    next_question = "Thank you. What is your age?"
+                    session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+                    repo.persist_session(session)
+                    twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
+                    return Response(content=twiml, media_type="application/xml")
                 # STT produced garbage — re-prompt without advancing the stage
                 logger.warning(
-                    f"[TWILIO] Name rejected (STT garbage): '{mask_phi(name_input[:80])}'"
+                    f"[TWILIO] Name rejected (attempt {name_retries}): "
+                    f"'{mask_phi(name_input[:80])}'"
                 )
+                repo.persist_session(session)
                 twiml = await generate_twiml_gather(
                     "I'm sorry, I didn't quite catch your name. "
                     "Could you please say just your first and last name?",
@@ -459,19 +531,25 @@ async def handle_gather(
             except (ValueError, TypeError):
                 session.channel_metadata["patient_age_raw"] = SpeechResult.strip()
             session.channel_metadata["stage"] = STAGE_SEX
-            next_question = "What is your biological sex?"
+            next_question = "And what is your biological sex? Please say male, female, or prefer not to say."
             session.conversation.append(ConversationTurn(role="assistant", text=next_question))
             repo.persist_session(session)
-            twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
+            twiml = await generate_twiml_gather(
+                next_question, "/api/v1/voice/gather",
+                hints="male,female,prefer not to say",
+            )
             return Response(content=twiml, media_type="application/xml")
 
         elif current_stage == STAGE_SEX:
-            session.intake_state.caller_sex = SpeechResult.strip().lower()
+            session.intake_state.caller_sex = _normalise_sex(SpeechResult)
             session.channel_metadata["stage"] = STAGE_CHIEF_COMPLAINT
             next_question = "Thank you. Now, what brings you in today? Please describe your main symptom or concern."
             session.conversation.append(ConversationTurn(role="assistant", text=next_question))
             repo.persist_session(session)
-            twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather", timeout=10)
+            twiml = await generate_twiml_gather(
+                next_question, "/api/v1/voice/gather",
+                timeout=10, speech_timeout="auto",
+            )
             return Response(content=twiml, media_type="application/xml")
 
         elif current_stage == STAGE_CHIEF_COMPLAINT:
@@ -552,6 +630,7 @@ async def handle_thinking(
                 "Sorry about the wait. Can you repeat that for me?",
                 "/api/v1/voice/gather",
                 timeout=8,
+                speech_timeout="auto",
             )
             return Response(content=twiml, media_type="application/xml")
 
@@ -626,7 +705,10 @@ async def handle_thinking(
 
         else:
             # action == "ask" — continue with next question
-            twiml = await generate_twiml_gather(spoken_message, "/api/v1/voice/gather", timeout=8)
+            twiml = await generate_twiml_gather(
+                spoken_message, "/api/v1/voice/gather",
+                timeout=8, speech_timeout="auto",
+            )
             _tts_ms = (_time.monotonic() - _t_tts) * 1000
             logger.info(f"[TWILIO] TTS={_tts_ms:.0f}ms for session {session_id}")
             return Response(content=twiml, media_type="application/xml")

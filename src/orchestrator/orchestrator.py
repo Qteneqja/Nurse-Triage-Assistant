@@ -1493,7 +1493,7 @@ class Orchestrator:
     # Minimum number of *caller* turns (not including greeting) before
     # the system is allowed to finalize.  This prevents the LLM from
     # short-circuiting data collection after one or two answers.
-    _MIN_TURNS_BEFORE_FINALIZE = 5
+    _MIN_TURNS_BEFORE_FINALIZE = 7
 
     # Minimum number of filled intake fields required before finalization.
     # This ensures the SBAR report has enough substance.  The field count
