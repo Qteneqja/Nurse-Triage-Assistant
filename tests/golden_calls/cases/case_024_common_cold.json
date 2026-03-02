@@ -1,0 +1,23 @@
+{
+    "case_id": "case_024_common_cold",
+    "description": "Common cold — 38M with runny nose, mild cough, sneezing. No red flags → HUMAN_REVIEW.",
+    "input_transcript": "I've got a runny nose, sneezing, and a little cough. Started yesterday. No fever. I feel tired but otherwise okay. I'm 38, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 38,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Classic cold symptoms. No red flag patterns match."
+}

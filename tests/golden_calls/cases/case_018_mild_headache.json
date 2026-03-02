@@ -1,0 +1,23 @@
+{
+    "case_id": "case_018_mild_headache",
+    "description": "Mild headache with no red flags — 28F with tension headache. No rules trigger → HUMAN_REVIEW.",
+    "input_transcript": "I've had a mild headache for two days. It comes and goes. Tylenol helps a bit. No other symptoms. I'm 28, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 28,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Low-acuity headache. No red flag patterns match. Deterministic mode → HUMAN_REVIEW."
+}

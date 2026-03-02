@@ -1,0 +1,23 @@
+{
+    "case_id": "case_021_minor_rash",
+    "description": "Minor skin rash — 33M with itchy rash on arm, no swelling. No red flags → HUMAN_REVIEW.",
+    "input_transcript": "I've got an itchy rash on my arm. It's been there for a couple of days. No swelling, just itchy. I'm 33, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 33,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Isolated skin rash with no systemic symptoms. No red flag patterns match."
+}

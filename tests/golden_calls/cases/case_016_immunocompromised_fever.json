@@ -1,0 +1,29 @@
+{
+    "case_id": "case_016_immunocompromised_fever",
+    "description": "Immunocompromised fever — 45F on chemotherapy with fever. rf_immunocompromised_fever (7) + rf_worsening_symptoms (4) = 11 → URGENT.",
+    "input_transcript": "I'm on chemotherapy and I have a fever of 101. I've been getting worse over the last few hours. My immune system is suppressed. I'm 45, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 45,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_immunocompromised_fever",
+        "rf_worsening_symptoms"
+    ],
+    "expected_rules_triggered": [
+        "rf_immunocompromised_fever",
+        "rf_worsening_symptoms"
+    ],
+    "confidence_range": [
+        0.5,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Weighted: rf_immunocompromised_fever (7) + rf_worsening_symptoms (4) = 11 ≥ 10 → URGENT."
+}

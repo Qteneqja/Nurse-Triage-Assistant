@@ -28,11 +28,14 @@ build
 *.crt
 *.p12
 *.pfx
+test_secret*
+secrets/
 
 # Archives and data
 archive/
 reports/
 *.log
+docs/
 
 # OS
 Thumbs.db
@@ -43,3 +46,8 @@ tests/
 *.md
 start_server.bat
 scripts/
+patch_result.txt
+patch.json
+
+# CI/CD
+.github/

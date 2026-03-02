@@ -1,0 +1,28 @@
+{
+    "case_id": "case_013_pregnancy_complication",
+    "description": "Pregnancy complication — 30F pregnant with vaginal bleeding and cramping. Should trigger rf_pregnancy_complication.",
+    "input_transcript": "I'm pregnant, about 20 weeks, and I'm having vaginal bleeding and cramping. The bleeding started an hour ago. I'm 30, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 30,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_pregnancy_complication"
+    ],
+    "expected_rules_triggered": [
+        "rf_pregnancy_complication"
+    ],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Pregnancy + bleeding + cramping. rf_pregnancy_complication (weight 7) alone is below URGENT threshold (10), but flag should fire. Disposition depends on whether other flags also trigger."
+}

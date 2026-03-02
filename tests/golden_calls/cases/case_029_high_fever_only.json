@@ -1,0 +1,28 @@
+{
+    "case_id": "case_029_high_fever_only",
+    "description": "Single weighted flag — 60M with high fever 103F but no other symptoms. rf_high_fever (5) alone < 10 → HUMAN_REVIEW.",
+    "input_transcript": "I have a high fever, 103 degrees. No other symptoms really, just feel warm and a bit tired. I'm 60, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 60,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_high_fever"
+    ],
+    "expected_rules_triggered": [
+        "rf_high_fever"
+    ],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "high",
+    "notes": "Single weighted flag rf_high_fever (5) below URGENT threshold (10). Deterministic → HUMAN_REVIEW."
+}

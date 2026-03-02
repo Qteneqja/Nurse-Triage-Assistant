@@ -28,6 +28,7 @@ from src.observability.logging import (
     _request_id,
     _call_sid,
 )
+from src.observability.sentry_integration import init_sentry
 from src.observability.metrics import get_metrics
 from src.security.middleware import add_security_middleware
 from src.governance.protocol_status import validate_approved_protocols_exist
@@ -69,6 +70,9 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize Sentry error monitoring (no-op if SENTRY_DSN is unset)
+    init_sentry()
+
     # Startup validation
     require_valid_config()
 
@@ -160,8 +164,14 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Liveness probe — confirms the process is up. No external deps."""
-    return {"status": "healthy"}
+    """Liveness probe — confirms the process is up. No external deps.
+
+    No authentication required. No database call. No Twilio signature validation.
+    Purpose: load balancer / container orchestrator liveness probe.
+    Updated: Production Hardening Step 2.
+    """
+    from datetime import datetime, timezone
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/api/v1/voice/audio/typing.wav")
@@ -177,7 +187,13 @@ async def serve_typing_sound():
 
 @app.get("/ready")
 async def readiness_check():
-    """Readiness probe — checks DB connectivity when postgres enabled."""
+    """Readiness probe — checks DB connectivity when postgres enabled.
+
+    No authentication required. No Twilio signature validation.
+    Purpose: readiness probe — tells orchestrator when the app can accept traffic.
+    In production, does NOT leak exception messages or stack traces.
+    Updated: Production Hardening Step 2.
+    """
     checks: dict = {"storage": STORAGE_BACKEND}
 
     if STORAGE_BACKEND == "postgres":
@@ -190,17 +206,28 @@ async def readiness_check():
                     from fastapi.responses import JSONResponse
                     return JSONResponse(
                         status_code=503,
-                        content={"status": "not_ready", **checks},
+                        content={"status": "not_ready", "database": "unavailable"},
                     )
             else:
                 checks["database"] = "not_applicable"
         except Exception as exc:
-            checks["database"] = f"error: {type(exc).__name__}"
             from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=503,
-                content={"status": "not_ready", **checks},
-            )
+            # In production: do NOT include exception messages, stack traces,
+            # or any internal details (HIPAA / security best practice).
+            if APP_ENV == "production":
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not_ready", "database": "unavailable"},
+                )
+            else:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "not_ready",
+                        "database": "unavailable",
+                        "detail": str(exc),
+                    },
+                )
 
     return {"status": "ready", **checks}
 

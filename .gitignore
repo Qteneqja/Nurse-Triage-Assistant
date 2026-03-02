@@ -47,10 +47,21 @@ archive/ml_experiments/data/*
 archive/data_exploration/*
 !archive/**/.gitkeep
 
+# Catch-all for env files
+*.env
+
+# Secrets directory
+secrets/
+
+# Node modules
+node_modules/
+
+# Test secret files (any name starting with test_secret)
+test_secret*
+
 # Temp files
 patch.json
 patch_result.txt
-test_secret.txt
 app_config.json
 app_config.txt
 logs_output.txt

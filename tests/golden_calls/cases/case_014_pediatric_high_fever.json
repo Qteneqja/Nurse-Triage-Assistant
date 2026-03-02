@@ -1,0 +1,29 @@
+{
+    "case_id": "case_014_pediatric_high_fever",
+    "description": "Pediatric high fever — 2-month-old baby with fever and worsening. rf_pediatric_high_fever (8) + rf_worsening_symptoms (4) = 12 → URGENT.",
+    "input_transcript": "My 2 month old baby has a fever. The temperature is 100.4. I gave infant Tylenol but it's getting worse. He's getting more lethargic.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 0,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_pediatric_high_fever",
+        "rf_worsening_symptoms"
+    ],
+    "expected_rules_triggered": [
+        "rf_pediatric_high_fever",
+        "rf_worsening_symptoms"
+    ],
+    "confidence_range": [
+        0.5,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Weighted: rf_pediatric_high_fever (8) + rf_worsening_symptoms (4) = 12 ≥ 10 → URGENT. Infant febrile emergency. Transcript uses 'baby' + 'fever' and 'getting worse' to match both patterns."
+}

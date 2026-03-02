@@ -1,0 +1,23 @@
+{
+    "case_id": "case_022_stomach_upset",
+    "description": "Mild stomach upset — 27M with nausea after eating. No red flags → HUMAN_REVIEW.",
+    "input_transcript": "I've been feeling nauseous since lunch. A little stomach cramping. No fever, no blood, I can keep water down. I'm 27, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 27,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Mild GI symptoms without any red flag triggers."
+}

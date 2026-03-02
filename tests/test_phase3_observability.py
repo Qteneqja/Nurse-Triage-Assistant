@@ -208,7 +208,7 @@ class TestHealthEndpoints:
         resp = self.client.get("/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "healthy"
+        assert data["status"] == "ok"
         # Phase 5: /health is a lightweight liveness probe; no storage calls
         # active_sessions and storage_backend moved to /ready and /metrics
 

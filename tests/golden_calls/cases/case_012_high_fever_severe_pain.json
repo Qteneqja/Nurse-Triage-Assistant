@@ -1,0 +1,29 @@
+{
+    "case_id": "case_012_high_fever_severe_pain",
+    "description": "Weighted combo — 42F with 104 degree fever and pain 9/10. rf_high_fever (5) + rf_severe_pain (5) = 10 → URGENT.",
+    "input_transcript": "I have a fever of 104 degrees and the pain in my abdomen is 9 out of 10. It's excruciating. I'm 42, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 42,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_high_fever",
+        "rf_severe_pain"
+    ],
+    "expected_rules_triggered": [
+        "rf_high_fever",
+        "rf_severe_pain"
+    ],
+    "confidence_range": [
+        0.5,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Weighted flags: rf_high_fever (5) + rf_severe_pain (5) = 10 meets URGENT threshold."
+}

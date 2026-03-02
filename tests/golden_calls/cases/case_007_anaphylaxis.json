@@ -1,0 +1,26 @@
+{
+    "case_id": "case_007_anaphylaxis",
+    "description": "Severe allergic reaction — 25F with throat swelling and difficulty breathing after eating peanuts. Must trigger rf_anaphylaxis.",
+    "input_transcript": "I ate peanuts by accident and my throat is swelling shut. I can't swallow. I have a severe allergy. I'm 25, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 25,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_anaphylaxis"
+    ],
+    "expected_rules_triggered": [
+        "rf_anaphylaxis"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Throat swelling + allergy context = anaphylaxis. Must trigger rf_anaphylaxis → ER_NOW."
+}

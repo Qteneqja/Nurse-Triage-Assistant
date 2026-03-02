@@ -1,0 +1,23 @@
+{
+    "case_id": "case_019_sore_throat",
+    "description": "Sore throat — 22M with a sore throat for 3 days, no fever. No red flags → HUMAN_REVIEW.",
+    "input_transcript": "I've had a sore throat for three days. No fever. I can still swallow, it just hurts a little. I'm 22, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 22,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Minor sore throat with no concerning features. No red flag patterns match."
+}

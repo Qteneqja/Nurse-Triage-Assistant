@@ -1,0 +1,26 @@
+{
+    "case_id": "case_006_stroke_symptoms",
+    "description": "Stroke signs — 72M with facial drooping, arm weakness, slurred speech. Must trigger rf_stroke_signs critical flag.",
+    "input_transcript": "My face is drooping on the right side and my left arm is weak. I can't lift it. My speech is slurred. I'm 72 years old, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 72,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_stroke_signs"
+    ],
+    "expected_rules_triggered": [
+        "rf_stroke_signs"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Classic FAST stroke symptoms. Must trigger rf_stroke_signs → ER_NOW."
+}

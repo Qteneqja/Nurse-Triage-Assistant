@@ -1,0 +1,30 @@
+{
+    "case_id": "case_030_worsening_with_fever",
+    "description": "Worsening symptoms with high fever — 48F with fever that's getting higher. rf_high_fever (5) + rf_worsening_symptoms (4) = 9, below URGENT threshold.",
+    "input_transcript": "My fever started at 100 yesterday and it's up to 103 now. It keeps getting worse every hour. I'm 48, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 48,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_high_fever",
+        "rf_worsening_symptoms"
+    ],
+    "expected_rules_triggered": [
+        "rf_high_fever",
+        "rf_worsening_symptoms"
+    ],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "high",
+    "notes": "Weighted: rf_high_fever (5) + rf_worsening_symptoms (4) = 9 which is BELOW URGENT threshold (10). Flags fire but disposition stays HUMAN_REVIEW in deterministic mode."
+}

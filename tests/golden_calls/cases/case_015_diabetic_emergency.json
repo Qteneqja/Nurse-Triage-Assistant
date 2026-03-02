@@ -1,0 +1,29 @@
+{
+    "case_id": "case_015_diabetic_emergency",
+    "description": "Diabetic emergency — 58M with very high blood sugar, confusion. rf_diabetic_emergency (6) + rf_altered_mental_status (6) = 12 → URGENT.",
+    "input_transcript": "I'm a diabetic and my blood sugar is very high, over 500. I feel very confused and disoriented. I haven't been able to keep anything down. I'm 58, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 58,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_diabetic_emergency",
+        "rf_altered_mental_status"
+    ],
+    "expected_rules_triggered": [
+        "rf_diabetic_emergency",
+        "rf_altered_mental_status"
+    ],
+    "confidence_range": [
+        0.5,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Weighted: rf_diabetic_emergency (6) + rf_altered_mental_status (6) = 12 ≥ 10 → URGENT."
+}

@@ -1,0 +1,20 @@
+{
+    "case_id": "case_001_insufficient_info",
+    "description": "Insufficient information — 45M with cough 4 days, no red flags, no details. Ground truth from session 691a97df-8c36-4dc2-852c-958bdd1f5165.",
+    "input_transcript": "I'm John Smith, I'm 45 years old, male. I've had a cough for about 4 days now. I can't stop coughing. I think I have an infection.",
+    "patient_demographics": {
+        "name": "John Smith",
+        "age": 45,
+        "sex": "male"
+    },
+    "expected_disposition": "HUMAN_REVIEW",
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        0.5
+    ],
+    "severity": "critical",
+    "notes": "Based on verified system output from 2026-02-28. Disposition HUMAN_REVIEW is correct due to insufficient symptom detail for safe triage."
+}

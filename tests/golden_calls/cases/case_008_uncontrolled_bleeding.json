@@ -1,0 +1,26 @@
+{
+    "case_id": "case_008_uncontrolled_bleeding",
+    "description": "Uncontrolled bleeding — 40M with arterial bleed from hand injury that won't stop. Must trigger rf_uncontrolled_bleeding.",
+    "input_transcript": "I cut my hand badly and the bleeding won't stop. Blood is pouring out. I've soaked through two towels. I'm 40, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 40,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_uncontrolled_bleeding"
+    ],
+    "expected_rules_triggered": [
+        "rf_uncontrolled_bleeding"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Bleeding won't stop + soaked through = uncontrolled hemorrhage. Must trigger rf_uncontrolled_bleeding → ER_NOW."
+}

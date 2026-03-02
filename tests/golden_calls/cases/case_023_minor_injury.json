@@ -1,0 +1,23 @@
+{
+    "case_id": "case_023_minor_injury",
+    "description": "Minor ankle twist — 19F twisted ankle while running, weight-bearing. No red flags → HUMAN_REVIEW.",
+    "input_transcript": "I twisted my ankle jogging. It's a little swollen but I can still walk on it. I put ice on it. I'm 19, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 19,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Minor musculoskeletal injury, weight-bearing. No red flags."
+}
