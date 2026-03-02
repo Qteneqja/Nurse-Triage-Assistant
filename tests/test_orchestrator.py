@@ -209,8 +209,8 @@ def _make_complete_session(**kwargs) -> OrchestratorSession:
     }
     defaults.update(kwargs)
     session = OrchestratorSession(**defaults)
-    # Simulate 5 prior turns so we pass the minimum-turn gate.
-    session.turn_count = 5
+    # Simulate 7 prior turns so we pass the minimum-turn gate.
+    session.turn_count = 7
     return session
 
 
@@ -293,7 +293,7 @@ class TestFinalizeDecision:
         orch = Orchestrator(llm_client=mock_llm)
         # Enough turns but missing severity and history
         session = _make_session()
-        session.turn_count = 5
+        session.turn_count = 7
         session.intake_state.chief_complaint = "cough"
         session.intake_state.onset_time = "2 days ago"
         # symptom_severity still "unknown", lists still empty

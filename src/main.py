@@ -114,6 +114,21 @@ async def lifespan(app: FastAPI):
     logger.info(f"[STARTUP] Storage backend: {STORAGE_BACKEND}")
     logger.info(f"[STARTUP] APP_ENV={APP_ENV}")
 
+    # Warn if blob storage is not configured (reports will only be written
+    # to ephemeral local disk, lost on container restart).
+    from src.config import AZURE_STORAGE_CONNECTION_STRING
+    if not AZURE_STORAGE_CONNECTION_STRING:
+        if APP_ENV in ("staging", "production"):
+            logger.warning(
+                "[STARTUP] AZURE_STORAGE_CONNECTION_STRING is NOT set. "
+                "SBAR reports will NOT be uploaded to blob storage and will be lost "
+                "on container restart. Set this env var in your Container App config."
+            )
+        else:
+            logger.info("[STARTUP] Blob storage disabled (dev mode — local files only)")
+    else:
+        logger.info("[STARTUP] Blob storage configured — reports will be uploaded")
+
     yield
     logger.info("Shutting down...")
 
