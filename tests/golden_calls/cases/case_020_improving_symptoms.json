@@ -1,0 +1,23 @@
+{
+    "case_id": "case_020_improving_symptoms",
+    "description": "Recovering patient — 50F with cold symptoms that are getting better. No red flags → HUMAN_REVIEW.",
+    "input_transcript": "I had a bad cold last week but I'm actually feeling much better now. Just have a little congestion left. I'm 50, female.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 50,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "HOME_CARE"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Improving symptoms, no red flags. Deterministic mode → HUMAN_REVIEW."
+}

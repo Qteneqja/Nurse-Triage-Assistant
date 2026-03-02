@@ -1,12 +1,16 @@
 """
-Twilio Signature Validation — Phase 5
+Twilio Signature Validation — Phase 5 (Updated: Production Hardening Step 2)
 
 Validates the X-Twilio-Signature header on all /api/v1/voice/* webhook
 endpoints.  Enabled by default in staging/production; disabled in dev unless
 TWILIO_VALIDATE_SIGNATURE=true.
 
-Uses the official twilio.request_validator.RequestValidator which computes
-HMAC-SHA1 over (url + sorted POST params) using TWILIO_AUTH_TOKEN as the key.
+Uses a manual HMAC-SHA1 computation matching the official Twilio
+RequestValidator algorithm over (url + sorted POST params) using
+TWILIO_AUTH_TOKEN as the key.
+
+If behind a reverse proxy, set TWILIO_WEBHOOK_BASE_URL to the public URL;
+otherwise request.url is used automatically.
 
 Because FastAPI/Starlette already parses the body before middleware can
 access it in BaseHTTPMiddleware, we implement this as a FastAPI dependency
@@ -21,8 +25,10 @@ from base64 import b64encode
 from urllib.parse import urljoin
 
 from fastapi import Request, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from src.config import (
+    APP_ENV,
     TWILIO_AUTH_TOKEN,
     TWILIO_VALIDATE_SIGNATURE,
     TWILIO_WEBHOOK_BASE_URL,
@@ -53,9 +59,15 @@ async def validate_twilio_signature(request: Request) -> None:
     """FastAPI dependency that validates the Twilio request signature.
 
     Raises 403 if validation is enabled and the signature is missing/invalid.
-    No-ops silently when validation is disabled (dev mode).
+    Logs a warning when validation is skipped in non-production environments.
     """
     if not TWILIO_VALIDATE_SIGNATURE:
+        logger.warning(
+            "[TwilioSig] Signature validation SKIPPED — "
+            "TWILIO_VALIDATE_SIGNATURE=false (APP_ENV=%s). "
+            "This is acceptable in dev/test but must be enabled in production.",
+            APP_ENV,
+        )
         return
 
     if not TWILIO_AUTH_TOKEN:
@@ -65,20 +77,31 @@ async def validate_twilio_signature(request: Request) -> None:
             detail="Server misconfiguration: Twilio auth token not set.",
         )
 
+    # Extract source IP for security logging
+    source_ip = request.client.host if request.client else "unknown"
+
     signature = request.headers.get("X-Twilio-Signature", "")
     if not signature:
-        logger.warning("[TwilioSig] Missing X-Twilio-Signature header")
+        logger.warning(
+            "[TwilioSig] SECURITY: Missing X-Twilio-Signature header — "
+            "source_ip=%s endpoint=%s reason=missing_signature",
+            source_ip, request.url.path,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Missing Twilio signature.",
+            detail={"error": "Invalid Twilio signature"},
         )
 
     # Reconstruct the URL Twilio used to call us
+    # If behind reverse proxy, set TWILIO_WEBHOOK_BASE_URL to the public URL;
+    # otherwise request.url is used automatically.
     if TWILIO_WEBHOOK_BASE_URL:
-        # Use configured base URL (behind ngrok/load-balancer)
         url = urljoin(TWILIO_WEBHOOK_BASE_URL.rstrip("/") + "/", request.url.path.lstrip("/"))
     else:
         url = str(request.url).split("?")[0]  # Twilio uses POST, no query string normally
+
+    # Log URL used for signature validation at DEBUG level (no query params or body)
+    logger.debug("[TwilioSig] Validating signature against URL: %s", url)
 
     # Read form body (Twilio sends application/x-www-form-urlencoded)
     try:
@@ -90,8 +113,12 @@ async def validate_twilio_signature(request: Request) -> None:
     expected = _compute_twilio_signature(TWILIO_AUTH_TOKEN, url, params)
 
     if not hmac.compare_digest(expected, signature):
-        logger.warning(f"[TwilioSig] Invalid signature for {request.url.path}")
+        logger.warning(
+            "[TwilioSig] SECURITY: Invalid signature — "
+            "source_ip=%s endpoint=%s reason=signature_mismatch",
+            source_ip, request.url.path,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid Twilio signature.",
+            detail={"error": "Invalid Twilio signature"},
         )

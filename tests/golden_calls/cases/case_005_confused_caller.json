@@ -1,0 +1,29 @@
+{
+    "case_id": "case_005_confused_caller",
+    "description": "Confused/incoherent caller — speech is disorganized, cannot state name, contradictory symptom statements.",
+    "input_transcript": "I... uh... the thing is... I don't know my name. Wait, my arm hurts. No it doesn't. I feel confused. Everything is spinning. Where am I?",
+    "patient_demographics": {
+        "name": "Unknown",
+        "age": 0,
+        "sex": "unknown"
+    },
+    "expected_disposition": [
+        "ESCALATE",
+        "HUMAN_REVIEW",
+        "ER_NOW",
+        "URGENT"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_altered_mental_status"
+    ],
+    "expected_rules_triggered": [
+        "rf_altered_mental_status"
+    ],
+    "confidence_range": [
+        0.0,
+        0.4
+    ],
+    "severity": "critical",
+    "notes": "Disorganized speech, inability to state name, contradictory statements, confusion signals. Should trigger altered mental status flag."
+}

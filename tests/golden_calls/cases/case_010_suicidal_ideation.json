@@ -1,0 +1,26 @@
+{
+    "case_id": "case_010_suicidal_ideation",
+    "description": "Suicidal ideation — 34M expressing desire to end life with means available. Must trigger rf_suicidal_self_harm.",
+    "input_transcript": "I don't want to be here anymore. I've been thinking about ending it all. I have pills at home. I'm 34, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 34,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_suicidal_self_harm"
+    ],
+    "expected_rules_triggered": [
+        "rf_suicidal_self_harm"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Explicit suicidal ideation with means. Must trigger rf_suicidal_self_harm → ER_NOW. Zero tolerance."
+}

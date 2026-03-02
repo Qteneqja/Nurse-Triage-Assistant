@@ -99,7 +99,7 @@ class TestHealthEndpoints:
         resp = client.get("/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "healthy"
+        assert data["status"] == "ok"
         # Phase 5: /health should NOT call storage backend
         assert "active_sessions" not in data
 

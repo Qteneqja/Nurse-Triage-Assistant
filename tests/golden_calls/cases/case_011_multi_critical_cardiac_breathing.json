@@ -1,0 +1,28 @@
+{
+    "case_id": "case_011_multi_critical_cardiac_breathing",
+    "description": "Multi-critical — 55M with chest pain AND severe breathing difficulty. Should trigger both rf_cardiac_arrest_signs and rf_severe_breathing_failure.",
+    "input_transcript": "I'm having crushing chest pain and I can't breathe. The pain is radiating to my jaw. I'm gasping for air. I'm 55, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 55,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_cardiac_arrest_signs",
+        "rf_severe_breathing_failure"
+    ],
+    "expected_rules_triggered": [
+        "rf_cardiac_arrest_signs",
+        "rf_severe_breathing_failure"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Multiple critical flags firing simultaneously. Both cardiac and breathing patterns present."
+}

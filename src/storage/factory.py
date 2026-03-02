@@ -11,6 +11,7 @@ from typing import Optional
 
 import src.config as _config
 from src.storage.interface import StorageInterface
+from src.observability.sentry_integration import capture_db_failure
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +56,16 @@ def get_storage_backend() -> StorageInterface:
     if _backend == "postgres":
         from src.storage.postgres import PostgresStorage
         if not _db_url:
+            capture_db_failure("missing_database_url")
             raise RuntimeError(
                 "DATABASE_URL is required when STORAGE_BACKEND=postgres"
             )
-        storage = PostgresStorage(_db_url)
-        storage.initialize()
+        try:
+            storage = PostgresStorage(_db_url)
+            storage.initialize()
+        except Exception as exc:
+            capture_db_failure(type(exc).__name__)
+            raise
         _storage_instance = storage
         logger.info("[StorageFactory] Using PostgresStorage backend")
     else:

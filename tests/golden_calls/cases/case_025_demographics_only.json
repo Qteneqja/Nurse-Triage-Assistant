@@ -1,0 +1,22 @@
+{
+    "case_id": "case_025_demographics_only",
+    "description": "Caller provides only demographics, no symptoms — 45F. Insufficient info, no red flags → HUMAN_REVIEW.",
+    "input_transcript": "Yes, my name is Jane. I'm 45 years old, female. That's all I wanted to tell you.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 45,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "low",
+    "notes": "Caller gave demographics only. No symptoms to analyze. Deterministic → HUMAN_REVIEW."
+}

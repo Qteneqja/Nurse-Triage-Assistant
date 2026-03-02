@@ -4,8 +4,12 @@ Test DeepSeek API Connection
 import os
 from openai import OpenAI
 
-# Use your API key
-api_key = "sk-8749f1c8dbe24ba096505d5ae758a0e9"
+# Load API key from environment — never hardcode
+api_key = os.getenv("DEEPSEEK_API_KEY", "")
+if not api_key:
+    print("ERROR: DEEPSEEK_API_KEY environment variable is not set.")
+    print("Set it via .env file or export it before running this test.")
+    exit(1)
 
 print(f"Testing DeepSeek API...")
 print(f"API Key: {api_key[:10]}...{api_key[-4:]}")

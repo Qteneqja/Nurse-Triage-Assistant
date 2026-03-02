@@ -1,0 +1,28 @@
+{
+    "case_id": "case_017_single_weighted_below_threshold",
+    "description": "Single weighted flag below URGENT threshold — 35M with severe pain only. rf_severe_pain (5) < 10 → HUMAN_REVIEW.",
+    "input_transcript": "I'm having severe pain in my lower back, about 8 out of 10. It started this morning. I'm 35, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 35,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "HUMAN_REVIEW",
+        "URGENT",
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_severe_pain"
+    ],
+    "expected_rules_triggered": [
+        "rf_severe_pain"
+    ],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "high",
+    "notes": "Single weighted flag rf_severe_pain (5) below URGENT threshold (10). Deterministic mode → HUMAN_REVIEW."
+}

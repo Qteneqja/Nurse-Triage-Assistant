@@ -1,0 +1,29 @@
+{
+    "case_id": "case_002_chest_pain_escalation",
+    "description": "High-acuity cardiac symptoms — 60M with crushing chest pain radiating to left arm, diaphoresis, onset 30 min ago.",
+    "input_transcript": "I'm having crushing chest pain, it's radiating to my left arm. I'm sweating a lot. It started about 30 minutes ago. I'm 60 years old, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 60,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "EMERGENCY",
+        "ESCALATE",
+        "ER_NOW",
+        "URGENT"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_cardiac_arrest_signs"
+    ],
+    "expected_rules_triggered": [
+        "rf_cardiac_arrest_signs"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Crushing chest pain + left arm radiation + diaphoresis = classic cardiac emergency. Must trigger rf_cardiac_arrest_signs critical flag → ER_NOW."
+}

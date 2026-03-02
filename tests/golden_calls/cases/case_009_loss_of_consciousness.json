@@ -1,0 +1,26 @@
+{
+    "case_id": "case_009_loss_of_consciousness",
+    "description": "Loss of consciousness — caller reports family member collapsed and is unresponsive. Must trigger rf_loss_of_consciousness.",
+    "input_transcript": "My husband just collapsed on the floor. He's unresponsive and won't wake up. He was fine 5 minutes ago. He's 65, male.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 65,
+        "sex": "male"
+    },
+    "expected_disposition": [
+        "ER_NOW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_loss_of_consciousness"
+    ],
+    "expected_rules_triggered": [
+        "rf_loss_of_consciousness"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Collapse + unresponsive = loss of consciousness. Must trigger rf_loss_of_consciousness → ER_NOW."
+}

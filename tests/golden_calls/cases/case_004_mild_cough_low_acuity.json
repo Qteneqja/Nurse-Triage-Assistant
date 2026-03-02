@@ -1,0 +1,26 @@
+{
+    "case_id": "case_004_mild_cough_low_acuity",
+    "description": "Low-acuity case — 28F with mild cough 2 days, no fever, no shortness of breath, eating/drinking normal, no medical history.",
+    "input_transcript": "I have a mild cough that started 2 days ago. No fever, no shortness of breath. I'm eating and drinking normally. I'm 28, female, no medical history.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 28,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "HOME_CARE",
+        "SCHEDULE_APPOINTMENT",
+        "SELF_CARE",
+        "SCHEDULE",
+        "HUMAN_REVIEW"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [],
+    "expected_rules_triggered": [],
+    "confidence_range": [
+        0.0,
+        1.0
+    ],
+    "severity": "high",
+    "notes": "Mild cough, no red flags, no concerning features. In deterministic_only mode without LLM, the system defaults to HUMAN_REVIEW with escalation (conservative). In full mode with LLM, expected SELF_CARE or SCHEDULE."
+}

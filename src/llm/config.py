@@ -9,7 +9,7 @@ load_dotenv()
 
 # DeepSeek Configuration (Reasoning LLM)
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-8749f1c8dbe24ba096505d5ae758a0e9")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 # Twilio Configuration (optional)

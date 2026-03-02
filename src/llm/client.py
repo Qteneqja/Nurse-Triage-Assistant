@@ -26,6 +26,7 @@ from tenacity import (
 )
 
 from src.llm.config import DEEPSEEK_BASE_URL, DEEPSEEK_API_KEY, DEEPSEEK_MODEL, LLM_TIMEOUT
+from src.observability.sentry_integration import capture_llm_failure, capture_json_validation_failure
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,12 @@ class StructuredLLMClient:
             raw = await self._raw_call(messages, max_tokens, temperature, json_mode=True)
         except Exception as e:
             logger.error(f"[LLM:{cid}] Raw call failed after retries: {e}")
+            capture_llm_failure(
+                model_name=self._model,
+                timeout_duration=LLM_TIMEOUT,
+                retry_count=2,
+                error_type=type(e).__name__,
+            )
             raise LLMCallError(f"LLM call failed: {e}") from e
 
         if not raw:
@@ -163,6 +170,10 @@ class StructuredLLMClient:
 
         # Step 5: fail
         logger.error(f"[LLM:{cid}] Repair also failed — raising LLMCallError")
+        capture_json_validation_failure(
+            schema_name=output_schema.__name__,
+            error_message="JSON validation failed after repair attempt",
+        )
         raise LLMCallError("JSON validation failed after repair attempt")
 
     def _try_parse(

@@ -1,0 +1,94 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Golden Call Regression Case",
+    "description": "Schema for synthetic software regression test cases. Purpose: Date Created: 2026-03-02. Step: Production Hardening — Step 3B.",
+    "type": "object",
+    "required": [
+        "case_id",
+        "description",
+        "input_transcript",
+        "expected_disposition",
+        "expected_escalation_required",
+        "expected_red_flags_triggered",
+        "expected_rules_triggered",
+        "confidence_range",
+        "severity"
+    ],
+    "properties": {
+        "case_id": {
+            "type": "string"
+        },
+        "description": {
+            "type": "string"
+        },
+        "input_transcript": {
+            "type": "string",
+            "description": "Synthetic caller transcript — software test input, not real patient data"
+        },
+        "patient_demographics": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "age": {
+                    "type": "integer"
+                },
+                "sex": {
+                    "type": "string"
+                }
+            }
+        },
+        "expected_disposition": {
+            "oneOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Allowed set — any of these dispositions passes the test"
+                }
+            ]
+        },
+        "expected_escalation_required": {
+            "type": "boolean"
+        },
+        "expected_red_flags_triggered": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "expected_rules_triggered": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "confidence_range": {
+            "type": "array",
+            "items": {
+                "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[min, max] inclusive"
+        },
+        "severity": {
+            "type": "string",
+            "enum": [
+                "critical",
+                "high",
+                "medium",
+                "low"
+            ],
+            "description": "critical/high failures fail the suite; medium/low generate warnings only"
+        },
+        "notes": {
+            "type": "string"
+        }
+    }
+}

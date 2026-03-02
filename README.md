@@ -1,6 +1,25 @@
 ﻿# Nurse Triage Assistant
 
+[![CI](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml)
+
 An AI-powered automated triage system that conducts patient intake through phone calls (Twilio Voice) or API integrations. The system guides patients through a structured medical intake conversation, captures symptoms and key information, and produces clinician-ready summaries with triage recommendations.
+
+## Secrets & Security
+
+- **Secrets must never be committed** to this repository. All API keys, tokens, and credentials must be provided via environment variables or a `.env` file (which is `.gitignore`d).
+- **All configuration** is managed through environment variables — see `.env.example` for the full list.
+- **See [`SECURITY_CLEANUP.md`](SECURITY_CLEANUP.md)** for the detailed security audit report and remediation steps.
+- **See [`SECURITY.md`](SECURITY.md)** for the secrets management policy and rotation procedures.
+- **See [`SECURITY_POSTURE.md`](SECURITY_POSTURE.md)** for GitHub security settings and incident response playbook.
+
+## Pilot Documentation
+
+- [`PILOT_READINESS.md`](PILOT_READINESS.md) — Pilot gate checklist and git history assessment
+- [`PILOT_ESCALATION_WORKFLOW.md`](PILOT_ESCALATION_WORKFLOW.md) — How the system escalates to human clinicians
+- [`PILOT_SYSTEM_LIMITATIONS.md`](PILOT_SYSTEM_LIMITATIONS.md) — What the system does and does NOT do
+- [`PILOT_SUCCESS_METRICS.md`](PILOT_SUCCESS_METRICS.md) — Measurable success criteria for 2–4 week pilot
+- [`STAGING_RUNBOOK.md`](STAGING_RUNBOOK.md) — Azure staging environment operational reference
+- [`STAGING_MANUAL_TEST_PACK.md`](STAGING_MANUAL_TEST_PACK.md) — 10-call manual validation checklist
 
 ## Overview
 
@@ -402,6 +421,44 @@ python -m pytest tests/test_phase3_storage.py tests/test_phase3_governance.py te
 # Full suite (237 tests)
 python -m pytest tests/ --ignore=tests/test_intake_flow.py -v
 ```
+
+---
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration and deployment:
+
+### CI (`.github/workflows/ci.yml`)
+Runs on every push to `main` and on all pull requests:
+- **Gitleaks**: Secret scanning using [gitleaks/gitleaks-action](https://github.com/gitleaks/gitleaks-action) — **blocks merge** on any detected secret. Custom rules in `.gitleaks.toml` cover DeepSeek keys, Twilio tokens, and standard provider patterns.
+- **Lint**: `ruff check` and `ruff format --check` on `src/` and `tests/`
+- **Test Suite**: Full `pytest` run with coverage reporting (excludes integration/load tests)
+- **Security Scan**: `bandit` static analysis + `safety` dependency vulnerability check
+
+### Auto-Deploy (Azure Container Apps)
+The existing Azure deployment workflow triggers on push to `main` after CI passes.
+
+### Running Tests Locally
+
+```bash
+# Full test suite (matches CI)
+python -m pytest tests/ -v --tb=short
+
+# Golden-call regression tests only
+python -m pytest tests/golden_calls/test_golden_calls.py -v
+
+# With coverage
+python -m pytest tests/ --cov=src --cov-report=term-missing
+```
+
+---
+
+## Monitoring & Error Tracking
+
+Production uses Sentry for error monitoring with full PHI scrubbing. See [`MONITORING.md`](MONITORING.md) for:
+- Configuration (set `SENTRY_DSN` to enable)
+- PHI safeguard architecture (3 layers of defense)
+- Captured events and their data boundaries
 
 ---
 

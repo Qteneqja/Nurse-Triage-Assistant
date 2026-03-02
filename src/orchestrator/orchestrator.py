@@ -73,6 +73,7 @@ from src.safety.gate import (
     FinalDecision,
     normalize_disposition,
 )
+from src.observability.sentry_integration import add_safety_gate_breadcrumb
 from src.safety.diagnosis_enforcement import enforce_no_diagnosis
 from src.safety.phi_masking import mask_phi
 from src.protocols.retriever import ProtocolRetriever, ProtocolSnippet, get_retriever
@@ -1347,6 +1348,10 @@ class Orchestrator:
                 logger.warning(
                     f"[ORCH:{cid}] Overriding LLM disposition "
                     f"{finalize_output.disposition} → ER_NOW (deterministic rules)"
+                )
+                add_safety_gate_breadcrumb(
+                    rule_name=", ".join(session.audit_trace.deterministic_rules_triggered),
+                    disposition_override="ER_NOW",
                 )
                 finalize_output.disposition = DispositionCategory.ER_NOW
                 finalize_output.disposition_reasoning = (

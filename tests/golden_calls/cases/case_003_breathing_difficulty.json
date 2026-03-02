@@ -1,0 +1,29 @@
+{
+    "case_id": "case_003_breathing_difficulty",
+    "description": "Respiratory distress — 35F with sudden shortness of breath, cannot complete sentences, no history of asthma.",
+    "input_transcript": "I can't breathe. I'm gasping for air. It came on suddenly. I can't complete a sentence. I'm 35, female. No history of asthma.",
+    "patient_demographics": {
+        "name": "Test Patient",
+        "age": 35,
+        "sex": "female"
+    },
+    "expected_disposition": [
+        "EMERGENCY",
+        "ESCALATE",
+        "ER_NOW",
+        "URGENT"
+    ],
+    "expected_escalation_required": true,
+    "expected_red_flags_triggered": [
+        "rf_severe_breathing_failure"
+    ],
+    "expected_rules_triggered": [
+        "rf_severe_breathing_failure"
+    ],
+    "confidence_range": [
+        0.7,
+        1.0
+    ],
+    "severity": "critical",
+    "notes": "Acute breathing difficulty with inability to complete sentences = airway compromise. Must trigger rf_severe_breathing_failure critical flag → ER_NOW."
+}
