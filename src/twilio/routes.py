@@ -368,7 +368,7 @@ _TTS_VOICE = "Polly.Ruth-Neural"
 # ---------------------------------------------------------------------------
 # Keyed by CallSid → asyncio.Task that resolves to (result_dict, session).
 # Single-worker in-memory storage (same pattern as session store).
-_pending_turns: dict[str, asyncio.Task] = {}
+_pending_turns: dict[str, tuple[asyncio.Task, object]] = {}
 
 
 def _get_azure_voice() -> str:
@@ -717,7 +717,7 @@ async def handle_gather(
                 return res
 
             task = asyncio.create_task(_run_turn(session, speech_text))
-            _pending_turns[CallSid] = task
+            _pending_turns[CallSid] = (task, session)
             logger.info(f"[TWILIO] Started background orchestrator for {CallSid}")
 
             # Return typing sounds → poll via /thinking
@@ -763,10 +763,10 @@ async def handle_thinking(
     redirects back to itself.
     """
     try:
-        task = _pending_turns.get(CallSid)
+        pending = _pending_turns.get(CallSid)
 
         # No pending task — shouldn't happen, but recover gracefully
-        if task is None:
+        if pending is None:
             logger.warning(
                 f"[TWILIO] /thinking called with no pending task for {CallSid}"
             )
@@ -777,6 +777,8 @@ async def handle_thinking(
                 speech_timeout="auto",
             )
             return Response(content=twiml, media_type="application/xml")
+
+        task, session_obj = pending
 
         # Task still running — play more typing sounds and loop back
         if not task.done():
@@ -813,14 +815,18 @@ async def handle_thinking(
         action = result["action"]
         spoken_message = result["message"]
 
-        # Load session for finalization actions
-        repo = get_session_repository()
-        session = repo.load_session_by_call(CallSid)
+        # Use the in-memory session object from the completed task.
+        # Do NOT reload from DB — persist_session() already changed the
+        # status to "escalated"/"ended", so load_session_by_call()
+        # (which filters by status=="active") would return None and
+        # silently skip report generation.
+        session = session_obj
         session_id = session.session_id if session else CallSid
 
         import time as _time
 
         _t_tts = _time.monotonic()
+        repo = get_session_repository()
 
         if action == "escalate":
             logger.info(f"[TWILIO] Deterministic escalation for session {session_id}")
