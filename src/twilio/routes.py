@@ -12,7 +12,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from xml.sax import saxutils
-from fastapi import APIRouter, Depends, Request, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, Request, Form, BackgroundTasks
 from fastapi.responses import Response
 from typing import Optional
 
@@ -65,34 +65,54 @@ async def _generate_orchestrator_report_background(
 
     This runs AFTER the TwiML response is returned to Twilio, so it
     does not block the caller experience.
+
+    Resilience: each phase (finalize → persist → write → upload) is
+    independently wrapped so a failure in one phase does not prevent
+    subsequent phases from running.
     """
+    finalize = None
+    report_json_path = None
+    report_txt_path = None
+
     try:
         logger.info(f"[BACKGROUND] Saving orchestrator report for session {session_id}")
 
-        # If finalize hasn't run yet, either run the LLM or use a lightweight
-        # fallback.  For early-turn escalations (≤2 dynamic turns) the session
-        # has too little data for the LLM to add meaningful value; skip the
-        # extra API round-trip and fall back to the deterministic default.
+        # ── Phase 1: Finalize ────────────────────────────────────────────
         if orch_session.finalize_output is None:
-            if orch_session.turn_count <= 2:
+            try:
+                if orch_session.turn_count <= 2:
+                    from src.orchestrator.validators import safe_finalize_default
+
+                    logger.info(
+                        f"[BACKGROUND] Skipping LLM finalize for early-turn escalation "
+                        f"(turn_count={orch_session.turn_count}) — using safe default"
+                    )
+                    orch_session.finalize_output = safe_finalize_default()
+                else:
+                    orchestrator = get_orchestrator()
+                    await orchestrator.finalize(orch_session)
+            except Exception as fin_exc:
+                logger.error(
+                    f"[BACKGROUND] LLM finalize failed — using safe default: {fin_exc}",
+                    exc_info=True,
+                )
                 from src.orchestrator.validators import safe_finalize_default
 
-                logger.info(
-                    f"[BACKGROUND] Skipping LLM finalize for early-turn escalation "
-                    f"(turn_count={orch_session.turn_count}) — using safe default"
-                )
                 orch_session.finalize_output = safe_finalize_default()
-            else:
-                orchestrator = get_orchestrator()
-                await orchestrator.finalize(orch_session)
 
         finalize = orch_session.finalize_output
 
-        # Persist final state
-        repo = get_session_repository()
-        repo.persist_session(orch_session)
+        # ── Phase 2: Persist session ─────────────────────────────────────
+        try:
+            repo = get_session_repository()
+            repo.persist_session(orch_session)
+        except Exception as persist_exc:
+            logger.error(
+                f"[BACKGROUND] Session persist failed (non-fatal): {persist_exc}",
+                exc_info=True,
+            )
 
-        # Build structured report
+        # ── Phase 3: Build structured report ─────────────────────────────
         structured = {
             "patient": {
                 "name": session_metadata.get("patient_name", "Unknown"),
@@ -136,35 +156,57 @@ async def _generate_orchestrator_report_background(
         report_json_path = report_base.with_suffix(".json")
         report_txt_path = report_base.with_suffix(".txt")
 
-        with open(report_json_path, "w") as f:
-            json.dump(structured, f, indent=2, default=str)
-
-        # Apply PHI masking to file-written text when STORE_PHI is disabled
-        sbar_for_file = sbar_text if STORE_PHI else mask_phi(sbar_text)
-
-        with open(report_txt_path, "w") as f:
-            f.write("Triage Handoff Report (Orchestrator)\n")
-            f.write(f"Session ID: {session_id}\n")
-            f.write(f"Generated: {datetime.now().isoformat()}\n")
-            f.write(f"{'=' * 80}\n\n")
-            f.write(sbar_for_file)
-            if finalize and finalize.safety_net_instructions:
-                instructions = chr(10).join(finalize.safety_net_instructions)
-                if not STORE_PHI:
-                    instructions = mask_phi(instructions)
-                f.write(f"\n\nSafety-Net Instructions:\n{instructions}")
-
-        logger.info(f"[BACKGROUND] Orchestrator report saved: {report_json_path}")
-
-        # Upload to Azure Blob Storage (persistent across container restarts)
+        # ── Phase 4: Write local files ───────────────────────────────────
         try:
-            blob_urls = upload_reports_to_blob(
-                report_json_path, report_txt_path, REPORTS_DIR
+            with open(report_json_path, "w") as f:
+                json.dump(structured, f, indent=2, default=str)
+
+            # Apply PHI masking to file-written text when STORE_PHI is disabled
+            sbar_for_file = sbar_text if STORE_PHI else mask_phi(sbar_text)
+
+            with open(report_txt_path, "w") as f:
+                f.write("Triage Handoff Report (Orchestrator)\n")
+                f.write(f"Session ID: {session_id}\n")
+                f.write(f"Generated: {datetime.now().isoformat()}\n")
+                f.write(f"{'=' * 80}\n\n")
+                f.write(sbar_for_file)
+                if finalize and finalize.safety_net_instructions:
+                    instructions = chr(10).join(finalize.safety_net_instructions)
+                    if not STORE_PHI:
+                        instructions = mask_phi(instructions)
+                    f.write(f"\n\nSafety-Net Instructions:\n{instructions}")
+
+            logger.info(f"[BACKGROUND] Orchestrator report saved: {report_json_path}")
+        except Exception as write_exc:
+            logger.error(
+                f"[BACKGROUND] Local file write failed: {write_exc}", exc_info=True
             )
-            if blob_urls.get("json_url"):
-                logger.info("[BACKGROUND] Reports uploaded to blob storage")
-        except Exception as blob_exc:
-            logger.warning(f"[BACKGROUND] Blob upload failed (non-fatal): {blob_exc}")
+
+        # ── Phase 5: Upload to Azure Blob Storage ────────────────────────
+        if report_json_path and report_json_path.exists():
+            try:
+                blob_urls = upload_reports_to_blob(
+                    report_json_path, report_txt_path, REPORTS_DIR
+                )
+                if blob_urls.get("json_url"):
+                    logger.info(
+                        f"[BACKGROUND] Reports uploaded to blob storage: "
+                        f"{blob_urls.get('json_url')}"
+                    )
+                else:
+                    logger.warning(
+                        "[BACKGROUND] Blob upload returned no URL — "
+                        "check AZURE_STORAGE_CONNECTION_STRING"
+                    )
+            except Exception as blob_exc:
+                logger.warning(
+                    f"[BACKGROUND] Blob upload failed (non-fatal): {blob_exc}",
+                    exc_info=True,
+                )
+        else:
+            logger.warning(
+                "[BACKGROUND] Skipping blob upload — local files not written"
+            )
 
     except Exception as e:
         logger.error(
@@ -852,107 +894,3 @@ def _get_stage_question(stage: str) -> str:
         STAGE_DYNAMIC: "Can you tell me more about your symptoms?",
     }
     return questions.get(stage, "Can you tell me more?")
-
-
-def _find_report_files(identifier: str) -> tuple[Path | None, Path | None]:
-    """Find report JSON and TXT files by session_id, filename stem, or partial match.
-
-    Searches recursively through year/month subdirectories.
-
-    Search order:
-    1. Exact filename match in any subdirectory
-    2. Partial match — identifier appears anywhere in filename (e.g. patient name or short ID)
-    """
-    # Search recursively for files containing the identifier
-    matches = sorted(REPORTS_DIR.rglob(f"*{identifier}*.json"))
-    if matches:
-        json_path = matches[-1]  # Most recent (sorted alphabetically = chronologically)
-        txt_path = json_path.with_suffix(".txt")
-        return json_path, txt_path if txt_path.exists() else None
-
-    return None, None
-
-
-@router.get("/reports")
-async def list_reports(
-    limit: int = 50, month: Optional[str] = None, year: Optional[int] = None
-):
-    """List all available reports, most recent first.
-
-    Optional filters:
-        year: Filter by year (e.g. 2026)
-        month: Filter by month number or name (e.g. "01", "January", "01-January")
-    """
-    if year or month:
-        # Build specific search path
-        search_dir = REPORTS_DIR
-        if year:
-            search_dir = search_dir / str(year)
-        if month:
-            # Allow "01", "January", or "01-January"
-            month_dirs = (
-                sorted(search_dir.glob(f"*{month}*")) if search_dir.exists() else []
-            )
-            if month_dirs:
-                search_dir = month_dirs[0]
-        json_files = (
-            sorted(search_dir.rglob("*.json"), reverse=True)
-            if search_dir.exists()
-            else []
-        )
-    else:
-        json_files = sorted(REPORTS_DIR.rglob("*.json"), reverse=True)
-
-    reports = []
-    for f in json_files[:limit]:
-        # Show path relative to reports dir for context
-        rel_path = f.relative_to(REPORTS_DIR)
-        reports.append(
-            {
-                "filename": f.stem,
-                "path": str(rel_path),
-                "created": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-                "size_bytes": f.stat().st_size,
-            }
-        )
-    return {"count": len(reports), "reports": reports}
-
-
-@router.get("/reports/{identifier}")
-async def get_report(identifier: str):
-    """
-    Retrieve handoff report for a completed triage session.
-    Accepts: full filename stem, legacy UUID, partial patient name, or short ID.
-    """
-    try:
-        json_path, txt_path = _find_report_files(identifier)
-
-        if json_path is None or not json_path.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Report not found for '{identifier}'"
-            )
-
-        with open(json_path, "r") as f:
-            structured_data = json.load(f)
-
-        sbar_text = ""
-        if txt_path and txt_path.exists():
-            with open(txt_path, "r") as f:
-                sbar_text = f.read()
-
-        return {
-            "filename": json_path.stem,
-            "structured": structured_data,
-            "sbar": sbar_text,
-            "report_files": {
-                "json": str(json_path),
-                "txt": str(txt_path) if txt_path else None,
-            },
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            f"[REPORTS] Error retrieving report for {identifier}: {e}", exc_info=True
-        )
-        raise HTTPException(status_code=500, detail="Error retrieving report")
