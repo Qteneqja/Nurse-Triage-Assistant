@@ -11,8 +11,7 @@ Covers:
 - Deterministic override of LLM disposition
 """
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from src.orchestrator.orchestrator import Orchestrator
 from src.orchestrator.schemas import (
@@ -21,7 +20,6 @@ from src.orchestrator.schemas import (
     IntakeTurnOutput,
     IntakeStatePatch,
     OrchestratorSession,
-    AuditTrace,
     StructuredIntakeState,
     Phase1TurnOutput,
     Phase1Disposition,

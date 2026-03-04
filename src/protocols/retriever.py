@@ -18,12 +18,10 @@ from __future__ import annotations
 
 import json
 import logging
-import math
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
 from src.governance.protocol_status import filter_protocols_by_governance
 

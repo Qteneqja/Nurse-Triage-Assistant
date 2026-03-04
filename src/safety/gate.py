@@ -13,17 +13,15 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from src.safety.red_flag_rules import run_red_flag_rules, RedFlagRuleResult
 from src.safety.diagnosis_enforcement import enforce_no_diagnosis, DiagnosisRewriteEvent
 from src.safety.triage_output_schema import (
     TriageOutput,
     validate_triage_output,
-    SAFE_FALLBACK_OUTPUT,
 )
 from src.safety.phi_masking import mask_phi
 

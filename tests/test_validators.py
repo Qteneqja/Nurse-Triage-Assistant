@@ -7,7 +7,6 @@ Covers:
 - Default fallback objects
 - Handling of malformed inputs
 """
-import pytest
 import json
 
 from src.orchestrator.validators import (

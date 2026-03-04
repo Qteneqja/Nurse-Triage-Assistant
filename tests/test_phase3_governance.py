@@ -308,7 +308,6 @@ class TestConfigValidation:
     def test_old_env_var_backward_compat(self):
         """Old CONFIDENCE_THRESHOLD env var is accepted with deprecation."""
         import warnings
-        from importlib import reload
         old_env = {
             "CONFIDENCE_THRESHOLD": "0.70",
         }

@@ -11,12 +11,7 @@ Tests concurrent performance and scalability:
 
 import asyncio
 import pytest
-import pytest_asyncio
 import time
-from concurrent.futures import ThreadPoolExecutor
-from typing import List
-from src.orchestrator.orchestrator import Orchestrator
-from src.orchestrator.schemas import OrchestratorSession
 
 
 class TestConcurrentSessions:
@@ -64,12 +59,12 @@ class TestConcurrentSessions:
         async def process_session(session_id: str):
             try:
                 session = mock_storage.create_session(session_id)
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "I feel sick"
                 )
                 return True
-            except Exception as e:
+            except Exception:
                 return False
         
         # Run concurrently
@@ -127,7 +122,7 @@ class TestSessionIsolation:
         """Verify transcripts don't leak between sessions."""
         
         async def add_transcript(session_id: str, text: str):
-            session = mock_storage.create_session(session_id)
+            mock_storage.create_session(session_id)
             mock_storage.save_transcript(session_id, {"text": text})
             await asyncio.sleep(0.01)
         
@@ -166,7 +161,7 @@ class TestRapidSequentialCalls:
                 await asyncio.sleep(0.001)
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     f"Response {i}"
                 )
@@ -213,7 +208,7 @@ class TestLongRunningSessions:
         
         for i in range(11):
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     f"Turn {i+1} response"
                 )
@@ -235,18 +230,18 @@ class TestLongRunningSessions:
         session = mock_storage.create_session("memory-test")
         
         import sys
-        initial_size = sys.getsizeof(session)
+        sys.getsizeof(session)
         
         for i in range(50):
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     f"Response {i}"
                 )
             except Exception:
                 break
         
-        final_size = sys.getsizeof(session) + len(session.conversation) * 100
+        sys.getsizeof(session) + len(session.conversation) * 100
         
         # Should not grow excessively
         # conversation stores 2 entries per turn; cap on total entries is reasonable
@@ -286,7 +281,7 @@ class TestStorageScaling:
     ):
         """Verify transcript appending performance."""
         session_id = "transcript-perf"
-        session = mock_storage.create_session(session_id)
+        mock_storage.create_session(session_id)
         
         start = time.time()
         for i in range(500):
@@ -317,7 +312,7 @@ class TestLatencyMeasurement:
         for i in range(20):
             start = time.time()
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     f"Turn {i}"
                 )

@@ -16,7 +16,6 @@ from src.safety.gate import (
     gate_outbound_text,
     GateContext,
     _ROLE_CLAIM_DISCLAIMER,
-    _ROLE_CLAIM_SAFE_FALLBACK,
 )
 from src.orchestrator.orchestrator import (
     Orchestrator,

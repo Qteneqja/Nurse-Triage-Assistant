@@ -5,12 +5,11 @@ Person A: Triage reasoning, patient summaries, and clinician SBAR via DeepSeek
 import logging
 import json
 import re
-from typing import Optional, Dict, List
+from typing import Optional
 from openai import AsyncOpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.llm.config import DEEPSEEK_BASE_URL, DEEPSEEK_API_KEY, DEEPSEEK_MODEL, LLM_TIMEOUT
-from src.shared.canonical import CanonicalDisposition
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 # from the safety gate via GuardedLLM.
 # ---------------------------------------------------------------------------
 
-from enum import Enum as _Enum
+from enum import Enum as _Enum  # noqa: E402
 
 
 class DispositionType(str, _Enum):
@@ -243,7 +242,7 @@ class DeepSeekClient:
             timeout=LLM_TIMEOUT
         )
         self.model = DEEPSEEK_MODEL
-        logger.info(f"[DEEPSEEK] Client initialized")
+        logger.info("[DEEPSEEK] Client initialized")
         logger.info(f"[DEEPSEEK] base_url: {DEEPSEEK_BASE_URL}")
         logger.info(f"[DEEPSEEK] model: {self.model}")
         logger.info(f"[DEEPSEEK] API key configured: {bool(DEEPSEEK_API_KEY)}")
@@ -540,7 +539,7 @@ Return ONLY JSON. No markdown. No text. Just the JSON object."""
             if msg.get("role") == "user":
                 content = msg.get("content", "").strip()
                 # Skip short responses like "yes", "no", single words
-                if len(content) > 5 and not content.lower() in ["yes", "no", "yeah", "nope", "male", "female"]:
+                if len(content) > 5 and content.lower() not in ["yes", "no", "yeah", "nope", "male", "female"]:
                     # This is likely the chief complaint
                     logger.info(f"[TRIAGE] Extracted chief complaint: '{content}'")
                     return content
@@ -551,7 +550,7 @@ Return ONLY JSON. No markdown. No text. Just the JSON object."""
         
         # Force stop if we're near the limit
         if question_count >= MAX_QUESTIONS - 1:
-            logger.warning(f"[TRIAGE] Fallback triggered near MAX_QUESTIONS, forcing stop")
+            logger.warning("[TRIAGE] Fallback triggered near MAX_QUESTIONS, forcing stop")
             return TriageResult(
                 triage_disposition=DispositionType.HUMAN_REVIEW,
                 confidence=0.7,

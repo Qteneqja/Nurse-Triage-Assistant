@@ -18,7 +18,6 @@ import os
 from copy import deepcopy
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 from src.observability.sentry_integration import (
     _scrub_phi,
@@ -61,7 +60,6 @@ def test_sentry_initialized_with_dsn():
     with patch.dict(os.environ, {"SENTRY_DSN": "https://key@sentry.io/123"}):
         with patch("src.observability.sentry_integration.sentry_sdk", create=True) as mock_sdk:
             # Need to patch the import within the function
-            import importlib
             with patch.dict("sys.modules", {"sentry_sdk": mock_sdk}):
                 mock_sdk.init = mock_init
                 result = init_sentry()

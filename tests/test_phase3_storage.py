@@ -4,21 +4,16 @@ Phase 3 — Storage Tests
 Tests for PostgresStorage CRUD operations, PHI control, and migration.
 Uses SQLite in-memory as a portable test backend.
 """
-import os
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.storage.models import Base, TriageSessionModel, TriageTurnModel
 from src.orchestrator.schemas import (
-    AuditTrace,
-    ConfidenceBreakdown,
     DecisionTraceEntry,
-    OrchestratorSession,
-    ProtocolHit,
 )
 
 

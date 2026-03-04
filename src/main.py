@@ -23,7 +23,6 @@ from src.config import (
 )
 from src.observability.logging import (
     configure_structured_logging,
-    set_log_context,
     clear_log_context,
     _request_id,
     _call_sid,
@@ -110,7 +109,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"[STARTUP] TTS warm-up failed (non-fatal): {exc}")
 
     # Initialize storage backend (factory enforces Postgres in production)
-    storage_backend = get_storage_backend()
+    get_storage_backend()
     logger.info(f"[STARTUP] Storage backend: {STORAGE_BACKEND}")
     logger.info(f"[STARTUP] APP_ENV={APP_ENV}")
 

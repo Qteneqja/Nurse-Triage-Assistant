@@ -11,17 +11,14 @@ Test scenarios:
 """
 
 import pytest
-import pytest_asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-from src.orchestrator.orchestrator import Orchestrator
 from src.orchestrator.schemas import (
     DispositionCategory,
     OrchestratorSession,
     ConversationTurn,
     IntakeTurnOutput,
     IntakeStatePatch,
-    FinalizeOutput,
     RedFlagResult,
     SafetyLevel,
 )
@@ -188,7 +185,7 @@ class TestEscalationTiming:
         orchestrator_with_mocks,
     ):
         """Critical red flags skip full intake."""
-        session = OrchestratorSession(session_id="test-immed-001")
+        OrchestratorSession(session_id="test-immed-001")
         
         critical_flags = [
             "CHEST_PAIN_SEVERE",

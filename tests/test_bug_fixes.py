@@ -27,11 +27,7 @@ BUG 2 — Low confidence prematurely escalates / ends call with nurse transfer
 
 from __future__ import annotations
 
-import json
-import re
 import pytest
-import pytest_asyncio
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -136,11 +132,9 @@ class TestGenerateTwimlGather:
 # BUG 2: Low-confidence continue-intake vs escalation
 # ──────────────────────────────────────────────────────────────────────────────
 
-from src.orchestrator.orchestrator import Orchestrator, PHASE1_CONFIDENCE_ESCALATION_THRESHOLD
-from src.orchestrator.schemas import (
-    AuditTrace,
+from src.orchestrator.orchestrator import Orchestrator  # noqa: E402
+from src.orchestrator.schemas import (  # noqa: E402
     OrchestratorSession,
-    StructuredIntakeState,
     Phase1TurnOutput,
     Phase1Disposition,
     Phase1NextAction,

@@ -34,7 +34,7 @@ from typing import Optional
 from src.llm.client import LLMCallError
 from pydantic import ValidationError as _PydanticValidationError
 from src.llm.guarded_client import GuardedLLM, get_guarded_llm
-from src.orchestrator.intake_gate import TransferControlGate, check_intake_complete
+from src.orchestrator.intake_gate import TransferControlGate
 from src.orchestrator.prompts import (
     INTAKE_TURN_SYSTEM_PROMPT,
     FINALIZE_SYSTEM_PROMPT,
@@ -47,10 +47,7 @@ from src.orchestrator.schemas import (
     DispositionCategory,
     FinalizeOutput,
     IntakeTurnOutput,
-    IntakeStatePatch,
     OrchestratorSession,
-    Phase1Disposition,
-    Phase1NextAction,
     Phase1TurnOutput,
     ProtocolHit,
     RedFlagResult,
@@ -68,14 +65,10 @@ from src.orchestrator.validators import (
 from src.safety.red_flags import check_all as check_red_flags, score_red_flags
 from src.safety.gate import (
     gate_triage_output,
-    gate_outbound_text,
     GateContext,
     FinalDecision,
-    normalize_disposition,
 )
 from src.observability.sentry_integration import add_safety_gate_breadcrumb
-from src.safety.diagnosis_enforcement import enforce_no_diagnosis
-from src.safety.phi_masking import mask_phi
 from src.protocols.retriever import ProtocolRetriever, ProtocolSnippet, get_retriever
 from src.observability.metrics import get_metrics
 from src.observability.logging import set_log_context, clear_log_context
@@ -595,9 +588,6 @@ class Orchestrator:
                 )
 
                 if is_escalating:
-                    action_key = (
-                        "premature_transfer" if gate_decision.premature else "escalate"
-                    )
                     return {
                         "action": "escalate",
                         "message": gate_msg,
@@ -1131,7 +1121,7 @@ class Orchestrator:
                 confusion_score=session.intake_state.confusion_or_poor_historian_score,
             )
         except Exception:
-            post_rf_disp, post_rf_score, post_rf_ids = "HUMAN_REVIEW", 0, []
+            post_rf_disp, _post_rf_score, post_rf_ids = "HUMAN_REVIEW", 0, []
 
         if post_rf_disp == "ER_NOW":
             session.audit_trace.deterministic_rules_triggered.extend(post_rf_ids)
@@ -1313,7 +1303,7 @@ class Orchestrator:
         # ── UNIFIED SAFETY GATE — finalize output MUST pass through ──
         # structured_call() already gated text fields via gate_outbound_text.
         # Now run gate_triage_output for disposition validation + red-flag override.
-        from src.config import CONFIDENCE_MIN_THRESHOLD, DEEPSEEK_MODEL
+        from src.config import DEEPSEEK_MODEL
         gate_input = {
             "disposition": finalize_output.disposition.value,
             "urgency_level": "CRITICAL" if finalize_output.disposition == DispositionCategory.ER_NOW else "HIGH",

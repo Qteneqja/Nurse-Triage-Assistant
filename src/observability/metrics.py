@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import math
 import threading
-import time
-from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 
 class _Counter:

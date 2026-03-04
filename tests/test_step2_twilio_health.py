@@ -18,7 +18,7 @@ import hashlib
 import hmac
 import logging
 from base64 import b64encode
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient

@@ -18,7 +18,6 @@ Test cases:
 """
 from __future__ import annotations
 
-import pytest
 
 from src.orchestrator.intake_gate import (
     TransferControlGate,

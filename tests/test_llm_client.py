@@ -11,9 +11,9 @@ if not api_key:
     print("Set it via .env file or export it before running this test.")
     exit(1)
 
-print(f"Testing DeepSeek API...")
+print("Testing DeepSeek API...")
 print(f"API Key: {api_key[:10]}...{api_key[-4:]}")
-print(f"Base URL: https://api.deepseek.com")
+print("Base URL: https://api.deepseek.com")
 print()
 
 try:
