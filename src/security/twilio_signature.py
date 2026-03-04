@@ -25,7 +25,6 @@ from base64 import b64encode
 from urllib.parse import urljoin
 
 from fastapi import Request, HTTPException, status
-from fastapi.responses import JSONResponse
 
 from src.config import (
     APP_ENV,

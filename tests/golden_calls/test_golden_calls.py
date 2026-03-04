@@ -17,11 +17,9 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import warnings
 from pathlib import Path
 from typing import List
-from unittest.mock import patch
 
 import pytest
 
@@ -266,7 +264,7 @@ def test_llm_blocked_in_deterministic_mode():
 
     # Attempting to call the LLM should raise immediately
     patches = install_llm_block()
-    started = [p.start() for p in patches]
+    [p.start() for p in patches]
     try:
         from src.llm.client import StructuredLLMClient
         client = StructuredLLMClient.__new__(StructuredLLMClient)

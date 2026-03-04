@@ -13,10 +13,7 @@ Tests for:
 """
 from __future__ import annotations
 
-import copy
 import os
-import re
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -27,9 +24,6 @@ import pytest
 
 from src.safety.red_flag_rules import (
     RED_FLAG_RULES,
-    RedFlagRule,
-    RedFlagRuleResult,
-    RuleContext,
     run_red_flag_rules,
     get_rule,
 )
@@ -178,11 +172,10 @@ class TestRedFlagRuleExecution:
 # 2. TRIAGE OUTPUT SCHEMA TESTS
 # ---------------------------------------------------------------------------
 
-from src.safety.triage_output_schema import (
+from src.safety.triage_output_schema import (  # noqa: E402
     TriageOutput,
     validate_triage_output,
     SAFE_FALLBACK_OUTPUT,
-    MAX_VALIDATION_RETRIES,
 )
 
 
@@ -265,10 +258,8 @@ class TestTriageOutputSchema:
 # 3. DIAGNOSIS ENFORCEMENT TESTS
 # ---------------------------------------------------------------------------
 
-from src.safety.diagnosis_enforcement import (
+from src.safety.diagnosis_enforcement import (  # noqa: E402
     enforce_no_diagnosis,
-    DiagnosisRewriteEvent,
-    DIAGNOSTIC_KEYWORD_BLOCKLIST,
 )
 
 
@@ -342,7 +333,7 @@ class TestDiagnosisEnforcement:
 # 4. CENTRALIZED SAFETY GATE TESTS
 # ---------------------------------------------------------------------------
 
-from src.safety.safety_gate import (
+from src.safety.safety_gate import (  # noqa: E402
     safety_gate,
     FinalDecision,
     SAFE_FALLBACK_MESSAGE,
@@ -482,11 +473,10 @@ class TestCentralizedSafetyGate:
 # 5. PHI MASKING TESTS
 # ---------------------------------------------------------------------------
 
-from src.safety.phi_masking import (
+from src.safety.phi_masking import (  # noqa: E402
     mask_phi,
     mask_phi_in_dict,
     mask_transcript,
-    PHIMaskingFilter,
 )
 
 
@@ -573,7 +563,6 @@ class TestProductionPostgresEnforcement:
 
     def test_production_requires_postgres_in_config(self):
         """Config validation should reject non-postgres in production."""
-        from src.config import validate_config
 
         with patch.dict(os.environ, {
             "ENVIRONMENT": "production",

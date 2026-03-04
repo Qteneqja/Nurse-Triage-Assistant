@@ -10,12 +10,8 @@ Fix the code, not the test.
 """
 from __future__ import annotations
 
-import ast
-import importlib
-import os
 import pathlib
 import re
-from typing import Set
 
 import pytest
 
@@ -85,12 +81,11 @@ class TestNoDirectDeepSeekUsage:
 # 2. CANONICAL DISPOSITIONS ONLY
 # ---------------------------------------------------------------------------
 
-from src.safety.gate import (
+from src.safety.gate import (  # noqa: E402
     CANONICAL_DISPOSITIONS,
     LEGACY_TO_CANON,
     normalize_disposition,
     GateContext,
-    FinalDecision,
     gate_triage_output,
     gate_outbound_text,
 )
@@ -182,7 +177,7 @@ class TestOutboundTextGate:
 # 4. GUARDED LLM WRAPPER
 # ---------------------------------------------------------------------------
 
-from src.llm.guarded_client import GuardedLLM, _OUTBOUND_TEXT_FIELDS
+from src.llm.guarded_client import GuardedLLM, _OUTBOUND_TEXT_FIELDS  # noqa: E402
 
 
 class TestGuardedLLMContract:

@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -131,7 +130,7 @@ def run_case_deterministic(case: dict) -> GoldenCallResult:
     from src.safety.red_flags import score_red_flags, check_all
 
     transcript = case["input_transcript"]
-    demographics = case.get("patient_demographics", {})
+    case.get("patient_demographics", {})
     chief_complaint = transcript  # Use full transcript as chief complaint for rule matching
 
     try:
@@ -245,7 +244,7 @@ def install_llm_block():
 
     Must be called before any case runs in deterministic_only mode.
     """
-    from unittest.mock import patch, AsyncMock
+    from unittest.mock import patch
 
     def _blocked_call(*args, **kwargs):
         raise RuntimeError("External LLM call attempted in deterministic_only mode")

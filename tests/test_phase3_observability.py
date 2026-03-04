@@ -6,11 +6,10 @@ health/ready/metrics API endpoints.
 """
 import json
 import logging
-import time
 import pytest
 from unittest.mock import patch, MagicMock
 
-from src.observability.metrics import MetricsRegistry, get_metrics, reset_metrics
+from src.observability.metrics import get_metrics, reset_metrics
 from src.observability.logging import (
     StructuredJSONFormatter,
     set_log_context,
@@ -335,7 +334,7 @@ class TestActiveSessionCount:
         assert store.get_active_session_count() == 0
         s1 = store.create_session()
         assert store.get_active_session_count() == 1
-        s2 = store.create_session()
+        store.create_session()
         assert store.get_active_session_count() == 2
         store.delete_session(s1.session_id)
         assert store.get_active_session_count() == 1

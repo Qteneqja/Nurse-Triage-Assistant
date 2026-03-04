@@ -109,7 +109,7 @@ async def _generate_orchestrator_report_background(
         patient_name = session_metadata.get("patient_name", "")
         disposition = finalize.disposition.value if finalize else "HUMAN_REVIEW"
 
-        filename = generate_report_filename(
+        generate_report_filename(
             session_id=session_id,
             patient_name=patient_name,
             disposition=disposition,
@@ -130,7 +130,7 @@ async def _generate_orchestrator_report_background(
         sbar_for_file = sbar_text if STORE_PHI else mask_phi(sbar_text)
 
         with open(report_txt_path, "w") as f:
-            f.write(f"Triage Handoff Report (Orchestrator)\n")
+            f.write("Triage Handoff Report (Orchestrator)\n")
             f.write(f"Session ID: {session_id}\n")
             f.write(f"Generated: {datetime.now().isoformat()}\n")
             f.write(f"{'=' * 80}\n\n")
@@ -147,7 +147,7 @@ async def _generate_orchestrator_report_background(
         try:
             blob_urls = upload_reports_to_blob(report_json_path, report_txt_path, REPORTS_DIR)
             if blob_urls.get("json_url"):
-                logger.info(f"[BACKGROUND] Reports uploaded to blob storage")
+                logger.info("[BACKGROUND] Reports uploaded to blob storage")
         except Exception as blob_exc:
             logger.warning(f"[BACKGROUND] Blob upload failed (non-fatal): {blob_exc}")
 

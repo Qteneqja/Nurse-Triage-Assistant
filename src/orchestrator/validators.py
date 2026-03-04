@@ -287,7 +287,7 @@ def post_check_safety_gate(
     # If the gate rewrote content, a violation occurred
     if gated != llm_response_text:
         raise PostCheckViolation(
-            f"Gate rewrote LLM output (diagnosis/unsafe content detected)"
+            "Gate rewrote LLM output (diagnosis/unsafe content detected)"
         )
 
     # Check 3: Urgency downgrade (kept here because it requires cross-turn state)

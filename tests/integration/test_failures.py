@@ -12,10 +12,8 @@ Tests graceful handling of system failures:
 
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch
-from src.orchestrator.orchestrator import Orchestrator
-from src.orchestrator.schemas import OrchestratorSession, DispositionCategory
-from src.llm.client import LLMCallError
+from unittest.mock import patch
+from src.orchestrator.schemas import OrchestratorSession
 
 
 class TestLLMTimeout:
@@ -64,15 +62,13 @@ class TestLLMTimeout:
             mock.side_effect = asyncio.TimeoutError()
             
             # Try several turns with consistent timeout
-            escalated = False
             for i in range(3):
                 try:
-                    result = await orchestrator_with_mocks.process_turn(
+                    await orchestrator_with_mocks.process_turn(
                         session,
                         f"Turn {i}"
                     )
                     if session.is_finalized:
-                        escalated = True
                         break
                 except asyncio.TimeoutError:
                     pass
@@ -98,7 +94,7 @@ class TestLLMParseError:
             mock.side_effect = ValueError("Invalid output schema")
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )
@@ -120,7 +116,7 @@ class TestLLMParseError:
             mock.side_effect = KeyError("disposition")
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )
@@ -145,7 +141,7 @@ class TestNetworkError:
             mock.side_effect = ConnectionError("Cannot reach API")
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "I need medical help"
                 )
@@ -192,7 +188,7 @@ class TestDatabaseFailure:
             
             try:
                 # Try to process (would normally save session)
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )
@@ -207,10 +203,10 @@ class TestDatabaseFailure:
         mock_storage,
     ):
         """Session save fails mid-conversation."""
-        session = OrchestratorSession(session_id="test-save-001")
+        OrchestratorSession(session_id="test-save-001")
         
         # First save succeeds
-        session = mock_storage.create_session("test-save-001")
+        mock_storage.create_session("test-save-001")
         
         # Subsequent save fails
         with patch.object(mock_storage, "update_session") as mock:
@@ -230,7 +226,7 @@ class TestDatabaseFailure:
         mock_storage,
     ):
         """Transcript saving fails."""
-        session = OrchestratorSession(session_id="test-transcript-fail")
+        OrchestratorSession(session_id="test-transcript-fail")
         
         with patch.object(mock_storage, "save_transcript") as mock:
             mock.side_effect = IOError("Disk full")
@@ -259,7 +255,7 @@ class TestProtocolFailures:
             mock_retriever.side_effect = FileNotFoundError("Protocol file not found")
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )
@@ -280,7 +276,7 @@ class TestProtocolFailures:
             mock.side_effect = RuntimeError("Retrieval error")
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "I have chest pain"
                 )
@@ -334,7 +330,7 @@ class TestGracefulDegradation:
             storage_mock.side_effect = Exception("DB error")
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "help"
                 )
@@ -415,7 +411,7 @@ class TestErrorRecovery:
             mock.side_effect = mock_with_retry
             
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )

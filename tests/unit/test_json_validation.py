@@ -12,9 +12,8 @@ Tests validator + retry + safe fallback logic for:
 
 import json
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-from src.orchestrator.orchestrator import Orchestrator
 from src.orchestrator.schemas import (
     IntakeTurnOutput,
     FinalizeOutput,
@@ -59,11 +58,6 @@ class TestMissingRequiredFields:
         orchestrator_with_mocks,
     ):
         """LLM returns JSON without next_action."""
-        bad_output = {
-            "disposition": "HUMAN_REVIEW",
-            "confidence_score": 0.8,
-            # Missing "next_action"
-        }
         
         # Validator should catch and retry or use fallback
         # (exact behavior depends on implementation)
@@ -126,7 +120,7 @@ class TestWrongDataTypes:
         
         # Should reject or coerce
         try:
-            output = IntakeTurnOutput(**bad_output)  # type: ignore[arg-type]
+            IntakeTurnOutput(**bad_output)  # type: ignore[arg-type]
         except (ValueError, TypeError):
             pass
     
@@ -163,7 +157,7 @@ class TestMalformedJSON:
             
             # Should handle JSON parse error gracefully
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )
@@ -208,7 +202,7 @@ class TestUnexpectedKeys:
         
         # Validator should ignore or handle
         try:
-            finalize = FinalizeOutput(**output)  # type: ignore[arg-type]
+            FinalizeOutput(**output)  # type: ignore[arg-type]
             # If succeeds, extra key was ignored (good)
         except (TypeError, ValueError):
             # Pydantic rejects extra fields or missing required fields (also acceptable)
@@ -227,7 +221,7 @@ class TestUnexpectedKeys:
         # Should ignore extras
         try:
             from src.orchestrator.schemas import FinalizeOutput
-            result = FinalizeOutput(**output)
+            FinalizeOutput(**output)
         except TypeError:
             pass
 
@@ -250,10 +244,6 @@ class TestEnumMismatch:
     @pytest.mark.asyncio
     async def test_invalid_next_action_value(self):
         """next_action is "CALL_911" (not in enum)."""
-        bad_output = {
-            "next_action": "CALL_911",  # Invalid value
-            "disposition": "ER_NOW",
-        }
         
         # Should reject or map to valid value
     
@@ -280,7 +270,7 @@ class TestNullValues:
         }
         
         # Should either use fallback or reject
-        output = FinalizeOutput(**bad_finalize)
+        FinalizeOutput(**bad_finalize)
         # If accepted, sbar_report is None (acceptable)
         # Should have fallback for SBAR display
     
@@ -294,7 +284,7 @@ class TestNullValues:
             "patient_summary": "Test",
         }
         
-        output = FinalizeOutput(**bad_finalize)
+        FinalizeOutput(**bad_finalize)
         # Should handle gracefully
 
 
@@ -329,7 +319,7 @@ class TestRetryLogic:
             
             # This should trigger retry on error
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )
@@ -354,7 +344,7 @@ class TestRetryLogic:
             
             # Should use safe fallback (e.g., HUMAN_REVIEW)
             try:
-                result = await orchestrator_with_mocks.process_turn(
+                await orchestrator_with_mocks.process_turn(
                     session,
                     "test"
                 )

@@ -14,9 +14,8 @@ import hmac
 import os
 import uuid
 from base64 import b64encode
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 

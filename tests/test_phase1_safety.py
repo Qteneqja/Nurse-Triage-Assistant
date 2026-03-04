@@ -18,7 +18,6 @@ Covers every acceptance criterion from the Phase 1 spec:
   H) Post-check safety gate (diagnoses / unsafe instructions / urgency downgrade)
 """
 import pytest
-import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.orchestrator.orchestrator import Orchestrator
@@ -27,7 +26,6 @@ from src.orchestrator.schemas import (
     DecisionTraceEntry,
     FinalizeOutput,
     IntakeTurnOutput,
-    IntakeStatePatch,
     OrchestratorSession,
     Phase1Disposition,
     Phase1NextAction,
@@ -583,7 +581,6 @@ class TestPostCheckSafetyGate:
     """post_check_safety_gate must raise PostCheckViolation on violations."""
 
     def _make_p1_output(self, disposition: str = "UNDECIDED") -> Phase1TurnOutput:
-        import json as _json
         return Phase1TurnOutput.model_validate({
             "confidence_score": 0.7,
             "escalation_required": False,

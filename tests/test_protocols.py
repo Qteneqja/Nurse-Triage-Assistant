@@ -11,9 +11,7 @@ Covers:
 """
 import json
 import pytest
-import pytest_asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from src.protocols.retriever import (
     Protocol,
@@ -22,7 +20,6 @@ from src.protocols.retriever import (
     load_protocols,
     _tokenize,
     _ngrams,
-    _score_protocol,
 )
 from src.orchestrator.orchestrator import Orchestrator
 from src.orchestrator.schemas import (
@@ -339,7 +336,7 @@ class TestOrchestratorProtocolIntegration:
         assert has_protocol_context, "Phase1 LLM messages should include protocol context"
 
         # Intake messages should also have protocol context
-        intake_messages = mock_llm.call.call_args_list[1].kwargs.get("messages", [])
+        mock_llm.call.call_args_list[1].kwargs.get("messages", [])
 
     @pytest.mark.asyncio
     async def test_protocol_hits_in_decision_trace(self):
