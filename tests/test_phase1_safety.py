@@ -17,6 +17,7 @@ Covers every acceptance criterion from the Phase 1 spec:
   G) Decision trace logging (DecisionTraceEntry stored per turn)
   H) Post-check safety gate (diagnoses / unsafe instructions / urgency downgrade)
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -45,6 +46,7 @@ from src.llm.client import LLMCallError
 # Helpers
 # -----------------------------------------------------------------------
 
+
 def _make_session(**kwargs) -> OrchestratorSession:
     defaults = {
         "session_id": "phase1-test-001",
@@ -71,14 +73,17 @@ def _make_finalize_output(**kwargs) -> FinalizeOutput:
 def _valid_phase1_json() -> str:
     """Return a minimal valid Phase1TurnOutput JSON string."""
     import json
-    return json.dumps({
-        "confidence_score": 0.8,
-        "escalation_required": False,
-        "red_flags_triggered": [],
-        "rules_triggered": [],
-        "next_action": "ASK_QUESTION",
-        "disposition": "UNDECIDED",
-    })
+
+    return json.dumps(
+        {
+            "confidence_score": 0.8,
+            "escalation_required": False,
+            "red_flags_triggered": [],
+            "rules_triggered": [],
+            "next_action": "ASK_QUESTION",
+            "disposition": "UNDECIDED",
+        }
+    )
 
 
 def _make_mock_llm_raw(raw: str):
@@ -93,6 +98,7 @@ def _make_mock_llm_raw(raw: str):
 # SECTION B — Red Flag Scoring Model
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestRedFlagScoringModel:
     """score_red_flags() must return (disposition, score, ids) correctly."""
 
@@ -102,7 +108,9 @@ class TestRedFlagScoringModel:
         assert "rf_severe_breathing_failure" in ids
 
     def test_critical_flag_cardiac_returns_er_now(self):
-        disp, score, ids = score_red_flags(utterance="I have crushing chest pain radiating to my arm")
+        disp, score, ids = score_red_flags(
+            utterance="I have crushing chest pain radiating to my arm"
+        )
         assert disp == "ER_NOW"
         assert "rf_cardiac_arrest_signs" in ids
 
@@ -117,7 +125,9 @@ class TestRedFlagScoringModel:
         assert "rf_suicidal_self_harm" in ids
 
     def test_critical_flag_loss_of_consciousness_returns_er_now(self):
-        disp, score, ids = score_red_flags(utterance="My husband collapsed and won't wake up")
+        disp, score, ids = score_red_flags(
+            utterance="My husband collapsed and won't wake up"
+        )
         assert disp == "ER_NOW"
         assert "rf_loss_of_consciousness" in ids
 
@@ -168,6 +178,7 @@ class TestRedFlagScoringModel:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION A — Pre-Check Safety Gate (via orchestrator)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestPreCheckSafetyGate:
     """Pre-check gate must escalate before any LLM call."""
@@ -239,6 +250,7 @@ class TestPreCheckSafetyGate:
 # SECTION D — Confused Caller Protocol
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestConfusedCallerProtocol:
     """Unclear answer → retry ladder → escalate on third unclear."""
 
@@ -254,7 +266,10 @@ class TestConfusedCallerProtocol:
         result = await orch.process_turn(session, "")  # empty = unclear
 
         assert result["action"] == "ask"
-        assert "didn't quite catch" in result["message"].lower() or "rephrase" in result["message"].lower()
+        assert (
+            "didn't quite catch" in result["message"].lower()
+            or "rephrase" in result["message"].lower()
+        )
         assert session.unclear_answer_retries == 1
         mock_llm._raw_call.assert_not_called()
 
@@ -326,6 +341,7 @@ class TestConfusedCallerProtocol:
 # SECTION E — JSON Validation + Repair
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestJsonValidationAndRepair:
     """validate_phase1_output: attempt 1 → repair → fail-closed."""
 
@@ -390,6 +406,7 @@ class TestJsonValidationAndRepair:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION F — Fail-Closed Conditions
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestFailClosedConditions:
     """All fail-closed paths must result in action=escalate."""
@@ -507,14 +524,16 @@ class TestFailClosedConditions:
         session.intake_state.onset_time = "2 hours"
 
         # Inject a prior turn with ER_NOW so SCHEDULE is a downgrade
-        session.decision_trace.append(DecisionTraceEntry(
-            turn_number=0,
-            user_text="My chest hurts badly",
-            confidence_score=0.9,
-            disposition="ER_NOW",
-            escalation_required=False,
-            system_response="Please stay on the line.",
-        ))
+        session.decision_trace.append(
+            DecisionTraceEntry(
+                turn_number=0,
+                user_text="My chest hurts badly",
+                confidence_score=0.9,
+                disposition="ER_NOW",
+                escalation_required=False,
+                system_response="Please stay on the line.",
+            )
+        )
 
         result = await orch.process_turn(session, "I feel much better now")
 
@@ -525,6 +544,7 @@ class TestFailClosedConditions:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION C — Confidence Scoring (unit tests)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestConfidenceScoring:
     """Deterministic confidence deductions are calculated correctly."""
@@ -565,6 +585,7 @@ class TestConfidenceScoring:
     def test_confidence_below_threshold_flag(self):
         """Verify 0.60 threshold logic explicitly."""
         from src.orchestrator.orchestrator import PHASE1_CONFIDENCE_ESCALATION_THRESHOLD
+
         assert PHASE1_CONFIDENCE_ESCALATION_THRESHOLD == 0.60
 
         bd = ConfidenceBreakdown()
@@ -577,18 +598,21 @@ class TestConfidenceScoring:
 # SECTION H — Post-Check Safety Gate (unit tests)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestPostCheckSafetyGate:
     """post_check_safety_gate must raise PostCheckViolation on violations."""
 
     def _make_p1_output(self, disposition: str = "UNDECIDED") -> Phase1TurnOutput:
-        return Phase1TurnOutput.model_validate({
-            "confidence_score": 0.7,
-            "escalation_required": False,
-            "red_flags_triggered": [],
-            "rules_triggered": [],
-            "next_action": "ASK_QUESTION",
-            "disposition": disposition,
-        })
+        return Phase1TurnOutput.model_validate(
+            {
+                "confidence_score": 0.7,
+                "escalation_required": False,
+                "red_flags_triggered": [],
+                "rules_triggered": [],
+                "next_action": "ASK_QUESTION",
+                "disposition": disposition,
+            }
+        )
 
     def test_clean_output_passes(self):
         """No violation in normal output."""
@@ -650,6 +674,7 @@ class TestPostCheckSafetyGate:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION G — Decision Trace Logging
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestDecisionTraceLogging:
     """DecisionTraceEntry must be appended to session.decision_trace each turn."""
@@ -741,11 +766,13 @@ class TestDecisionTraceLogging:
 # SECTION — Schema validation
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestPhase1OutputSchema:
     """Phase1TurnOutput schema validation."""
 
     def test_valid_schema_parses(self):
         import json as _json
+
         data = _json.loads(_valid_phase1_json())
         obj = Phase1TurnOutput.model_validate(data)
         assert obj.confidence_score == 0.8
@@ -754,22 +781,27 @@ class TestPhase1OutputSchema:
 
     def test_missing_required_field_raises(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
-            Phase1TurnOutput.model_validate({
-                "confidence_score": 0.5,
-                # missing all other required fields
-            })
+            Phase1TurnOutput.model_validate(
+                {
+                    "confidence_score": 0.5,
+                    # missing all other required fields
+                }
+            )
 
     def test_disposition_normalisation(self):
         """Legacy disposition values are normalised."""
-        obj = Phase1TurnOutput.model_validate({
-            "confidence_score": 0.5,
-            "escalation_required": False,
-            "red_flags_triggered": [],
-            "rules_triggered": [],
-            "next_action": "ASK_QUESTION",
-            "disposition": "URGENT_CARE",  # legacy → URGENT
-        })
+        obj = Phase1TurnOutput.model_validate(
+            {
+                "confidence_score": 0.5,
+                "escalation_required": False,
+                "red_flags_triggered": [],
+                "rules_triggered": [],
+                "next_action": "ASK_QUESTION",
+                "disposition": "URGENT_CARE",  # legacy → URGENT
+            }
+        )
         assert obj.disposition == Phase1Disposition.URGENT
 
     def test_safe_escalation_helper(self):

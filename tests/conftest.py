@@ -1,6 +1,7 @@
 """
 Pytest configuration and shared fixtures for Phase 4 tests.
 """
+
 import json
 import uuid
 import pytest
@@ -24,6 +25,7 @@ from src.storage.interface import StorageInterface
 # Golden Call Fixtures
 # ============================================================================
 
+
 @pytest.fixture(scope="session")
 def golden_calls_dir() -> Path:
     """Return the path to the golden calls directory."""
@@ -36,7 +38,7 @@ def golden_calls(golden_calls_dir: Path) -> Dict[str, dict]:
     cases = {}
     if not golden_calls_dir.exists():
         return cases
-    
+
     for json_file in sorted(golden_calls_dir.glob("*.json")):
         try:
             with open(json_file) as f:
@@ -46,7 +48,7 @@ def golden_calls(golden_calls_dir: Path) -> Dict[str, dict]:
                     cases[case_id] = case
         except (json.JSONDecodeError, IOError) as e:
             print(f"Failed to load {json_file}: {e}")
-    
+
     return cases
 
 
@@ -71,6 +73,7 @@ def golden_case_moderate(golden_calls: Dict[str, dict]) -> dict:
 # ============================================================================
 # Mock Storage
 # ============================================================================
+
 
 class MockStorage(StorageInterface):
     """In-memory mock storage for testing.
@@ -158,9 +161,10 @@ def mock_storage() -> MockStorage:
 # Mock LLM
 # ============================================================================
 
+
 class MockLLMClient:
     """Mock LLM client for deterministic testing."""
-    
+
     def __init__(self, default_response: Optional[dict] = None):
         self.call_count = 0
         self.call_history: List[dict] = []
@@ -173,26 +177,38 @@ class MockLLMClient:
             "disposition": "HUMAN_REVIEW",
             "next_question": "What else can you tell me?",
         }
-    
+
     async def structured_call(
         self,
         system_prompt: str = "",
         user_message: str = "",
         output_schema: Optional[type] = None,
         retry_count: int = 3,
-        **kwargs
+        **kwargs,
     ):
         """Mock structured LLM call."""
         self.call_count += 1
-        self.call_history.append({
-            "system_prompt": system_prompt,
-            "user_message": user_message,
-            "schema": output_schema.__name__ if output_schema and hasattr(output_schema, "__name__") else str(output_schema),
-        })
+        self.call_history.append(
+            {
+                "system_prompt": system_prompt,
+                "user_message": user_message,
+                "schema": output_schema.__name__
+                if output_schema and hasattr(output_schema, "__name__")
+                else str(output_schema),
+            }
+        )
 
         # Return the most appropriate safe default for the requested schema.
-        from src.orchestrator.schemas import IntakeTurnOutput, FinalizeOutput, Phase1TurnOutput
-        from src.orchestrator.validators import safe_intake_turn_default, safe_finalize_default, safe_phase1_escalation
+        from src.orchestrator.schemas import (
+            IntakeTurnOutput,
+            FinalizeOutput,
+            Phase1TurnOutput,
+        )
+        from src.orchestrator.validators import (
+            safe_intake_turn_default,
+            safe_finalize_default,
+            safe_phase1_escalation,
+        )
 
         if output_schema is IntakeTurnOutput:
             return safe_intake_turn_default()
@@ -208,12 +224,12 @@ class MockLLMClient:
             return output_schema(**self.default_response)  # type: ignore[misc]
         except Exception:
             return MagicMock(spec=output_schema)
-    
+
     async def raw_call(self, system_prompt: str, user_message: str, **kwargs) -> str:
         """Mock raw LLM call."""
         self.call_count += 1
         return json.dumps(self.default_response)
-    
+
     def set_response(self, response: dict):
         """Set the response for next calls."""
         self.default_response.update(response)
@@ -228,6 +244,7 @@ def mock_llm_client() -> MockLLMClient:
 # ============================================================================
 # Mock Orchestrator
 # ============================================================================
+
 
 @pytest_asyncio.fixture
 async def orchestrator_with_mocks(
@@ -259,7 +276,11 @@ async def orchestrator_with_mocks(
         # Guard: schema-unaware test mocks may return wrong type.
         # Fall back to safe defaults when there is a mismatch.
         if output_schema is not None and not isinstance(result, output_schema):
-            from src.orchestrator.validators import safe_finalize_default, safe_intake_turn_default
+            from src.orchestrator.validators import (
+                safe_finalize_default,
+                safe_intake_turn_default,
+            )
+
             if output_schema is FinalizeOutput:
                 return safe_finalize_default()
             if output_schema is IntakeTurnOutput:
@@ -279,6 +300,7 @@ async def orchestrator_with_mocks(
 # Helper Functions
 # ============================================================================
 
+
 def create_test_session(
     session_id: str = "test-001",
     max_turns: int = 12,
@@ -296,7 +318,7 @@ def create_intake_turn_output(
     next_question: str = "What else?",
     confidence: float = 0.75,
     disposition_hint: str = "HUMAN_REVIEW",
-    **kwargs
+    **kwargs,
 ) -> IntakeTurnOutput:
     """Create a test IntakeTurnOutput."""
     defaults = {
@@ -313,7 +335,7 @@ def create_intake_turn_output(
 def create_finalize_output(
     disposition: str = DispositionCategory.SCHEDULE,
     sbar_text: str = "S: patient complaint\nB: background\nA: assessment\nR: recommendation",
-    **kwargs
+    **kwargs,
 ) -> FinalizeOutput:
     """Create a test FinalizeOutput."""
     defaults = {
@@ -331,20 +353,20 @@ def create_finalize_output(
 @pytest.fixture
 def assert_helpers():
     """Return assertion helper functions."""
-    
+
     def assert_sbar_present(output: FinalizeOutput) -> bool:
         """Assert that SBAR is present and non-empty."""
         assert output.sbar_report or output.sbar, "SBAR missing"
         sbar_text = output.sbar_report or str(output.sbar)
         assert len(sbar_text) > 20, "SBAR too short"
         return True
-    
+
     def assert_disposition_valid(disposition: str) -> bool:
         """Assert disposition is a valid enum value."""
         valid = {"ER_NOW", "URGENT", "SCHEDULE", "SELF_CARE", "HUMAN_REVIEW"}
         assert disposition in valid, f"Invalid disposition: {disposition}"
         return True
-    
+
     def assert_red_flags_triggered(
         result: dict,
         expected_flags: List[str],
@@ -353,14 +375,18 @@ def assert_helpers():
         """Assert expected red flags were triggered."""
         triggered = set(result.get("red_flags_triggered", []))
         expected = set(expected_flags)
-        
+
         if must_have_all:
-            assert expected.issubset(triggered), f"Missing flags: {expected - triggered}"
+            assert expected.issubset(triggered), (
+                f"Missing flags: {expected - triggered}"
+            )
         else:
-            assert len(expected & triggered) > 0, f"None of {expected} found in {triggered}"
-        
+            assert len(expected & triggered) > 0, (
+                f"None of {expected} found in {triggered}"
+            )
+
         return True
-    
+
     return {
         "assert_sbar_present": assert_sbar_present,
         "assert_disposition_valid": assert_disposition_valid,
@@ -372,10 +398,12 @@ def assert_helpers():
 # Environment Setup
 # ============================================================================
 
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_env():
     """Set up test environment variables."""
     import os
+
     os.environ["USE_MOCK_LLM"] = "true"
     os.environ["STORAGE_BACKEND"] = "memory"
     os.environ["ENVIRONMENT"] = "test"
@@ -386,10 +414,9 @@ def setup_test_env():
 # Parametrize Helpers
 # ============================================================================
 
+
 def pytest_generate_tests(metafunc):
     """Generate parametrized tests from fixtures."""
     # Automatically parametrize tests using golden_calls fixture
     if "golden_case" in metafunc.fixturenames:
         pass  # Let pytest handle it naturally
-
-

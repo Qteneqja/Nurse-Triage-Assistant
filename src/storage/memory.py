@@ -4,6 +4,7 @@ In-Memory Storage for Orchestrator Sessions
 Implements StorageInterface with a simple dict backend + TTL cleanup.
 Structured for easy swap to Redis or another persistent store later.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,13 +42,13 @@ class InMemoryOrchestratorStorage(StorageInterface):
             try:
                 await asyncio.sleep(CLEANUP_INTERVAL_MINUTES * 60)
                 now = datetime.now(UTC)
-                expired = [
-                    sid for sid, exp in self._expiry.items() if exp < now
-                ]
+                expired = [sid for sid, exp in self._expiry.items() if exp < now]
                 for sid in expired:
                     self._remove(sid)
                 if expired:
-                    logger.info(f"Cleaned up {len(expired)} expired orchestrator sessions")
+                    logger.info(
+                        f"Cleaned up {len(expired)} expired orchestrator sessions"
+                    )
             except Exception as e:
                 logger.error(f"Orchestrator storage cleanup error: {e}")
 
@@ -62,7 +63,9 @@ class InMemoryOrchestratorStorage(StorageInterface):
             audit_trace=AuditTrace(session_id=session_id, call_sid=call_sid),
         )
         self._sessions[session_id] = session
-        self._expiry[session_id] = datetime.now(UTC) + timedelta(minutes=SESSION_TTL_MINUTES)
+        self._expiry[session_id] = datetime.now(UTC) + timedelta(
+            minutes=SESSION_TTL_MINUTES
+        )
         if call_sid:
             self._call_index[call_sid] = session_id
         logger.info(f"Created orchestrator session {session_id} (call={call_sid})")
@@ -72,7 +75,9 @@ class InMemoryOrchestratorStorage(StorageInterface):
         """Persist session (in-memory = just update dict)."""
         self._sessions[session.session_id] = session
         # refresh TTL
-        self._expiry[session.session_id] = datetime.now(UTC) + timedelta(minutes=SESSION_TTL_MINUTES)
+        self._expiry[session.session_id] = datetime.now(UTC) + timedelta(
+            minutes=SESSION_TTL_MINUTES
+        )
 
     def load_session(self, session_id: str) -> Optional[OrchestratorSession]:
         """Load session by ID, returning None if expired."""
@@ -104,6 +109,7 @@ class InMemoryOrchestratorStorage(StorageInterface):
     def get_active_session_count(self) -> int:
         """Return the number of currently tracked sessions."""
         return len(self._sessions)
+
 
 # ---- Access through factory ----
 # All session access MUST go through src.storage.factory.get_storage_backend()

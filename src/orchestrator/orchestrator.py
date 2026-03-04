@@ -21,6 +21,7 @@ Phase 1 additions (Clinical Core):
 - Phase1TurnOutput: strict JSON schema with 2-attempt repair loop
 - Decision trace logging: per-turn clinical audit log stored in session
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -103,7 +104,8 @@ PHASE1_CONFIDENCE_ESCALATION_THRESHOLD = 0.60
 # ---------------------------------------------------------------------------
 
 _HUMAN_REQUEST_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
+    re.compile(p, re.IGNORECASE)
+    for p in [
         r"\b(?:talk|speak|connect)\s+(?:to|with)\s+a?\s*(?:nurse|human|agent|representative|person|someone)\b",
         r"\b(?:real|actual|live)\s+(?:person|human|nurse|agent)\b",
         r"\btransfer\s+(?:me|call)?\s*(?:to)?\b",
@@ -139,14 +141,30 @@ def _detect_human_request(utterance: str) -> bool:
 
 _YES_NO_ACCEPTED: dict[str, str] = {
     # Yes forms
-    "yes": "yes", "yeah": "yes", "yep": "yes", "yup": "yes", "ya": "yes",
-    "uh huh": "yes", "sure": "yes", "correct": "yes", "right": "yes",
-    "absolutely": "yes", "affirmative": "yes", "mhm": "yes", "mm hmm": "yes",
+    "yes": "yes",
+    "yeah": "yes",
+    "yep": "yes",
+    "yup": "yes",
+    "ya": "yes",
+    "uh huh": "yes",
+    "sure": "yes",
+    "correct": "yes",
+    "right": "yes",
+    "absolutely": "yes",
+    "affirmative": "yes",
+    "mhm": "yes",
+    "mm hmm": "yes",
     # No forms
-    "no": "no", "nope": "no", "nah": "no", "naw": "no", "negative": "no",
-    "not really": "no", "no way": "no",
+    "no": "no",
+    "nope": "no",
+    "nah": "no",
+    "naw": "no",
+    "negative": "no",
+    "not really": "no",
+    "no way": "no",
     # Common STT confusions
-    "know": "no", "now": "no",
+    "know": "no",
+    "now": "no",
 }
 
 
@@ -178,22 +196,25 @@ def _get_retry_message(retry_index: int, expected_answer_type: str | None) -> st
 
     retry_index: 0-based (0 = first retry, 1 = second, 2 = third / escalation).
     """
-    ladder = _RETRY_LADDER_YES_NO if expected_answer_type == "yes_no" else _RETRY_LADDER_DEFAULT
+    ladder = (
+        _RETRY_LADDER_YES_NO
+        if expected_answer_type == "yes_no"
+        else _RETRY_LADDER_DEFAULT
+    )
     idx = min(retry_index, len(ladder) - 1)
     return ladder[idx]
 
 
 # Unclear-answer signals checked against caller utterance
 _UNCLEAR_SIGNALS = [
-    r"^\s*$",                              # empty
+    r"^\s*$",  # empty
     r"^(i\s+don\s*'?\s*t\s+know|idk|no\s+idea|not\s+sure|unsure)\s*[\.\?]?$",
-    r"^(uh|um|erm|err|hmm+)\s*[\.\?]?$",   # filler only
+    r"^(uh|um|erm|err|hmm+)\s*[\.\?]?$",  # filler only
     r"^(what|huh|pardon|repeat)\s*[\?!]?$",  # confusion signals
     r"^(yes|no|maybe|perhaps|i\s+guess)\s*[\.\?]?$",  # non-answers to open questions
 ]
 _UNCLEAR_PATTERNS = [
-    __import__("re").compile(p, __import__("re").IGNORECASE)
-    for p in _UNCLEAR_SIGNALS
+    __import__("re").compile(p, __import__("re").IGNORECASE) for p in _UNCLEAR_SIGNALS
 ]
 
 # Escalation messages
@@ -239,11 +260,17 @@ _FINALIZE_PATIENT_SUMMARY = (
 
 _LOW_CONFIDENCE_FOLLOWUP_QUESTIONS: list[tuple[str, str]] = [
     # (intake_state_field, question_text)
-    ("onset_time",       "When did your symptoms first start?"),
-    ("symptom_severity", "On a scale of 0 to 10, how severe is your discomfort right now?"),
-    ("relevant_history", "Do you have any medical conditions or recent illnesses that may be related?"),
-    ("meds",             "Are you currently taking any medications?"),
-    ("allergies",        "Do you have any known drug allergies?"),
+    ("onset_time", "When did your symptoms first start?"),
+    (
+        "symptom_severity",
+        "On a scale of 0 to 10, how severe is your discomfort right now?",
+    ),
+    (
+        "relevant_history",
+        "Do you have any medical conditions or recent illnesses that may be related?",
+    ),
+    ("meds", "Are you currently taking any medications?"),
+    ("allergies", "Do you have any known drug allergies?"),
 ]
 
 _LOW_CONFIDENCE_FALLBACK_QUESTION = (
@@ -285,9 +312,7 @@ _LOOP_BREAKER_QUESTIONS: dict[str, str] = {
         "Are you taking any medications right now? "
         "Prescription, over-the-counter, or supplements? If none, just say none."
     ),
-    "allergies": (
-        "Do you have any known drug allergies? If none, just say none."
-    ),
+    "allergies": ("Do you have any known drug allergies? If none, just say none."),
 }
 
 
@@ -301,6 +326,7 @@ def _get_loop_breaker_question(slot: str | None, original_question: str) -> str:
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
 
 class Orchestrator:
     """Multi-agent orchestrator for phone triage.
@@ -375,7 +401,9 @@ class Orchestrator:
 
         assert session.audit_trace is not None
 
-        session.conversation.append(ConversationTurn(role="caller", text=caller_utterance))
+        session.conversation.append(
+            ConversationTurn(role="caller", text=caller_utterance)
+        )
         session.turn_count += 1
 
         session.audit_trace.add_entry(
@@ -408,7 +436,9 @@ class Orchestrator:
                 correlation_id=correlation_id,
             )
             escalation_msg = _ESCALATION_ER_NOW
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -454,14 +484,18 @@ class Orchestrator:
                 correlation_id=correlation_id,
             )
             session.audit_trace.deterministic_rules_triggered.extend(rf_triggered_ids)
-            session.safety_flags.append(SafetyFlag(
-                source="deterministic",
-                level=SafetyLevel.EMERGENT,
-                flag=", ".join(rf_triggered_ids),
-                reason_for_audit="Phase1 pre-check: critical red flag",
-                script_to_say=escalation_msg,
-            ))
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.safety_flags.append(
+                SafetyFlag(
+                    source="deterministic",
+                    level=SafetyLevel.EMERGENT,
+                    flag=", ".join(rf_triggered_ids),
+                    reason_for_audit="Phase1 pre-check: critical red flag",
+                    script_to_say=escalation_msg,
+                )
+            )
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -478,7 +512,9 @@ class Orchestrator:
             return {
                 "action": "escalate",
                 "message": escalation_msg,
-                "red_flag_result": legacy_result if legacy_result.triggered else RedFlagResult(
+                "red_flag_result": legacy_result
+                if legacy_result.triggered
+                else RedFlagResult(
                     triggered=True,
                     level=SafetyLevel.EMERGENT,
                     matched_rules=rf_triggered_ids,
@@ -500,14 +536,18 @@ class Orchestrator:
                 correlation_id=correlation_id,
             )
             session.audit_trace.deterministic_rules_triggered.extend(rf_triggered_ids)
-            session.safety_flags.append(SafetyFlag(
-                source="deterministic",
-                level=SafetyLevel.URGENT,
-                flag=f"score={rf_score}: " + ", ".join(rf_triggered_ids),
-                reason_for_audit="Phase1 pre-check: weighted score >= 10",
-                script_to_say=escalation_msg,
-            ))
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.safety_flags.append(
+                SafetyFlag(
+                    source="deterministic",
+                    level=SafetyLevel.URGENT,
+                    flag=f"score={rf_score}: " + ", ".join(rf_triggered_ids),
+                    reason_for_audit="Phase1 pre-check: weighted score >= 10",
+                    script_to_say=escalation_msg,
+                )
+            )
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -544,19 +584,28 @@ class Orchestrator:
             )
             gate_decision = _TRANSFER_CONTROL_GATE.evaluate(
                 session=session,
-                next_question="",         # gate derives from missing fields when empty
-                red_flags_triggered=False, # confirmed above; pre-check would have exited
+                next_question="",  # gate derives from missing fields when empty
+                red_flags_triggered=False,  # confirmed above; pre-check would have exited
             )
 
-            if gate_decision.action in ("redirect", "allow_transfer", "premature_transfer"):
+            if gate_decision.action in (
+                "redirect",
+                "allow_transfer",
+                "premature_transfer",
+            ):
                 gate_msg = gate_decision.message
-                is_escalating = gate_decision.action in ("allow_transfer", "premature_transfer")
+                is_escalating = gate_decision.action in (
+                    "allow_transfer",
+                    "premature_transfer",
+                )
 
                 if is_escalating and not gate_msg:
                     gate_msg = _HUMAN_REQUEST_MESSAGE
 
                 if is_escalating:
-                    session.conversation.append(ConversationTurn(role="assistant", text=gate_msg))
+                    session.conversation.append(
+                        ConversationTurn(role="assistant", text=gate_msg)
+                    )
                     session.is_finalized = True
 
                 session.audit_trace.add_entry(
@@ -611,7 +660,9 @@ class Orchestrator:
 
         # ── STEP 1: CONFUSED-CALLER PROTOCOL (with retry ladder) ─────────
         expected = session.last_expected_answer_type
-        is_unclear = self._is_unclear_answer(caller_utterance, expected_answer_type=expected)
+        is_unclear = self._is_unclear_answer(
+            caller_utterance, expected_answer_type=expected
+        )
         if is_unclear:
             session.unclear_answer_retries += 1
             retry_count = session.unclear_answer_retries
@@ -622,7 +673,9 @@ class Orchestrator:
             if retry_count >= 3:
                 # Third unclear attempt → escalate with nurse offer
                 escalation_msg = _get_retry_message(2, expected)
-                session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=escalation_msg)
+                )
                 session.is_finalized = True
                 session.audit_trace.add_entry(
                     step="confused_caller_escalation",
@@ -648,7 +701,9 @@ class Orchestrator:
             else:
                 # Use deterministic retry ladder (non-repetitive)
                 retry_msg = _get_retry_message(retry_count - 1, expected)
-                session.conversation.append(ConversationTurn(role="assistant", text=retry_msg))
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=retry_msg)
+                )
                 session.audit_trace.add_entry(
                     step="unclear_answer_retry",
                     agent="orchestrator",
@@ -680,7 +735,8 @@ class Orchestrator:
         protocol_hits: list[ProtocolHit] = []
         try:
             entities_dict = session.intake_state.model_dump(
-                exclude_none=True, exclude_defaults=True,
+                exclude_none=True,
+                exclude_defaults=True,
             )
             protocol_snippets = self._retriever.retrieve(
                 chief_complaint=session.intake_state.chief_complaint,
@@ -721,8 +777,13 @@ class Orchestrator:
         # parallel is safe.  Total latency = max(phase1, intake) instead of
         # phase1 + intake, saving ~3 s on every dynamic turn.
         from src.config import STORE_PHI as _STORE_PHI_P1
-        messages        = self._build_phase1_messages(session, protocol_snippets=protocol_snippets)
-        intake_messages = self._build_intake_messages(session, protocol_snippets=protocol_snippets)
+
+        messages = self._build_phase1_messages(
+            session, protocol_snippets=protocol_snippets
+        )
+        intake_messages = self._build_intake_messages(
+            session, protocol_snippets=protocol_snippets
+        )
 
         phase1_output: Optional[Phase1TurnOutput] = None
         llm_repair_used: bool = False
@@ -774,7 +835,9 @@ class Orchestrator:
         if isinstance(_p1_or_exc, LLMCallError):
             exc = _p1_or_exc
             # Schema validation failed after repair, OR LLM unreachable → fail closed
-            logger.error(f"[ORCH:{correlation_id}] Phase1 structured call failed: {exc}")
+            logger.error(
+                f"[ORCH:{correlation_id}] Phase1 structured call failed: {exc}"
+            )
             session.audit_trace.add_entry(
                 step="phase1_structured_call_failed",
                 agent="phase1_agent",
@@ -782,7 +845,9 @@ class Orchestrator:
                 correlation_id=correlation_id,
             )
             escalation_msg = _ESCALATION_LOW_CONFIDENCE
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -812,7 +877,9 @@ class Orchestrator:
                 correlation_id=correlation_id,
             )
             escalation_msg = _ESCALATION_LOW_CONFIDENCE
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -848,9 +915,7 @@ class Orchestrator:
                 correlation_id=correlation_id,
             )
         except PostCheckViolation as pcv:
-            logger.error(
-                f"[ORCH:{correlation_id}] POST-CHECK VIOLATION: {pcv.reason}"
-            )
+            logger.error(f"[ORCH:{correlation_id}] POST-CHECK VIOLATION: {pcv.reason}")
             session.audit_trace.add_entry(
                 step="post_check_violation",
                 agent="safety_gates",
@@ -860,7 +925,9 @@ class Orchestrator:
             # Override with safe escalation
             phase1_output = safe_phase1_escalation(reason=f"post_check:{pcv.reason}")
             escalation_msg = _ESCALATION_LOW_CONFIDENCE
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -890,13 +957,12 @@ class Orchestrator:
             or not state.chief_complaint
             or not state.onset_time
         ):
-            confidence_bd.apply("missing_key_info(age|chief_complaint|onset_time)", 0.15)
+            confidence_bd.apply(
+                "missing_key_info(age|chief_complaint|onset_time)", 0.15
+            )
 
         # Detect contradictions: severity=mild + LLM flags severe
-        if (
-            state.symptom_severity == "mild"
-            and phase1_output.red_flags_triggered
-        ):
+        if state.symptom_severity == "mild" and phase1_output.red_flags_triggered:
             confidence_bd.apply("contradiction:mild_severity_with_red_flags", 0.20)
 
         # Unclear answer penalised
@@ -908,8 +974,10 @@ class Orchestrator:
             confidence_bd.apply("llm_output_required_repair", 0.20)
 
         # Ambiguous red flags
-        if rf_triggered_ids and rf_score < 10 and not any(
-            p.search(caller_utterance.lower()) for p in _UNCLEAR_PATTERNS
+        if (
+            rf_triggered_ids
+            and rf_score < 10
+            and not any(p.search(caller_utterance.lower()) for p in _UNCLEAR_PATTERNS)
         ):
             # Weighted flags hit but score below URGENT — ambiguous territory
             confidence_bd.apply(
@@ -960,7 +1028,9 @@ class Orchestrator:
                     correlation_id=correlation_id,
                 )
                 escalation_msg = _ESCALATION_LOW_CONFIDENCE
-                session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=escalation_msg)
+                )
                 session.is_finalized = True
                 self._append_trace(
                     session=session,
@@ -1042,7 +1112,9 @@ class Orchestrator:
                     ),
                     correlation_id=correlation_id,
                 )
-                session.conversation.append(ConversationTurn(role="assistant", text=follow_up))
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=follow_up)
+                )
                 self._append_trace(
                     session=session,
                     user_text=caller_utterance,
@@ -1083,8 +1155,8 @@ class Orchestrator:
             )
         else:
             intake_output = _intake_or_exc
-            _conf = getattr(intake_output, 'confidence', None)
-            _nq   = getattr(intake_output, 'next_question', '') or ''
+            _conf = getattr(intake_output, "confidence", None)
+            _nq = getattr(intake_output, "next_question", "") or ""
             logger.info(
                 f"[ORCH:{correlation_id}] IntakeTurn: confidence={_conf}, "
                 f"next_q={_nq[:60]}..."
@@ -1126,7 +1198,9 @@ class Orchestrator:
         if post_rf_disp == "ER_NOW":
             session.audit_trace.deterministic_rules_triggered.extend(post_rf_ids)
             escalation_msg = _ESCALATION_ER_NOW
-            session.conversation.append(ConversationTurn(role="assistant", text=escalation_msg))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=escalation_msg)
+            )
             session.is_finalized = True
             self._append_trace(
                 session=session,
@@ -1167,13 +1241,17 @@ class Orchestrator:
             confidence=final_confidence,
             disposition=phase1_output.disposition.value,
             escalation_required=phase1_output.escalation_required,
-            response=intake_output.next_question if not should_finalize else "[finalize]",
+            response=intake_output.next_question
+            if not should_finalize
+            else "[finalize]",
             red_flags=rf_triggered_ids + phase1_output.red_flags_triggered,
             rules=phase1_output.rules_triggered,
             confidence_breakdown=confidence_bd,
             extracted_entities={
-                k: v for k, v in
-                intake_output.extracted_fields_update.model_dump(exclude_none=True).items()
+                k: v
+                for k, v in intake_output.extracted_fields_update.model_dump(
+                    exclude_none=True
+                ).items()
             },
             protocol_hits=protocol_hits,
             protocol_citations=[h.id for h in protocol_hits],
@@ -1193,10 +1271,12 @@ class Orchestrator:
                 "phase1_output": phase1_output,
             }
 
-        session.conversation.append(ConversationTurn(
-            role="assistant",
-            text=intake_output.next_question,
-        ))
+        session.conversation.append(
+            ConversationTurn(
+                role="assistant",
+                text=intake_output.next_question,
+            )
+        )
 
         # Part 3: Store expected answer type for next turn's unclear detection
         session.last_expected_answer_type = getattr(
@@ -1254,6 +1334,7 @@ class Orchestrator:
 
         # Build gate context for finalize
         from src.config import STORE_PHI as _STORE_PHI_FIN
+
         finalize_gate_ctx = GateContext(
             session_id=session.session_id,
             caller_utterance="",
@@ -1304,14 +1385,25 @@ class Orchestrator:
         # structured_call() already gated text fields via gate_outbound_text.
         # Now run gate_triage_output for disposition validation + red-flag override.
         from src.config import DEEPSEEK_MODEL
+
         gate_input = {
             "disposition": finalize_output.disposition.value,
-            "urgency_level": "CRITICAL" if finalize_output.disposition == DispositionCategory.ER_NOW else "HIGH",
+            "urgency_level": "CRITICAL"
+            if finalize_output.disposition == DispositionCategory.ER_NOW
+            else "HIGH",
             "confidence_score": 0.8,  # Finalize assumes sufficient data
             "rules_triggered": [],
             "red_flags_triggered": [f.flag for f in finalize_output.llm_safety_flags],
-            "escalation_required": finalize_output.disposition in (DispositionCategory.ER_NOW, DispositionCategory.HUMAN_REVIEW),
-            "protocol_references": [h.id for h in (session.decision_trace[-1].protocol_hits if session.decision_trace else [])],
+            "escalation_required": finalize_output.disposition
+            in (DispositionCategory.ER_NOW, DispositionCategory.HUMAN_REVIEW),
+            "protocol_references": [
+                h.id
+                for h in (
+                    session.decision_trace[-1].protocol_hits
+                    if session.decision_trace
+                    else []
+                )
+            ],
             "model_version": DEEPSEEK_MODEL,
             "message_to_caller": finalize_output.patient_summary,
         }
@@ -1324,7 +1416,8 @@ class Orchestrator:
 
         # Apply gate overrides
         if gate_decision.escalation_required and finalize_output.disposition not in (
-            DispositionCategory.ER_NOW, DispositionCategory.HUMAN_REVIEW,
+            DispositionCategory.ER_NOW,
+            DispositionCategory.HUMAN_REVIEW,
         ):
             finalize_output.disposition = DispositionCategory.HUMAN_REVIEW
             finalize_output.disposition_reasoning = (
@@ -1340,7 +1433,9 @@ class Orchestrator:
                     f"{finalize_output.disposition} → ER_NOW (deterministic rules)"
                 )
                 add_safety_gate_breadcrumb(
-                    rule_name=", ".join(session.audit_trace.deterministic_rules_triggered),
+                    rule_name=", ".join(
+                        session.audit_trace.deterministic_rules_triggered
+                    ),
                     disposition_override="ER_NOW",
                 )
                 finalize_output.disposition = DispositionCategory.ER_NOW
@@ -1354,6 +1449,7 @@ class Orchestrator:
 
         # ── INVARIANT: disposition must be canonical ──
         from src.shared.canonical import assert_canonical
+
         assert_canonical(finalize_output.disposition.value)
 
         session.is_finalized = True
@@ -1377,7 +1473,11 @@ class Orchestrator:
     # Message builders
     # ------------------------------------------------------------------ #
 
-    def _build_intake_messages(self, session: OrchestratorSession, protocol_snippets: list[ProtocolSnippet] | None = None) -> list[dict]:
+    def _build_intake_messages(
+        self,
+        session: OrchestratorSession,
+        protocol_snippets: list[ProtocolSnippet] | None = None,
+    ) -> list[dict]:
         """Build the message list for an intake turn LLM call."""
         messages: list[dict] = [
             {"role": "system", "content": INTAKE_TURN_SYSTEM_PROMPT},
@@ -1396,37 +1496,45 @@ class Orchestrator:
             context_parts.append(f"Chief complaint: {state.chief_complaint}")
 
         if context_parts:
-            messages.append({
-                "role": "system",
-                "content": f"Patient demographics: {', '.join(context_parts)}",
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"Patient demographics: {', '.join(context_parts)}",
+                }
+            )
 
         # Add current state summary
         state_dict = state.model_dump(exclude_none=True, exclude_defaults=True)
         if state_dict:
-            messages.append({
-                "role": "system",
-                "content": (
-                    f"Current intake state (already collected):\n"
-                    f"{json.dumps(state_dict, indent=2)}"
-                ),
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"Current intake state (already collected):\n"
+                        f"{json.dumps(state_dict, indent=2)}"
+                    ),
+                }
+            )
 
         # Phase 2: Inject protocol context if available
         if protocol_snippets:
-            messages.append({
-                "role": "system",
-                "content": self._format_protocol_context(protocol_snippets),
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": self._format_protocol_context(protocol_snippets),
+                }
+            )
 
         # Turn count reminder
-        messages.append({
-            "role": "system",
-            "content": (
-                f"Turn {session.turn_count}/{session.max_turns}. "
-                f"Stop early if you have enough information."
-            ),
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"Turn {session.turn_count}/{session.max_turns}. "
+                    f"Stop early if you have enough information."
+                ),
+            }
+        )
 
         # Add conversation history (last 15 for context window)
         messages.extend([t.to_llm_message() for t in session.conversation[-15:]])
@@ -1443,33 +1551,39 @@ class Orchestrator:
 
         # Add full patient state
         state_dict = session.intake_state.model_dump(exclude_none=True)
-        messages.append({
-            "role": "system",
-            "content": (
-                f"Complete intake state:\n{json.dumps(state_dict, indent=2)}"
-            ),
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    f"Complete intake state:\n{json.dumps(state_dict, indent=2)}"
+                ),
+            }
+        )
 
         # Add safety flags if any
         if session.safety_flags:
             flags_text = "\n".join(
                 f"- [{f.source}/{f.level.value}] {f.flag}" for f in session.safety_flags
             )
-            messages.append({
-                "role": "system",
-                "content": f"Safety flags detected during intake:\n{flags_text}",
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"Safety flags detected during intake:\n{flags_text}",
+                }
+            )
 
         # Add deterministic rule triggers
         if session.audit_trace.deterministic_rules_triggered:
-            messages.append({
-                "role": "system",
-                "content": (
-                    f"CRITICAL: Deterministic safety rules were triggered: "
-                    f"{', '.join(session.audit_trace.deterministic_rules_triggered)}. "
-                    f"The disposition MUST be ER_NOW."
-                ),
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"CRITICAL: Deterministic safety rules were triggered: "
+                        f"{', '.join(session.audit_trace.deterministic_rules_triggered)}. "
+                        f"The disposition MUST be ER_NOW."
+                    ),
+                }
+            )
 
         # Add conversation (full for finalize, up to 20)
         messages.extend([t.to_llm_message() for t in session.conversation[-20:]])
@@ -1642,7 +1756,11 @@ class Orchestrator:
     # Phase 1 Helpers
     # ------------------------------------------------------------------ #
 
-    def _build_phase1_messages(self, session: OrchestratorSession, protocol_snippets: list[ProtocolSnippet] | None = None) -> list[dict]:
+    def _build_phase1_messages(
+        self,
+        session: OrchestratorSession,
+        protocol_snippets: list[ProtocolSnippet] | None = None,
+    ) -> list[dict]:
         """Build messages for the Phase1TurnOutput LLM call."""
         messages: list[dict] = [
             {"role": "system", "content": PHASE1_TURN_SYSTEM_PROMPT},
@@ -1652,17 +1770,21 @@ class Orchestrator:
         state = session.intake_state
         state_dict = state.model_dump(exclude_none=True, exclude_defaults=True)
         if state_dict:
-            messages.append({
-                "role": "system",
-                "content": f"Current intake state:\n{json.dumps(state_dict, indent=2)}",
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"Current intake state:\n{json.dumps(state_dict, indent=2)}",
+                }
+            )
 
         # Phase 2: Inject protocol context if available
         if protocol_snippets:
-            messages.append({
-                "role": "system",
-                "content": self._format_protocol_context(protocol_snippets),
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": self._format_protocol_context(protocol_snippets),
+                }
+            )
 
         # Include last few conversation turns (last 6 for Phase1 — lean)
         messages.extend([t.to_llm_message() for t in session.conversation[-6:]])
@@ -1681,9 +1803,7 @@ class Orchestrator:
             "does NOT override safety rules or red-flag decisions):",
         ]
         for s in snippets:
-            lines.append(
-                f"- [{s.id}] {s.title} (v{s.version}): {s.excerpt}"
-            )
+            lines.append(f"- [{s.id}] {s.title} (v{s.version}): {s.excerpt}")
         lines.append(
             "Use this protocol context to inform your clinical questions "
             "and assessment. Do NOT use it to downgrade urgency."
@@ -1788,13 +1908,15 @@ class Orchestrator:
 # List-merge helpers
 # ---------------------------------------------------------------------------
 
-_LIST_FIELDS = frozenset({
-    "red_flags_reported",
-    "relevant_history",
-    "meds",
-    "allergies",
-    "language_or_comms_barriers",
-})
+_LIST_FIELDS = frozenset(
+    {
+        "red_flags_reported",
+        "relevant_history",
+        "meds",
+        "allergies",
+        "language_or_comms_barriers",
+    }
+)
 
 _MAX_LIST_ITEMS = 25
 _MAX_NOTES_CHARS = 500
@@ -1818,6 +1940,7 @@ def _merge_list(existing: list[str], incoming: list[str]) -> list[str]:
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _redact(text: str, max_len: int = 100) -> str:
     """Redact/truncate text for logging."""

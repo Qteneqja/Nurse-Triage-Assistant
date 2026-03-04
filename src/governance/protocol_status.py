@@ -16,6 +16,7 @@ Enforcement:
 - Development mode: all protocols loaded (with warnings for non-approved)
 - Startup validation: fail if no approved protocols in production
 """
+
 from __future__ import annotations
 
 import json
@@ -53,8 +54,7 @@ def validate_protocol_schema(data: dict, filepath: str = "") -> list[str]:
     status = data.get("status")
     if status is not None and status not in VALID_STATUSES:
         issues.append(
-            f"[{filepath}] Invalid status '{status}'. "
-            f"Must be one of: {VALID_STATUSES}"
+            f"[{filepath}] Invalid status '{status}'. Must be one of: {VALID_STATUSES}"
         )
 
     effective_date = data.get("effective_date")
@@ -71,9 +71,7 @@ def validate_protocol_schema(data: dict, filepath: str = "") -> list[str]:
         try:
             datetime.fromisoformat(reviewed_at)
         except (ValueError, TypeError):
-            issues.append(
-                f"[{filepath}] Invalid reviewed_at format: {reviewed_at}"
-            )
+            issues.append(f"[{filepath}] Invalid reviewed_at format: {reviewed_at}")
 
     return issues
 
@@ -98,8 +96,7 @@ def filter_protocols_by_governance(
 
     if env == "production":
         approved = [
-            p for p in protocol_data_list
-            if p.get("status", "approved") == "approved"
+            p for p in protocol_data_list if p.get("status", "approved") == "approved"
         ]
         non_approved = len(protocol_data_list) - len(approved)
         if non_approved > 0:

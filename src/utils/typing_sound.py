@@ -5,6 +5,7 @@ Generates a short WAV audio clip of realistic keyboard typing sounds.
 Used as auditory feedback while the LLM is processing, so the caller
 doesn't sit in silence.
 """
+
 from __future__ import annotations
 
 import io
@@ -17,10 +18,10 @@ import wave
 _typing_wav_bytes: bytes | None = None
 
 # Audio parameters
-_SAMPLE_RATE = 8000   # 8kHz — Twilio telephony standard
-_DURATION_S = 3.5     # seconds per loop iteration
+_SAMPLE_RATE = 8000  # 8kHz — Twilio telephony standard
+_DURATION_S = 3.5  # seconds per loop iteration
 _CHANNELS = 1
-_SAMPLE_WIDTH = 2     # 16-bit
+_SAMPLE_WIDTH = 2  # 16-bit
 
 
 def _generate_click(length: int, amplitude: float) -> list[int]:
@@ -32,9 +33,9 @@ def _generate_click(length: int, amplitude: float) -> list[int]:
         # Band-limited noise: blend two sine components for a "tock" sound
         t = i / _SAMPLE_RATE
         tone = (
-            0.5 * math.sin(2 * math.pi * 3500 * t) +   # high tick
-            0.3 * math.sin(2 * math.pi * 1800 * t) +   # mid body
-            0.2 * (random.random() * 2 - 1)             # noise texture
+            0.5 * math.sin(2 * math.pi * 3500 * t)  # high tick
+            + 0.3 * math.sin(2 * math.pi * 1800 * t)  # mid body
+            + 0.2 * (random.random() * 2 - 1)  # noise texture
         )
         samples.append(int(tone * env * amplitude))
     return samples

@@ -9,6 +9,7 @@ APP_ENV selects the environment profile:
   - staging: production-like but may use test credentials
   - production: strict; Postgres, real LLM, Twilio sig validation required
 """
+
 from __future__ import annotations
 
 import os
@@ -29,14 +30,19 @@ logger = logging.getLogger(__name__)
 # Environment profile (APP_ENV)
 # ---------------------------------------------------------------------------
 
-APP_ENV: str = os.getenv("APP_ENV", "development")  # "development" | "staging" | "production"
+APP_ENV: str = os.getenv(
+    "APP_ENV", "development"
+)  # "development" | "staging" | "production"
 if APP_ENV not in ("development", "staging", "production"):
-    raise RuntimeError(f"APP_ENV must be development|staging|production, got '{APP_ENV}'")
+    raise RuntimeError(
+        f"APP_ENV must be development|staging|production, got '{APP_ENV}'"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _env_with_deprecation(new_name: str, old_name: str, default: str) -> str:
     """Read *new_name* first; fall back to *old_name* with a deprecation warning."""
@@ -95,9 +101,13 @@ CONFIDENCE_MIN_THRESHOLD: float = float(
 # Backward-compat alias (read-only, kept for any Phase 2 code that imports it)
 CONFIDENCE_THRESHOLD: float = CONFIDENCE_MIN_THRESHOLD
 
-REDFLAG_SCORE_THRESHOLD: int = int(float(
-    _env_with_deprecation("REDFLAG_SCORE_THRESHOLD", "ESCALATION_SCORE_THRESHOLD", "10")
-))
+REDFLAG_SCORE_THRESHOLD: int = int(
+    float(
+        _env_with_deprecation(
+            "REDFLAG_SCORE_THRESHOLD", "ESCALATION_SCORE_THRESHOLD", "10"
+        )
+    )
+)
 # Backward-compat alias
 ESCALATION_SCORE_THRESHOLD: float = float(REDFLAG_SCORE_THRESHOLD)
 
@@ -133,17 +143,25 @@ NURSE_TRANSFER_NUMBER: str = os.getenv("NURSE_TRANSFER_NUMBER", "")
 
 RATE_LIMIT: str = os.getenv("RATE_LIMIT", "60/minute")
 LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")  # "json" | "text"
-TRUST_PROXY_HEADERS: bool = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in ("true", "1", "yes")
+TRUST_PROXY_HEADERS: bool = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # CORS — restrict in production; allow all in development
 CORS_ALLOWED_ORIGINS: list[str] = [
     o.strip()
-    for o in os.getenv("CORS_ALLOWED_ORIGINS", "*" if APP_ENV == "development" else "").split(",")
+    for o in os.getenv(
+        "CORS_ALLOWED_ORIGINS", "*" if APP_ENV == "development" else ""
+    ).split(",")
     if o.strip()
 ]
 
 # Azure Blob Storage (persistent report storage in production)
-AZURE_STORAGE_CONNECTION_STRING: Optional[str] = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+AZURE_STORAGE_CONNECTION_STRING: Optional[str] = os.getenv(
+    "AZURE_STORAGE_CONNECTION_STRING"
+)
 AZURE_BLOB_CONTAINER: str = os.getenv("AZURE_BLOB_CONTAINER", "triage-reports")
 
 # Azure Speech Service (TTS)
@@ -168,6 +186,7 @@ PORT: int = int(os.getenv("PORT", "8000"))
 # Startup Validation
 # ---------------------------------------------------------------------------
 
+
 def validate_config() -> list[str]:
     """Validate configuration at startup.
 
@@ -181,21 +200,19 @@ def validate_config() -> list[str]:
         )
 
     if STORAGE_BACKEND == "postgres" and not DATABASE_URL:
-        errors.append(
-            "DATABASE_URL is required when STORAGE_BACKEND=postgres"
-        )
+        errors.append("DATABASE_URL is required when STORAGE_BACKEND=postgres")
 
     if APP_ENV not in ("development", "staging", "production"):
-        errors.append(f"APP_ENV must be development|staging|production, got '{APP_ENV}'")
+        errors.append(
+            f"APP_ENV must be development|staging|production, got '{APP_ENV}'"
+        )
 
     # --- Staging + Production shared requirements ---
     if APP_ENV in ("staging", "production"):
         if not DEEPSEEK_API_KEY:
             errors.append("DEEPSEEK_API_KEY is required in staging/production")
         if STORAGE_BACKEND != "postgres":
-            errors.append(
-                f"{APP_ENV} requires Postgres. Set STORAGE_BACKEND=postgres"
-            )
+            errors.append(f"{APP_ENV} requires Postgres. Set STORAGE_BACKEND=postgres")
         if TWILIO_VALIDATE_SIGNATURE and not TWILIO_AUTH_TOKEN:
             errors.append(
                 "TWILIO_AUTH_TOKEN is required when TWILIO_VALIDATE_SIGNATURE=true "
@@ -207,9 +224,7 @@ def validate_config() -> list[str]:
         if not DEEPSEEK_API_KEY:
             errors.append("DEEPSEEK_API_KEY is required in production")
         if STORAGE_BACKEND != "postgres":
-            errors.append(
-                "Production requires Postgres. Set STORAGE_BACKEND=postgres"
-            )
+            errors.append("Production requires Postgres. Set STORAGE_BACKEND=postgres")
         if not DATABASE_URL:
             errors.append(
                 "DATABASE_URL is required in production (STORAGE_BACKEND=postgres)"

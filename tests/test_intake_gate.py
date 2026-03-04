@@ -16,6 +16,7 @@ Test cases:
   TC-05  Caller requests nurse after intake IS complete (all required fields)
          → transfer allowed without flags
 """
+
 from __future__ import annotations
 
 
@@ -36,8 +37,12 @@ from src.orchestrator.schemas import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_session(intake_state: StructuredIntakeState | None = None) -> OrchestratorSession:
+
+def _make_session(
+    intake_state: StructuredIntakeState | None = None,
+) -> OrchestratorSession:
     import uuid
+
     return OrchestratorSession(
         session_id=str(uuid.uuid4()),
         intake_state=intake_state or StructuredIntakeState(),
@@ -72,6 +77,7 @@ def _partial_intake_state() -> StructuredIntakeState:
 # Unit tests: check_intake_complete
 # ---------------------------------------------------------------------------
 
+
 class TestCheckIntakeComplete:
     def test_empty_state_is_incomplete(self):
         status = check_intake_complete(_empty_intake_state())
@@ -98,6 +104,7 @@ class TestCheckIntakeComplete:
 # ---------------------------------------------------------------------------
 # TC-01: Caller requests nurse immediately — no red flags, empty intake
 # ---------------------------------------------------------------------------
+
 
 class TestTC01_ImmediateNurseRequest:
     """
@@ -152,6 +159,7 @@ class TestTC01_ImmediateNurseRequest:
 # TC-02: Caller requests nurse during partial intake — no red flags
 # ---------------------------------------------------------------------------
 
+
 class TestTC02_MidIntakeNurseRequest:
     """
     Scenario: Caller has provided chief_complaint but nothing else.
@@ -163,7 +171,9 @@ class TestTC02_MidIntakeNurseRequest:
     def test_partial_intake_still_redirects(self):
         session = _make_session(_partial_intake_state())
         gate = TransferControlGate()
-        decision = gate.evaluate(session, next_question="When did this start?", red_flags_triggered=False)
+        decision = gate.evaluate(
+            session, next_question="When did this start?", red_flags_triggered=False
+        )
         assert decision.action == "redirect"
         assert decision.override_applied is True
 
@@ -187,6 +197,7 @@ class TestTC02_MidIntakeNurseRequest:
 # ---------------------------------------------------------------------------
 # TC-03: Caller requests nurse 3 times — Tier-3 premature transfer
 # ---------------------------------------------------------------------------
+
 
 class TestTC03_ThreeResistances:
     """
@@ -251,6 +262,7 @@ class TestTC03_ThreeResistances:
 # TC-04: Caller requests nurse + critical red flag → immediate ER_NOW
 # ---------------------------------------------------------------------------
 
+
 class TestTC04_RedFlagOverride:
     """
     Scenario: Caller says 'I think I'm having a heart attack, connect me to a nurse'.
@@ -298,6 +310,7 @@ class TestTC04_RedFlagOverride:
 # ---------------------------------------------------------------------------
 # TC-05: Caller requests nurse after intake IS complete — transfer allowed
 # ---------------------------------------------------------------------------
+
 
 class TestTC05_IntakeCompleteTransferAllowed:
     """
@@ -349,11 +362,13 @@ class TestTC05_IntakeCompleteTransferAllowed:
 # Decision trace field tests
 # ---------------------------------------------------------------------------
 
+
 class TestDecisionTraceFields:
     """Ensure DecisionTraceEntry carries intake-gate fields correctly."""
 
     def test_decision_trace_entry_has_intake_gate_fields(self):
         from src.orchestrator.schemas import DecisionTraceEntry
+
         entry = DecisionTraceEntry(
             turn_number=1,
             user_text="I want a nurse",
@@ -375,6 +390,7 @@ class TestDecisionTraceFields:
 
     def test_decision_trace_defaults_to_no_transfer_flags(self):
         from src.orchestrator.schemas import DecisionTraceEntry
+
         entry = DecisionTraceEntry(
             turn_number=1,
             user_text="My knee hurts",
@@ -391,12 +407,14 @@ class TestDecisionTraceFields:
 
     def test_orchestrator_session_has_resistance_counter(self):
         import uuid
+
         session = OrchestratorSession(session_id=str(uuid.uuid4()))
         assert hasattr(session, "nurse_request_resistance_count")
         assert session.nurse_request_resistance_count == 0
 
     def test_orchestrator_session_has_premature_transfer_flag(self):
         import uuid
+
         session = OrchestratorSession(session_id=str(uuid.uuid4()))
         assert hasattr(session, "premature_transfer_triggered")
         assert session.premature_transfer_triggered is False

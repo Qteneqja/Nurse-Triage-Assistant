@@ -7,6 +7,7 @@ may exit the API layer or be stored in the database.
 
 Import this module — not gate.py — when you need the enum in type hints.
 """
+
 from __future__ import annotations
 
 from enum import Enum
@@ -15,6 +16,7 @@ from typing import FrozenSet
 
 class CanonicalDisposition(str, Enum):
     """The ONE canonical disposition enum for the entire system."""
+
     ER_NOW = "ER_NOW"
     URGENT = "URGENT"
     SCHEDULE = "SCHEDULE"

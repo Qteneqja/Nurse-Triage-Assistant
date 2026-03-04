@@ -51,6 +51,7 @@ Usage:
     gate = TransferControlGate()
     result = gate.evaluate(session, red_flags_triggered=False)
 """
+
 from __future__ import annotations
 
 import logging
@@ -71,19 +72,19 @@ logger = logging.getLogger(__name__)
 # transfer may be allowed.  Mirrors the SBAR S/B headings.
 SBAR_REQUIRED_FIELDS: list[tuple[str, str, bool]] = [
     # Situation
-    ("chief_complaint",     "Chief complaint",          False),
-    ("onset_time",          "Onset / duration",         False),
-    ("symptom_severity",    "Severity",                 False),
+    ("chief_complaint", "Chief complaint", False),
+    ("onset_time", "Onset / duration", False),
+    ("symptom_severity", "Severity", False),
     # Background
-    ("relevant_history",    "Associated symptoms / hx", True),
-    ("meds",                "Medications",              True),
-    ("allergies",           "Allergies",                True),
+    ("relevant_history", "Associated symptoms / hx", True),
+    ("meds", "Medications", True),
+    ("allergies", "Allergies", True),
 ]
 
 # Optional but strongly preferred — missing these does NOT block transfer
 SBAR_PREFERRED_FIELDS: list[tuple[str, str, bool]] = [
-    ("caller_age",          "Caller age",               False),
-    ("caller_sex",          "Caller sex",               False),
+    ("caller_age", "Caller age", False),
+    ("caller_sex", "Caller sex", False),
 ]
 
 # Minimum number of *required* fields that must be filled to consider
@@ -103,6 +104,7 @@ class IntakeCompletionStatus:
         filled_count:       How many required fields are filled.
         required_total:     Total number of required fields.
     """
+
     is_complete: bool
     missing_required: List[str] = field(default_factory=list)
     missing_preferred: List[str] = field(default_factory=list)
@@ -110,7 +112,9 @@ class IntakeCompletionStatus:
     required_total: int = len(SBAR_REQUIRED_FIELDS)
 
 
-def check_intake_complete(intake_state: "StructuredIntakeState") -> IntakeCompletionStatus:
+def check_intake_complete(
+    intake_state: "StructuredIntakeState",
+) -> IntakeCompletionStatus:
     """Evaluate whether the SBAR-required intake fields have been collected.
 
     Args:
@@ -203,7 +207,8 @@ class TransferGateDecision:
         override_applied:  True when the gate blocked an LLM-suggested transfer.
         confidence_delta:  Adjustment to apply to the confidence score (≤ 0).
     """
-    action: str                     # "redirect" | "allow_transfer" | "premature_transfer"
+
+    action: str  # "redirect" | "allow_transfer" | "premature_transfer"
     message: str
     intake_complete: bool
     premature: bool = False
@@ -347,10 +352,7 @@ class TransferControlGate:
         status: IntakeCompletionStatus,
         resistance: int,
     ) -> TransferGateDecision:
-        chief = (
-            session.intake_state.chief_complaint
-            or "your concern"
-        )
+        chief = session.intake_state.chief_complaint or "your concern"
         message = _RESISTANCE_TIER3_PREFIX.format(chief_complaint_or_concern=chief)
         # Mark session level flag
         session.premature_transfer_triggered = True
@@ -371,12 +373,12 @@ class TransferControlGate:
 # ---------------------------------------------------------------------------
 
 _FIELD_QUESTION_MAP: dict[str, str] = {
-    "Chief complaint":           "Can you tell me what's bothering you most right now?",
-    "Onset / duration":          "When did this first start?",
-    "Severity":                  "On a scale of mild, moderate, or severe, how would you describe it?",
-    "Associated symptoms / hx":  "Are you experiencing any other symptoms along with this?",
-    "Medications":               "Are you currently taking any medications?",
-    "Allergies":                 "Do you have any known drug allergies?",
+    "Chief complaint": "Can you tell me what's bothering you most right now?",
+    "Onset / duration": "When did this first start?",
+    "Severity": "On a scale of mild, moderate, or severe, how would you describe it?",
+    "Associated symptoms / hx": "Are you experiencing any other symptoms along with this?",
+    "Medications": "Are you currently taking any medications?",
+    "Allergies": "Do you have any known drug allergies?",
 }
 
 
@@ -394,6 +396,7 @@ def _missing_fields_question(missing: list[str]) -> str:
 # ---------------------------------------------------------------------------
 # Public convenience alias
 # ---------------------------------------------------------------------------
+
 
 def evaluate_intake_completion(
     intake_state: "StructuredIntakeState",

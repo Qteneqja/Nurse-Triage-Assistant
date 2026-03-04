@@ -9,6 +9,7 @@ MUST pass through one of:
 Everything else in this module is private/internal.
 No bypass paths. No second gate. No exceptions.
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,13 +33,15 @@ logger = logging.getLogger(__name__)
 # Canonical Disposition Enum — The ONLY valid set
 # ---------------------------------------------------------------------------
 
-CANONICAL_DISPOSITIONS = frozenset({
-    "ER_NOW",
-    "URGENT",
-    "SCHEDULE",
-    "SELF_CARE",
-    "HUMAN_REVIEW",
-})
+CANONICAL_DISPOSITIONS = frozenset(
+    {
+        "ER_NOW",
+        "URGENT",
+        "SCHEDULE",
+        "SELF_CARE",
+        "HUMAN_REVIEW",
+    }
+)
 
 # Map legacy values to canonical
 LEGACY_TO_CANON: Dict[str, str] = {
@@ -76,12 +79,14 @@ def normalize_disposition(raw: str) -> str:
 # GateContext — required metadata for every gate call
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GateContext:
     """Context required by both gate functions.
 
     Build ONE of these per LLM call and pass it through.
     """
+
     session_id: str = ""
     caller_utterance: str = ""
     chief_complaint: Optional[str] = None
@@ -108,6 +113,7 @@ SAFE_FALLBACK_MESSAGE = (
 # FinalDecision — the single output of gate_triage_output
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FinalDecision:
     """Immutable decision produced by the safety gate.
@@ -115,16 +121,17 @@ class FinalDecision:
     This is the ONLY data structure that may drive downstream actions
     (voice response, storage, reporting).
     """
-    disposition: str                         # canonical: ER_NOW | URGENT | SCHEDULE | SELF_CARE | HUMAN_REVIEW
-    urgency_level: str                       # CRITICAL | HIGH | MEDIUM | LOW
-    confidence_score: float                  # 0.0–1.0
-    rules_triggered: List[str]               # Red-flag rule IDs
-    red_flags_triggered: List[str]           # Red-flag descriptions
+
+    disposition: str  # canonical: ER_NOW | URGENT | SCHEDULE | SELF_CARE | HUMAN_REVIEW
+    urgency_level: str  # CRITICAL | HIGH | MEDIUM | LOW
+    confidence_score: float  # 0.0–1.0
+    rules_triggered: List[str]  # Red-flag rule IDs
+    red_flags_triggered: List[str]  # Red-flag descriptions
     escalation_required: bool
-    protocol_references: List[str]           # Protocol IDs used
+    protocol_references: List[str]  # Protocol IDs used
     model_version: str
-    timestamp: str                           # ISO-8601
-    message_to_caller: str                   # Safe, voice-friendly text
+    timestamp: str  # ISO-8601
+    message_to_caller: str  # Safe, voice-friendly text
     safe_fallback_used: bool = False
     diagnosis_rewrites: List[Dict] = field(default_factory=list)
     gate_trace: List[str] = field(default_factory=list)
@@ -133,6 +140,7 @@ class FinalDecision:
 # ═══════════════════════════════════════════════════════════════════════════
 #  PUBLIC FUNCTION 1: gate_triage_output
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def gate_triage_output(
     raw_llm: dict,
@@ -157,7 +165,9 @@ def gate_triage_output(
     """
     # Accept legacy dict callers (backward compat)
     if isinstance(ctx, dict):
-        ctx = GateContext(**{k: v for k, v in ctx.items() if k in GateContext.__dataclass_fields__})
+        ctx = GateContext(
+            **{k: v for k, v in ctx.items() if k in GateContext.__dataclass_fields__}
+        )
     gate_trace: List[str] = []
     now = datetime.now(timezone.utc).isoformat()
 
@@ -181,7 +191,8 @@ def gate_triage_output(
 
 # Unsafe instruction patterns (compiled once)
 _UNSAFE_INSTRUCTION_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
+    re.compile(p, re.IGNORECASE)
+    for p in [
         r"\b(take|use|apply|give)\s+(yourself\s+)?(\d+\s+)?(mg|milligram|tablet|dose|pill)\b",
         r"\byou\s+(don\s*'?\s*t|do\s+not)\s+need\s+(to\s+)?(see|call|go\s+to|visit|contact)\b",
         r"\bno\s+need\s+(for\s+)?(emergency|er|hospital|911|9\s*1\s*1|doctor)\b",
@@ -194,7 +205,8 @@ _UNSAFE_INSTRUCTION_PATTERNS = [
 
 # PHI-probing patterns — questions that ask for data beyond intake design
 _PHI_PROBING_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
+    re.compile(p, re.IGNORECASE)
+    for p in [
         r"\b(social\s+security|ssn|insurance|policy)\s*(number|id|#)\b",
         r"\b(credit\s+card|bank\s+account|routing\s+number)\b",
         r"\byour\s+address\b",
@@ -207,7 +219,8 @@ _PHI_PROBING_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 _ROLE_CLAIM_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
+    re.compile(p, re.IGNORECASE)
+    for p in [
         r"\bi\s+am\s+a\s+(nurse|doctor|physician|clinician|paramedic|medical\s+professional|healthcare\s+provider|practitioner)\b",
         r"\bi\s*[\u2019']?\s*m\s+a\s+(nurse|doctor|physician|clinician|paramedic|medical\s+professional|healthcare\s+provider|practitioner)\b",
         r"\bas\s+a\s+(nurse|doctor|physician|clinician|paramedic|medical\s+professional|healthcare\s+provider|practitioner)\b",
@@ -227,7 +240,9 @@ _ROLE_CLAIM_SAFE_FALLBACK = (
 )
 
 
-def _log_safety_event(event_type: str, severity: str = "HIGH", details: dict | None = None) -> None:
+def _log_safety_event(
+    event_type: str, severity: str = "HIGH", details: dict | None = None
+) -> None:
     """Log a structured safety event at the specified severity."""
     payload = {
         "safety_event": event_type,
@@ -279,11 +294,15 @@ def gate_outbound_text(
     # ── 0. Role / credential claim blocker (STOP-SHIP) ────────────────────
     role_matches = [pat for pat in _ROLE_CLAIM_PATTERNS if pat.search(gated)]
     if role_matches:
-        _log_safety_event("ROLE_CLAIM_DETECTED", severity="HIGH", details={
-            "kind": kind,
-            "session_id": ctx.session_id,
-            "claim_count": len(role_matches),
-        })
+        _log_safety_event(
+            "ROLE_CLAIM_DETECTED",
+            severity="HIGH",
+            details={
+                "kind": kind,
+                "session_id": ctx.session_id,
+                "claim_count": len(role_matches),
+            },
+        )
         if len(role_matches) >= 2:
             # Multiple role/credential claims → replace entire output
             return _ROLE_CLAIM_SAFE_FALLBACK
@@ -296,7 +315,9 @@ def gate_outbound_text(
     # ── 2. Unsafe instruction removal ─────────────────────────────────────
     for pat in _UNSAFE_INSTRUCTION_PATTERNS:
         if pat.search(gated):
-            logger.warning(f"[GATE] Unsafe instruction detected in {kind} text, removing")
+            logger.warning(
+                f"[GATE] Unsafe instruction detected in {kind} text, removing"
+            )
             gated = pat.sub("[safety instruction removed]", gated)
 
     # ── 3. PHI masking ────────────────────────────────────────────────────
@@ -311,7 +332,9 @@ def gate_outbound_text(
                 gated = pat.sub("[question removed for privacy]", gated)
 
     # ── 5. Length truncation ──────────────────────────────────────────────
-    max_len = _MAX_QUESTION_LEN if kind in ("question", "phase1_reply") else _MAX_HANDOFF_LEN
+    max_len = (
+        _MAX_QUESTION_LEN if kind in ("question", "phase1_reply") else _MAX_HANDOFF_LEN
+    )
     if len(gated) > max_len:
         gated = gated[:max_len].rsplit(" ", 1)[0] + "..."
 
@@ -404,7 +427,9 @@ def _gate_triage_impl(
                 rewrite_events.extend(events)
                 gate_trace.append(f"layer2:rewrite:{key}:{len(events)}_violations")
 
-    gate_trace.append(f"layer2:diagnosis_enforcement:done:rewrites={len(rewrite_events)}")
+    gate_trace.append(
+        f"layer2:diagnosis_enforcement:done:rewrites={len(rewrite_events)}"
+    )
 
     # ── LAYER 3: SCHEMA VALIDATION (with retry) ──────────────────────────
     gate_trace.append("layer3:schema_validation:start")
@@ -475,7 +500,8 @@ def _gate_triage_impl(
         urgency_level=final_urgency,
         confidence_score=final_confidence,
         rules_triggered=rf_result.triggered_rule_ids + validated.rules_triggered,
-        red_flags_triggered=rf_result.triggered_descriptions + validated.red_flags_triggered,
+        red_flags_triggered=rf_result.triggered_descriptions
+        + validated.red_flags_triggered,
         escalation_required=escalation_required,
         protocol_references=ctx.protocol_references + validated.protocol_references,
         model_version=ctx.model_version,

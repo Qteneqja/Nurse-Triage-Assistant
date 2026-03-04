@@ -7,6 +7,7 @@ Exposes /metrics-compatible data and an in-process query API.
 No Prometheus client dependency — uses plain Python for pilot simplicity.
 Can be swapped for prometheus_client later if needed.
 """
+
 from __future__ import annotations
 
 import math
@@ -36,9 +37,24 @@ class _Counter:
 class _Histogram:
     """Thread-safe histogram with configurable buckets."""
 
-    DEFAULT_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf"))
+    DEFAULT_BUCKETS = (
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        float("inf"),
+    )
 
-    def __init__(self, name: str, description: str, buckets: tuple | None = None) -> None:
+    def __init__(
+        self, name: str, description: str, buckets: tuple | None = None
+    ) -> None:
         self.name = name
         self.description = description
         self._buckets = buckets or self.DEFAULT_BUCKETS
@@ -69,8 +85,7 @@ class _Histogram:
         with self._lock:
             # Replace inf with string "+Inf" for JSON compatibility
             safe_buckets = {
-                ("+Inf" if math.isinf(k) else k): v
-                for k, v in self._counts.items()
+                ("+Inf" if math.isinf(k) else k): v for k, v in self._counts.items()
             }
             return {
                 "count": self._count,

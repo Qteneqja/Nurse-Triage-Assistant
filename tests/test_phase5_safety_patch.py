@@ -9,6 +9,7 @@ Covers four critical fixes:
 
 Each test must FAIL before the fix and PASS after the fix.
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -38,6 +39,7 @@ from src.orchestrator.schemas import (
 # -----------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------
+
 
 def _ctx(**overrides) -> GateContext:
     defaults = {"session_id": "test-phase5", "store_phi": True}
@@ -83,6 +85,7 @@ def _make_intake_output(**kwargs) -> IntakeTurnOutput:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PART 1 — Role/Credential Claim Blocker
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestRoleClaimBlocker:
     """gate_outbound_text must never pass role/credential claims to callers."""
@@ -157,6 +160,7 @@ class TestRoleClaimBlocker:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PART 2 — Human/Nurse Request Short-Circuit
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestHumanRequestDetection:
     """_detect_human_request must catch common phrasing."""
@@ -295,13 +299,17 @@ class TestHumanRequestShortCircuit:
         session = _make_session()
 
         # Inject a deterministic ER_NOW result regardless of utterance content
-        with _patch(
-            "src.orchestrator.orchestrator.score_red_flags",
-            return_value=("ER_NOW", 100, ["critical_flag_injected"]),
-        ), _patch(
-            "src.orchestrator.orchestrator.check_red_flags",
-        ) as mock_check:
+        with (
+            _patch(
+                "src.orchestrator.orchestrator.score_red_flags",
+                return_value=("ER_NOW", 100, ["critical_flag_injected"]),
+            ),
+            _patch(
+                "src.orchestrator.orchestrator.check_red_flags",
+            ) as mock_check,
+        ):
             from src.orchestrator.schemas import RedFlagResult, SafetyLevel
+
             mock_check.return_value = RedFlagResult(
                 triggered=True,
                 level=SafetyLevel.EMERGENT,
@@ -323,6 +331,7 @@ class TestHumanRequestShortCircuit:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PART 3 — Yes/No Answer Handling
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestYesNoNormalization:
     """_normalize_yes_no must accept common yes/no variants."""
@@ -368,7 +377,9 @@ class TestYesNoUnclearDetection:
 
     def test_banana_is_unclear_when_yes_no_expected(self):
         """'banana' must be marked unclear when yes/no is expected."""
-        result = Orchestrator._is_unclear_answer("banana", expected_answer_type="yes_no")
+        result = Orchestrator._is_unclear_answer(
+            "banana", expected_answer_type="yes_no"
+        )
         assert result is True
 
     def test_no_is_unclear_when_free_text_expected(self):
@@ -404,6 +415,7 @@ class TestYesNoUnclearDetection:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PART 4 — Retry Ladder
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestRetryLadder:
     """Retry prompts must be deterministic, non-repetitive, and escalate after 3."""
@@ -506,6 +518,7 @@ class TestRetryLadder:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # INTEGRATION — Cross-Cutting Safety Properties
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestCrossCuttingSafety:
     """Verify that all safety flows still route through the unified gate."""

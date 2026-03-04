@@ -11,6 +11,7 @@ Modes (controlled by GOLDEN_CALL_MODE env var):
 
 DISABLE_EXTERNAL_CALLS=1 is an additional safety net that blocks all outbound HTTP.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,9 +30,11 @@ SCHEMA_PATH = Path(__file__).parent / "schema.json"
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GoldenCallResult:
     """Structured result from running a single golden call case."""
+
     case_id: str
     disposition: str
     escalation_required: bool
@@ -46,6 +49,7 @@ class GoldenCallResult:
 # Schema validation
 # ---------------------------------------------------------------------------
 
+
 def validate_case_against_schema(case: dict) -> List[str]:
     """Validate a case dict against the golden-call schema.
 
@@ -54,16 +58,26 @@ def validate_case_against_schema(case: dict) -> List[str]:
     """
     errors = []
     required_fields = [
-        "case_id", "description", "input_transcript",
-        "expected_disposition", "expected_escalation_required",
-        "expected_red_flags_triggered", "expected_rules_triggered",
-        "confidence_range", "severity",
+        "case_id",
+        "description",
+        "input_transcript",
+        "expected_disposition",
+        "expected_escalation_required",
+        "expected_red_flags_triggered",
+        "expected_rules_triggered",
+        "confidence_range",
+        "severity",
     ]
     for f in required_fields:
         if f not in case:
             errors.append(f"Missing required field: {f}")
 
-    if "severity" in case and case["severity"] not in ("critical", "high", "medium", "low"):
+    if "severity" in case and case["severity"] not in (
+        "critical",
+        "high",
+        "medium",
+        "low",
+    ):
         errors.append(f"Invalid severity: {case['severity']}")
 
     if "confidence_range" in case:
@@ -74,6 +88,7 @@ def validate_case_against_schema(case: dict) -> List[str]:
     # Try jsonschema for full validation if available
     try:
         import jsonschema
+
         with open(SCHEMA_PATH) as f:
             schema = json.load(f)
         jsonschema.validate(instance=case, schema=schema)
@@ -88,6 +103,7 @@ def validate_case_against_schema(case: dict) -> List[str]:
 # ---------------------------------------------------------------------------
 # Case loader
 # ---------------------------------------------------------------------------
+
 
 def load_all_cases() -> List[dict]:
     """Load and validate all golden-call case files from cases/ directory.
@@ -105,8 +121,7 @@ def load_all_cases() -> List[dict]:
         errors = validate_case_against_schema(case)
         if errors:
             raise RuntimeError(
-                f"Invalid golden-call case {json_file.name}: "
-                + "; ".join(errors)
+                f"Invalid golden-call case {json_file.name}: " + "; ".join(errors)
             )
         cases.append(case)
 
@@ -121,6 +136,7 @@ def load_all_cases() -> List[dict]:
 # Deterministic-only runner
 # ---------------------------------------------------------------------------
 
+
 def run_case_deterministic(case: dict) -> GoldenCallResult:
     """Run a single golden-call case through the deterministic rule engine only.
 
@@ -131,7 +147,9 @@ def run_case_deterministic(case: dict) -> GoldenCallResult:
 
     transcript = case["input_transcript"]
     case.get("patient_demographics", {})
-    chief_complaint = transcript  # Use full transcript as chief complaint for rule matching
+    chief_complaint = (
+        transcript  # Use full transcript as chief complaint for rule matching
+    )
 
     try:
         # Run the deterministic red-flag scoring
@@ -220,6 +238,7 @@ def run_case_deterministic(case: dict) -> GoldenCallResult:
 # Mode detection and enforcement
 # ---------------------------------------------------------------------------
 
+
 def get_mode() -> str:
     """Get the golden-call mode from environment. Default: deterministic_only."""
     mode = os.getenv("GOLDEN_CALL_MODE", "deterministic_only")
@@ -236,7 +255,9 @@ def check_external_calls_blocked() -> None:
     This is a safety net — called at runner startup to install the block.
     """
     if os.getenv("DISABLE_EXTERNAL_CALLS", "0") == "1":
-        logger.info("[GoldenCalls] DISABLE_EXTERNAL_CALLS=1 — external calls are blocked")
+        logger.info(
+            "[GoldenCalls] DISABLE_EXTERNAL_CALLS=1 — external calls are blocked"
+        )
 
 
 def install_llm_block():
@@ -261,9 +282,7 @@ def install_llm_block():
     # Also block httpx/openai if DISABLE_EXTERNAL_CALLS is set
     if os.getenv("DISABLE_EXTERNAL_CALLS", "0") == "1":
         try:
-            patches.append(
-                patch("httpx.AsyncClient.send", new=_async_blocked_call)
-            )
+            patches.append(patch("httpx.AsyncClient.send", new=_async_blocked_call))
         except Exception:
             pass
 
@@ -273,6 +292,7 @@ def install_llm_block():
 # ---------------------------------------------------------------------------
 # Main runner entry point
 # ---------------------------------------------------------------------------
+
 
 def run_all_cases() -> List[GoldenCallResult]:
     """Run all golden-call cases in the current mode.

@@ -9,6 +9,7 @@ This module provides:
 - enforce_no_diagnosis(): scan and rewrite function
 - DiagnosisRewriteEvent: structured audit log of rewrites
 """
+
 from __future__ import annotations
 
 import logging
@@ -23,9 +24,11 @@ logger = logging.getLogger(__name__)
 # Diagnosis rewrite event (for audit trail)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DiagnosisRewriteEvent:
     """Structured record of a diagnosis rewrite for audit logging."""
+
     original_text: str
     rewritten_text: str
     pattern_matched: str
@@ -116,18 +119,26 @@ _DIAGNOSTIC_PATTERNS: List[Tuple[str, re.Pattern, str]] = [
 ]
 
 # Keyword blocklist — standalone medical terms that should not appear as diagnosis
-DIAGNOSTIC_KEYWORD_BLOCKLIST = frozenset({
-    "diagnosed", "diagnosis", "prognosis",
-    "you have cancer", "you have diabetes",
-    "you have pneumonia", "you have an infection",
-    "confirmed diagnosis", "clinical diagnosis",
-    "differential diagnosis",
-})
+DIAGNOSTIC_KEYWORD_BLOCKLIST = frozenset(
+    {
+        "diagnosed",
+        "diagnosis",
+        "prognosis",
+        "you have cancer",
+        "you have diabetes",
+        "you have pneumonia",
+        "you have an infection",
+        "confirmed diagnosis",
+        "clinical diagnosis",
+        "differential diagnosis",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # Enforcement function
 # ---------------------------------------------------------------------------
+
 
 def enforce_no_diagnosis(text: str) -> Tuple[str, List[DiagnosisRewriteEvent]]:
     """Scan text for diagnostic claims and rewrite to safe phrasing.
@@ -150,14 +161,16 @@ def enforce_no_diagnosis(text: str) -> Tuple[str, List[DiagnosisRewriteEvent]]:
         match = pattern.search(cleaned)
         while match:
             original_span = match.group(0)
-            cleaned = cleaned[:match.start()] + replacement + cleaned[match.end():]
+            cleaned = cleaned[: match.start()] + replacement + cleaned[match.end() :]
 
-            events.append(DiagnosisRewriteEvent(
-                original_text=original_span,
-                rewritten_text=replacement,
-                pattern_matched=pattern.pattern[:80],
-                rule_id=rule_id,
-            ))
+            events.append(
+                DiagnosisRewriteEvent(
+                    original_text=original_span,
+                    rewritten_text=replacement,
+                    pattern_matched=pattern.pattern[:80],
+                    rule_id=rule_id,
+                )
+            )
 
             logger.warning(
                 f"[DIAG_ENFORCE] Rewrote diagnostic claim: "
@@ -179,12 +192,14 @@ def enforce_no_diagnosis(text: str) -> Tuple[str, List[DiagnosisRewriteEvent]]:
                 original_span = kw_match.group(0)
                 safe_replacement = "clinical assessment"
                 cleaned = kw_pattern.sub(safe_replacement, cleaned)
-                events.append(DiagnosisRewriteEvent(
-                    original_text=original_span,
-                    rewritten_text=safe_replacement,
-                    pattern_matched=f"keyword_blocklist:{keyword}",
-                    rule_id="KEYWORD_BLOCKLIST",
-                ))
+                events.append(
+                    DiagnosisRewriteEvent(
+                        original_text=original_span,
+                        rewritten_text=safe_replacement,
+                        pattern_matched=f"keyword_blocklist:{keyword}",
+                        rule_id="KEYWORD_BLOCKLIST",
+                    )
+                )
                 logger.warning(
                     f"[DIAG_ENFORCE] Blocked keyword: "
                     f"'{original_span}' → '{safe_replacement}'"

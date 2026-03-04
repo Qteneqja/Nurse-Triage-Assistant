@@ -15,6 +15,7 @@ All tables support:
 - Soft-delete via deleted_at column
 - PHI masking flag (phi_masked)
 """
+
 from __future__ import annotations
 
 import uuid
@@ -38,6 +39,7 @@ from sqlalchemy.types import JSON
 
 class Base(DeclarativeBase):
     """SQLAlchemy 2.0 declarative base."""
+
     pass
 
 
@@ -48,6 +50,7 @@ def _utcnow() -> datetime:
 # ---------------------------------------------------------------------------
 # triage_sessions
 # ---------------------------------------------------------------------------
+
 
 class TriageSessionModel(Base):
     """Persistent triage session record."""
@@ -74,26 +77,17 @@ class TriageSessionModel(Base):
     status: Mapped[str] = mapped_column(
         String(20), default="active"
     )  # active | ended | escalated
-    final_disposition: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True
-    )
-    confidence_score: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
-    escalation_reason: Mapped[Optional[str]] = mapped_column(
-        Text, nullable=True
-    )
-    model_name: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True
-    )
-    model_version: Mapped[Optional[str]] = mapped_column(
-        String(50), nullable=True
-    )
+    final_disposition: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    confidence_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    escalation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    model_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     protocol_version_used: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )
     phi_masked: Mapped[bool] = mapped_column(
-        Boolean, default=True,
+        Boolean,
+        default=True,
     )
     metadata_json: Mapped[Optional[dict]] = mapped_column(
         "metadata", JSON, nullable=True
@@ -105,22 +99,32 @@ class TriageSessionModel(Base):
 
     # Relationships
     turns: Mapped[list["TriageTurnModel"]] = relationship(
-        "TriageTurnModel", back_populates="session", cascade="all, delete-orphan",
+        "TriageTurnModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
         order_by="TriageTurnModel.turn_index",
     )
     messages: Mapped[list["MessageModel"]] = relationship(
-        "MessageModel", back_populates="session", cascade="all, delete-orphan",
+        "MessageModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
         order_by="MessageModel.turn_index",
     )
     decisions: Mapped[list["DecisionModel"]] = relationship(
-        "DecisionModel", back_populates="session", cascade="all, delete-orphan",
+        "DecisionModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
         order_by="DecisionModel.turn_index",
     )
     safety_events: Mapped[list["SafetyEventModel"]] = relationship(
-        "SafetyEventModel", back_populates="session", cascade="all, delete-orphan",
+        "SafetyEventModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
     )
     rule_triggers: Mapped[list["RuleTriggerModel"]] = relationship(
-        "RuleTriggerModel", back_populates="session", cascade="all, delete-orphan",
+        "RuleTriggerModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
@@ -131,6 +135,7 @@ class TriageSessionModel(Base):
 # triage_turns (per-turn clinical data — existing table, enhanced)
 # ---------------------------------------------------------------------------
 
+
 class TriageTurnModel(Base):
     """Persistent per-turn triage record."""
 
@@ -138,7 +143,8 @@ class TriageTurnModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
         index=True,
     )
     turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -192,6 +198,7 @@ class TriageTurnModel(Base):
 # messages (conversation audit log)
 # ---------------------------------------------------------------------------
 
+
 class MessageModel(Base):
     """Conversation message record for full audit trail."""
 
@@ -199,11 +206,14 @@ class MessageModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
         index=True,
     )
     turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False)  # caller | assistant | system
+    role: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # caller | assistant | system
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     phi_masked: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -225,6 +235,7 @@ class MessageModel(Base):
 # decisions (per-turn safety gate decision record)
 # ---------------------------------------------------------------------------
 
+
 class DecisionModel(Base):
     """Per-turn decision record from the centralized safety gate."""
 
@@ -232,7 +243,8 @@ class DecisionModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
         index=True,
     )
     turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -271,6 +283,7 @@ class DecisionModel(Base):
 # safety_events (diagnosis rewrites, red-flag overrides, schema fallbacks)
 # ---------------------------------------------------------------------------
 
+
 class SafetyEventModel(Base):
     """Safety event record for audit trail."""
 
@@ -278,7 +291,8 @@ class SafetyEventModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
         index=True,
     )
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -306,6 +320,7 @@ class SafetyEventModel(Base):
 # rule_triggers (individual rule fire records)
 # ---------------------------------------------------------------------------
 
+
 class RuleTriggerModel(Base):
     """Individual rule trigger record for audit trail."""
 
@@ -313,7 +328,8 @@ class RuleTriggerModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
         index=True,
     )
     turn_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

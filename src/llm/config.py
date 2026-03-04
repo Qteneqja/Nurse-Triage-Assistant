@@ -1,7 +1,8 @@
-﻿"""
+"""
 LLM Configuration
 Person A: Environment-based configuration for DeepSeek
 """
+
 import os
 from dotenv import load_dotenv
 

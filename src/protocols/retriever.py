@@ -14,6 +14,7 @@ Safety:
 - Protocol retrieval NEVER overrides red flags or deterministic rules.
 - Protocol context is supplementary information for the LLM only.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,9 +32,11 @@ logger = logging.getLogger(__name__)
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Protocol:
     """A single clinical protocol loaded from disk."""
+
     id: str
     title: str
     keywords: List[str]
@@ -52,21 +55,26 @@ class Protocol:
 @dataclass
 class ProtocolSnippet:
     """A retrieved protocol excerpt returned to the caller."""
+
     id: str
     title: str
     version: str
-    excerpt: str          # Short excerpt from body + disposition_notes
-    score: float = 0.0    # Relevance score (higher = better)
+    excerpt: str  # Short excerpt from body + disposition_notes
+    score: float = 0.0  # Relevance score (higher = better)
 
 
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
 
-_DEFAULT_PROTOCOL_DIR = Path(__file__).resolve().parent.parent.parent / "protocols" / "v1"
+_DEFAULT_PROTOCOL_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "protocols" / "v1"
+)
 
 
-def load_protocols(protocol_dir: Path | str | None = None, apply_governance: bool = True) -> List[Protocol]:
+def load_protocols(
+    protocol_dir: Path | str | None = None, apply_governance: bool = True
+) -> List[Protocol]:
     """Load all protocol JSON files from `protocol_dir`.
 
     Args:
@@ -100,15 +108,17 @@ def load_protocols(protocol_dir: Path | str | None = None, apply_governance: boo
 
     for data in raw_data_list:
         try:
-            protocols.append(Protocol(
-                id=data["id"],
-                title=data["title"],
-                keywords=data.get("keywords", []),
-                body=data.get("body", ""),
-                disposition_notes=data.get("disposition_notes", ""),
-                last_updated=data.get("last_updated", ""),
-                version=data.get("version", "1.0"),
-            ))
+            protocols.append(
+                Protocol(
+                    id=data["id"],
+                    title=data["title"],
+                    keywords=data.get("keywords", []),
+                    body=data.get("body", ""),
+                    disposition_notes=data.get("disposition_notes", ""),
+                    last_updated=data.get("last_updated", ""),
+                    version=data.get("version", "1.0"),
+                )
+            )
         except Exception as exc:
             logger.warning(f"Failed to parse protocol {data.get('id', '?')}: {exc}")
 
@@ -130,12 +140,13 @@ def _tokenize(text: str) -> List[str]:
 
 def _ngrams(tokens: List[str], n: int) -> List[str]:
     """Generate n-gram strings from a token list."""
-    return [" ".join(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+    return [" ".join(tokens[i : i + n]) for i in range(len(tokens) - n + 1)]
 
 
 # ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
+
 
 def _score_protocol(
     protocol: Protocol,
@@ -185,6 +196,7 @@ def _score_protocol(
 # Retriever class
 # ---------------------------------------------------------------------------
 
+
 class ProtocolRetriever:
     """Retrieves relevant protocol snippets for a given triage turn.
 
@@ -205,7 +217,9 @@ class ProtocolRetriever:
             top_k: Maximum number of results to return.
             min_score: Minimum score threshold to include a result.
         """
-        self._protocols = protocols if protocols is not None else load_protocols(protocol_dir)
+        self._protocols = (
+            protocols if protocols is not None else load_protocols(protocol_dir)
+        )
         self._top_k = top_k
         self._min_score = min_score
 
@@ -305,17 +319,21 @@ class ProtocolRetriever:
                 if len(proto.body) > 200:
                     excerpt_parts[-1] += "..."
             if proto.disposition_notes:
-                excerpt_parts.append(f"Disposition guidance: {proto.disposition_notes[:150]}")
+                excerpt_parts.append(
+                    f"Disposition guidance: {proto.disposition_notes[:150]}"
+                )
                 if len(proto.disposition_notes) > 150:
                     excerpt_parts[-1] += "..."
 
-            results.append(ProtocolSnippet(
-                id=proto.id,
-                title=proto.title,
-                version=proto.version,
-                excerpt=" | ".join(excerpt_parts),
-                score=score,
-            ))
+            results.append(
+                ProtocolSnippet(
+                    id=proto.id,
+                    title=proto.title,
+                    version=proto.version,
+                    excerpt=" | ".join(excerpt_parts),
+                    score=score,
+                )
+            )
 
         return results
 

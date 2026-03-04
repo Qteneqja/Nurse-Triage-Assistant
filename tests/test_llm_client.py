@@ -1,6 +1,7 @@
 """
 Test DeepSeek API Connection
 """
+
 import os
 from openai import OpenAI
 
@@ -17,26 +18,26 @@ print("Base URL: https://api.deepseek.com")
 print()
 
 try:
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://api.deepseek.com"
-    )
-    
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+
     print("Sending test request...")
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
             {"role": "system", "content": "You are a helpful assistant"},
-            {"role": "user", "content": "Say 'Connection successful!' and nothing else."},
+            {
+                "role": "user",
+                "content": "Say 'Connection successful!' and nothing else.",
+            },
         ],
-        stream=False
+        stream=False,
     )
-    
+
     print("✅ SUCCESS!")
     print(f"Response: {response.choices[0].message.content}")
     print()
     print("DeepSeek API is working correctly!")
-    
+
 except Exception as e:
     print("❌ ERROR!")
     print(f"Error type: {type(e).__name__}")

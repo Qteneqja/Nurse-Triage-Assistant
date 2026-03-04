@@ -7,6 +7,7 @@ Includes Pydantic validation, retry logic (max 2), and safe fallback.
 All fields are MANDATORY. If the LLM cannot produce valid output
 after 2 retries, the safe fallback is used — no exceptions.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,62 +23,61 @@ logger = logging.getLogger(__name__)
 # Strict triage output schema
 # ---------------------------------------------------------------------------
 
+
 class TriageOutput(BaseModel):
     """Strict JSON schema for triage output. All fields mandatory.
 
     This is the single schema that ALL triage decisions must conform to.
     """
+
     disposition: str = Field(
         description="Triage disposition: ER_NOW | URGENT | ROUTINE | SELF_CARE | HUMAN_REVIEW"
     )
-    urgency_level: str = Field(
-        description="CRITICAL | HIGH | MEDIUM | LOW"
-    )
+    urgency_level: str = Field(description="CRITICAL | HIGH | MEDIUM | LOW")
     confidence_score: float = Field(
-        ge=0.0, le=1.0,
-        description="Confidence score 0.0–1.0"
+        ge=0.0, le=1.0, description="Confidence score 0.0–1.0"
     )
     rules_triggered: List[str] = Field(
-        default_factory=list,
-        description="List of rule IDs triggered"
+        default_factory=list, description="List of rule IDs triggered"
     )
     red_flags_triggered: List[str] = Field(
-        default_factory=list,
-        description="List of red flag descriptions triggered"
+        default_factory=list, description="List of red flag descriptions triggered"
     )
     escalation_required: bool = Field(
         description="Whether immediate escalation is required"
     )
     protocol_references: List[str] = Field(
-        default_factory=list,
-        description="Protocol IDs used in reasoning"
+        default_factory=list, description="Protocol IDs used in reasoning"
     )
-    model_version: str = Field(
-        default="unknown",
-        description="LLM model version"
-    )
+    model_version: str = Field(default="unknown", description="LLM model version")
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
-        description="ISO-8601 timestamp"
+        description="ISO-8601 timestamp",
     )
     message_to_caller: Optional[str] = Field(
-        default=None,
-        description="Voice-friendly message to speak to caller"
+        default=None, description="Voice-friendly message to speak to caller"
     )
 
     @field_validator("disposition")
     @classmethod
     def _validate_disposition(cls, v: str) -> str:
         from src.shared.canonical import CANONICAL_DISPOSITION_VALUES
+
         upper = v.strip().upper()
         # Map legacy values before checking
         _legacy_map = {
-            "SAFE": "SELF_CARE", "PCP": "SCHEDULE", "EMERGENCY": "ER_NOW",
-            "URGENT_CARE": "URGENT", "SAME_DAY": "SCHEDULE", "ROUTINE": "SCHEDULE",
+            "SAFE": "SELF_CARE",
+            "PCP": "SCHEDULE",
+            "EMERGENCY": "ER_NOW",
+            "URGENT_CARE": "URGENT",
+            "SAME_DAY": "SCHEDULE",
+            "ROUTINE": "SCHEDULE",
         }
         mapped = _legacy_map.get(upper, upper)
         if mapped not in CANONICAL_DISPOSITION_VALUES:
-            raise ValueError(f"disposition must be one of {CANONICAL_DISPOSITION_VALUES}, got '{v}'")
+            raise ValueError(
+                f"disposition must be one of {CANONICAL_DISPOSITION_VALUES}, got '{v}'"
+            )
         return mapped
 
     @field_validator("urgency_level")

@@ -4,6 +4,7 @@ Orchestrator Pydantic Schemas
 Defines all structured data models for the multi-agent orchestration flow.
 Every LLM output is validated against these schemas.
 """
+
 from __future__ import annotations
 
 import re as _re
@@ -18,8 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Enums
 # ---------------------------------------------------------------------------
 
+
 class DispositionCategory(str, Enum):
     """Canonical triage disposition — the ONE enum for the entire system."""
+
     ER_NOW = "ER_NOW"
     URGENT = "URGENT"
     SCHEDULE = "SCHEDULE"
@@ -29,6 +32,7 @@ class DispositionCategory(str, Enum):
 
 class SafetyLevel(str, Enum):
     """Severity level for safety flags."""
+
     EMERGENT = "EMERGENT"
     URGENT = "URGENT"
     ADVISORY = "ADVISORY"
@@ -38,8 +42,10 @@ class SafetyLevel(str, Enum):
 # Phase 1 enums
 # ---------------------------------------------------------------------------
 
+
 class Phase1Disposition(str, Enum):
     """Phase 1 disposition values — canonical set for LLM output."""
+
     ER_NOW = "ER_NOW"
     URGENT = "URGENT"
     SCHEDULE = "SCHEDULE"
@@ -49,6 +55,7 @@ class Phase1Disposition(str, Enum):
 
 class Phase1NextAction(str, Enum):
     """Phase 1 next action values."""
+
     ASK_QUESTION = "ASK_QUESTION"
     ESCALATE_HUMAN = "ESCALATE_HUMAN"
     END_CALL = "END_CALL"
@@ -60,6 +67,7 @@ class Phase1NextAction(str, Enum):
 # Shared coercion helpers for LLM-produced values
 # ---------------------------------------------------------------------------
 
+
 def _coerce_sex(v: object) -> object:
     """Normalize caller_sex variants (e.g. 'Male', 'M', 'F') to lowercase literals.
 
@@ -67,10 +75,13 @@ def _coerce_sex(v: object) -> object:
     ``'female.'`` → ``'female'`` (trailing punctuation stripped first).
     """
     if isinstance(v, str):
-        normed = v.strip().lower().rstrip('.?,!')  # strip STT-added punctuation
+        normed = v.strip().lower().rstrip(".?,!")  # strip STT-added punctuation
         return {
-            "m": "male", "male": "male", "mail": "male",
-            "f": "female", "female": "female",
+            "m": "male",
+            "male": "male",
+            "mail": "male",
+            "f": "female",
+            "female": "female",
         }.get(normed, normed)
     return v
 
@@ -96,8 +107,10 @@ def _coerce_severity(v: object) -> object:
 
 # ---------------------------------------------------------------------------
 
+
 class StructuredIntakeState(BaseModel):
     """Tracked fields accumulated from caller utterances across all turns."""
+
     caller_name: Optional[str] = None
     caller_age: Optional[int] = Field(default=None, ge=0, le=120)
     caller_sex: Optional[Literal["male", "female", "unknown"]] = None
@@ -119,7 +132,9 @@ class StructuredIntakeState(BaseModel):
     relevant_history: List[str] = Field(default_factory=list)
     meds: List[str] = Field(default_factory=list)
     allergies: List[str] = Field(default_factory=list)
-    pregnancy_status: Optional[Literal["pregnant", "not_pregnant", "unknown", "not_applicable"]] = None
+    pregnancy_status: Optional[
+        Literal["pregnant", "not_pregnant", "unknown", "not_applicable"]
+    ] = None
     vitals_if_known: Optional[str] = None
     confusion_or_poor_historian_score: float = Field(default=0.0, ge=0.0, le=1.0)
     language_or_comms_barriers: List[str] = Field(default_factory=list)
@@ -130,8 +145,14 @@ class StructuredIntakeState(BaseModel):
         """Count how many optional fields have been filled."""
         count = 0
         for name in [
-            "caller_age", "caller_sex", "chief_complaint", "onset_time",
-            "symptom_severity", "pregnancy_status", "vitals_if_known", "location",
+            "caller_age",
+            "caller_sex",
+            "chief_complaint",
+            "onset_time",
+            "symptom_severity",
+            "pregnancy_status",
+            "vitals_if_known",
+            "location",
         ]:
             if getattr(self, name) is not None:
                 count += 1
@@ -145,11 +166,13 @@ class StructuredIntakeState(BaseModel):
 # Typed Patch Model (for LLM-extracted field updates per turn)
 # ---------------------------------------------------------------------------
 
+
 class IntakeStatePatch(BaseModel):
     """Partial update to StructuredIntakeState fields from a single turn.
 
     All fields are optional — only fields extracted in *this* turn should be set.
     """
+
     caller_name: Optional[str] = None
     caller_age: Optional[int] = Field(default=None, ge=0, le=120)
     caller_sex: Optional[Literal["male", "female", "unknown"]] = None
@@ -171,9 +194,13 @@ class IntakeStatePatch(BaseModel):
     relevant_history: Optional[List[str]] = None
     meds: Optional[List[str]] = None
     allergies: Optional[List[str]] = None
-    pregnancy_status: Optional[Literal["pregnant", "not_pregnant", "unknown", "not_applicable"]] = None
+    pregnancy_status: Optional[
+        Literal["pregnant", "not_pregnant", "unknown", "not_applicable"]
+    ] = None
     vitals_if_known: Optional[str] = None
-    confusion_or_poor_historian_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    confusion_or_poor_historian_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0
+    )
     language_or_comms_barriers: Optional[List[str]] = None
     location: Optional[str] = None
     notes: Optional[str] = None
@@ -183,14 +210,18 @@ class IntakeStatePatch(BaseModel):
 # Safety Flag (shared between deterministic + LLM)
 # ---------------------------------------------------------------------------
 
+
 class SafetyFlag(BaseModel):
     """A single safety concern detected by rules or LLM."""
+
     source: Literal["deterministic", "llm"] = Field(
         description="Origin of the safety flag",
     )
     level: SafetyLevel
     flag: str = Field(description="Short description of the safety concern")
-    reason_for_audit: str = Field(description="Why this flag was raised, for audit trail")
+    reason_for_audit: str = Field(
+        description="Why this flag was raised, for audit trail"
+    )
     script_to_say: Optional[str] = Field(
         default=None,
         description="Voice-friendly script to say to the caller if this flag triggers escalation",
@@ -201,8 +232,10 @@ class SafetyFlag(BaseModel):
 # Conversation Turn
 # ---------------------------------------------------------------------------
 
+
 class ConversationTurn(BaseModel):
     """A single turn in the caller–assistant conversation."""
+
     role: Literal["caller", "assistant"]
     text: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -219,11 +252,13 @@ class ConversationTurn(BaseModel):
 # LLM Output: Intake Turn (Mode 1 — one call per user turn)
 # ---------------------------------------------------------------------------
 
+
 class IntakeTurnOutput(BaseModel):
     """Schema for the LLM response during each questioning turn.
 
     The LLM MUST return valid JSON matching this schema.
     """
+
     extracted_fields_update: IntakeStatePatch = Field(
         default_factory=IntakeStatePatch,
         description="Partial update to StructuredIntakeState fields from the caller's latest answer",
@@ -269,12 +304,14 @@ class IntakeTurnOutput(BaseModel):
         out: list = []
         for item in v:
             if isinstance(item, str):
-                out.append({
-                    "source": "llm",
-                    "level": SafetyLevel.ADVISORY.value,
-                    "flag": item,
-                    "reason_for_audit": f"LLM-detected: {item}",
-                })
+                out.append(
+                    {
+                        "source": "llm",
+                        "level": SafetyLevel.ADVISORY.value,
+                        "flag": item,
+                        "reason_for_audit": f"LLM-detected: {item}",
+                    }
+                )
             else:
                 out.append(item)
         return out
@@ -294,8 +331,10 @@ class IntakeTurnOutput(BaseModel):
 # Structured SBAR
 # ---------------------------------------------------------------------------
 
+
 class SBAR(BaseModel):
     """Structured SBAR clinical handoff format."""
+
     situation: str = ""
     background: str = ""
     assessment: str = ""
@@ -341,6 +380,7 @@ def _parse_sbar_text(text: str) -> SBAR:
 # LLM Output: Finalize (Mode 2 — clinical reasoning + SBAR)
 # ---------------------------------------------------------------------------
 
+
 class FinalizeOutput(BaseModel):
     """Schema for the finalization LLM response.
 
@@ -348,6 +388,7 @@ class FinalizeOutput(BaseModel):
     Extra keys from the LLM (e.g. ai_thoughts, _debug_elapsed_ms) are silently
     ignored so that upstream callers never crash on unexpected fields.
     """
+
     model_config = ConfigDict(extra="ignore")
 
     disposition: DispositionCategory = Field(
@@ -425,12 +466,14 @@ class FinalizeOutput(BaseModel):
         out: list = []
         for item in v:
             if isinstance(item, str):
-                out.append({
-                    "source": "llm",
-                    "level": SafetyLevel.ADVISORY.value,
-                    "flag": item,
-                    "reason_for_audit": f"LLM-detected: {item}",
-                })
+                out.append(
+                    {
+                        "source": "llm",
+                        "level": SafetyLevel.ADVISORY.value,
+                        "flag": item,
+                        "reason_for_audit": f"LLM-detected: {item}",
+                    }
+                )
             else:
                 out.append(item)
         return out
@@ -474,8 +517,10 @@ class FinalizeOutput(BaseModel):
 # Deterministic Rule Result
 # ---------------------------------------------------------------------------
 
+
 class RedFlagResult(BaseModel):
     """Result from the deterministic red-flag engine."""
+
     triggered: bool = False
     level: Optional[SafetyLevel] = None
     script_to_say: Optional[str] = None
@@ -487,8 +532,10 @@ class RedFlagResult(BaseModel):
 # Audit Trace (per call)
 # ---------------------------------------------------------------------------
 
+
 class AuditTraceEntry(BaseModel):
     """A single step in the audit trail."""
+
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     step: str
     agent: str
@@ -500,6 +547,7 @@ class AuditTraceEntry(BaseModel):
 
 class AuditTrace(BaseModel):
     """Full audit trail for a call session."""
+
     session_id: str
     call_sid: Optional[str] = None
     entries: List[AuditTraceEntry] = Field(default_factory=list)
@@ -517,22 +565,26 @@ class AuditTrace(BaseModel):
         correlation_id: Optional[str] = None,
     ) -> None:
         """Append a new audit entry."""
-        self.entries.append(AuditTraceEntry(
-            step=step,
-            agent=agent,
-            input_summary=input_summary,
-            output_summary=output_summary,
-            duration_ms=duration_ms,
-            correlation_id=correlation_id,
-        ))
+        self.entries.append(
+            AuditTraceEntry(
+                step=step,
+                agent=agent,
+                input_summary=input_summary,
+                output_summary=output_summary,
+                duration_ms=duration_ms,
+                correlation_id=correlation_id,
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator Session (wraps everything for one call)
 # ---------------------------------------------------------------------------
 
+
 class OrchestratorSession(BaseModel):
     """Orchestrator-level session state for one call."""
+
     session_id: str
     call_sid: Optional[str] = None
     turn_count: int = 0
@@ -555,7 +607,9 @@ class OrchestratorSession(BaseModel):
     # Per-turn decision trace (auditable clinical decision log)
     decision_trace: List["DecisionTraceEntry"] = Field(default_factory=list)
     # Expected answer type for the last question asked (Part 3)
-    last_expected_answer_type: Optional[Literal["yes_no", "number", "free_text", "choice"]] = Field(default=None)
+    last_expected_answer_type: Optional[
+        Literal["yes_no", "number", "free_text", "choice"]
+    ] = Field(default=None)
     # ── Phase 5: Intake-gate / transfer-control ────────────────────────
     # How many times the caller has requested nurse transfer without red flags
     nurse_request_resistance_count: int = Field(default=0, ge=0)
@@ -571,6 +625,7 @@ class OrchestratorSession(BaseModel):
         ge=0,
         description="How many consecutive times the same slot follow-up has been asked",
     )
+
     def model_post_init(self, __context: object) -> None:
         """Ensure audit_trace exists with correct IDs after construction."""
         if self.audit_trace is None:
@@ -592,12 +647,14 @@ class OrchestratorSession(BaseModel):
 # Phase 1 — Strict LLM Output Schema
 # ---------------------------------------------------------------------------
 
+
 class Phase1TurnOutput(BaseModel):
     """Strict Phase 1 LLM output schema.
 
     The LLM MUST return ONLY a JSON object matching this schema.
     Validated twice (attempt + repair). On second failure → FAIL CLOSED.
     """
+
     confidence_score: float = Field(
         ge=0.0,
         le=1.0,
@@ -656,14 +713,17 @@ class Phase1TurnOutput(BaseModel):
 # Phase 1 — Confidence Deduction Record
 # ---------------------------------------------------------------------------
 
+
 class ConfidenceDeduction(BaseModel):
     """Single deduction applied to the confidence score."""
+
     reason: str
     amount: float
 
 
 class ConfidenceBreakdown(BaseModel):
     """Full confidence computation for one turn."""
+
     raw_score: float = 1.0
     deductions: List[ConfidenceDeduction] = Field(default_factory=list)
     final_score: float = 1.0
@@ -682,8 +742,10 @@ class ConfidenceBreakdown(BaseModel):
 # Phase 2 — Protocol Hit (for decision trace)
 # ---------------------------------------------------------------------------
 
+
 class ProtocolHit(BaseModel):
     """A protocol matched during retrieval for a given turn."""
+
     id: str
     title: str
     version: str
@@ -693,8 +755,10 @@ class ProtocolHit(BaseModel):
 # Phase 1 — Decision Trace Entry (per-turn audit log)
 # ---------------------------------------------------------------------------
 
+
 class DecisionTraceEntry(BaseModel):
     """One entry in the Phase 1 per-turn decision audit log."""
+
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     turn_number: int
     user_text: str

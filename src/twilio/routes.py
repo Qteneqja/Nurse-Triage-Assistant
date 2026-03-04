@@ -5,6 +5,7 @@ All session state goes through SessionRepository → StorageFactory.
 All LLM calls go through Orchestrator → GuardedLLM → SafetyGate.
 Twilio signature validation enforced via router-level dependency.
 """
+
 import asyncio
 import logging
 import json
@@ -21,7 +22,11 @@ from src.orchestrator.schemas import ConversationTurn
 from src.safety.phi_masking import mask_phi
 from src.config import STORE_PHI
 from src.security.twilio_signature import validate_twilio_signature
-from src.utils.report_naming import generate_report_filename, generate_report_path, ensure_year_folders
+from src.utils.report_naming import (
+    generate_report_filename,
+    generate_report_path,
+    ensure_year_folders,
+)
 from src.utils.blob_storage import upload_reports_to_blob
 from src.utils.azure_tts import text_to_speech_url
 
@@ -34,7 +39,9 @@ REPORTS_DIR.mkdir(exist_ok=True)
 ensure_year_folders(REPORTS_DIR)
 
 
-async def generate_handoff_report_background(session_id: str, session_metadata: dict, conversation_history: list, triage_result):
+async def generate_handoff_report_background(
+    session_id: str, session_metadata: dict, conversation_history: list, triage_result
+):
     """DEPRECATED — legacy handoff report path.
 
     This function previously called DeepSeekClient directly (ungated).
@@ -69,6 +76,7 @@ async def _generate_orchestrator_report_background(
         if orch_session.finalize_output is None:
             if orch_session.turn_count <= 2:
                 from src.orchestrator.validators import safe_finalize_default
+
                 logger.info(
                     f"[BACKGROUND] Skipping LLM finalize for early-turn escalation "
                     f"(turn_count={orch_session.turn_count}) — using safe default"
@@ -91,15 +99,20 @@ async def _generate_orchestrator_report_background(
                 "age": session_metadata.get("patient_age", "Unknown"),
                 "sex": session_metadata.get("patient_sex", "Unknown"),
             },
-            "chief_complaint": orch_session.intake_state.chief_complaint or "Not documented",
+            "chief_complaint": orch_session.intake_state.chief_complaint
+            or "Not documented",
             "disposition": {
                 "level": finalize.disposition.value if finalize else "HUMAN_REVIEW",
-                "reasoning": finalize.disposition_reasoning if finalize else "Report generation unavailable",
+                "reasoning": finalize.disposition_reasoning
+                if finalize
+                else "Report generation unavailable",
             },
             "intake_state": orch_session.intake_state.model_dump(exclude_none=True),
             "safety_flags": [f.model_dump() for f in orch_session.safety_flags],
             "audit_trace": {
-                "entries": [e.model_dump(mode="json") for e in orch_session.audit_trace.entries],
+                "entries": [
+                    e.model_dump(mode="json") for e in orch_session.audit_trace.entries
+                ],
                 "deterministic_rules_triggered": orch_session.audit_trace.deterministic_rules_triggered,
             },
         }
@@ -145,30 +158,65 @@ async def _generate_orchestrator_report_background(
 
         # Upload to Azure Blob Storage (persistent across container restarts)
         try:
-            blob_urls = upload_reports_to_blob(report_json_path, report_txt_path, REPORTS_DIR)
+            blob_urls = upload_reports_to_blob(
+                report_json_path, report_txt_path, REPORTS_DIR
+            )
             if blob_urls.get("json_url"):
                 logger.info("[BACKGROUND] Reports uploaded to blob storage")
         except Exception as blob_exc:
             logger.warning(f"[BACKGROUND] Blob upload failed (non-fatal): {blob_exc}")
 
     except Exception as e:
-        logger.error(f"[BACKGROUND] Failed to generate orchestrator report: {e}", exc_info=True)
+        logger.error(
+            f"[BACKGROUND] Failed to generate orchestrator report: {e}", exc_info=True
+        )
 
 
 # Single-word responses that STT commonly produces when a caller
 # greets or acknowledges the system rather than saying their name.
-_NAME_BLOCKLIST: frozenset[str] = frozenset({
-    # Honorifics / titles
-    "sir", "maam", "miss", "mister", "mr", "mrs", "ms", "dr",
-    # Greetings / filler
-    "hello", "hi", "hey", "yo", "um", "uh", "hmm", "hm",
-    # Affirmations / negations
-    "yes", "no", "ok", "okay", "nope", "yep", "yeah", "nah", "sure",
-    # Courtesy filler
-    "thanks", "thank", "please", "sorry", "excuse", "pardon",
-    # Generic question / filler words
-    "what", "who", "well",
-})
+_NAME_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        # Honorifics / titles
+        "sir",
+        "maam",
+        "miss",
+        "mister",
+        "mr",
+        "mrs",
+        "ms",
+        "dr",
+        # Greetings / filler
+        "hello",
+        "hi",
+        "hey",
+        "yo",
+        "um",
+        "uh",
+        "hmm",
+        "hm",
+        # Affirmations / negations
+        "yes",
+        "no",
+        "ok",
+        "okay",
+        "nope",
+        "yep",
+        "yeah",
+        "nah",
+        "sure",
+        # Courtesy filler
+        "thanks",
+        "thank",
+        "please",
+        "sorry",
+        "excuse",
+        "pardon",
+        # Generic question / filler words
+        "what",
+        "who",
+        "well",
+    }
+)
 
 
 def _looks_like_name(text: str) -> bool:
@@ -182,7 +230,7 @@ def _looks_like_name(text: str) -> bool:
     frequently inserts commas into names ("Test Patient, Ten").
     The 5-word max + 80% alpha ratio is sufficient to reject sentences.
     """
-    stripped = text.strip().rstrip('.')  # STT often appends a trailing period
+    stripped = text.strip().rstrip(".")  # STT often appends a trailing period
     if not stripped:
         return False
     words = stripped.split()
@@ -222,12 +270,22 @@ _MAX_NAME_RETRIES = 3
 # robust recognition.
 _SEX_NORMALISATION: dict[str, str] = {
     # Male
-    "male": "male", "mail": "male", "mel": "male", "men": "male",
-    "man": "male", "mael": "male", "mayo": "male", "mell": "male",
+    "male": "male",
+    "mail": "male",
+    "mel": "male",
+    "men": "male",
+    "man": "male",
+    "mael": "male",
+    "mayo": "male",
+    "mell": "male",
     "m": "male",
     # Female
-    "female": "female", "femail": "female", "fema": "female",
-    "women": "female", "woman": "female", "f": "female",
+    "female": "female",
+    "femail": "female",
+    "fema": "female",
+    "women": "female",
+    "woman": "female",
+    "f": "female",
     # Prefer not to say
     "prefer not to say": "prefer not to say",
     "rather not say": "prefer not to say",
@@ -246,9 +304,16 @@ def _normalise_sex(raw: str) -> str:
     """
     cleaned = raw.strip().lower().rstrip(".!?,;: ")
     # Strip common conversational prefixes
-    for prefix in ("i am ", "i'm ", "my sex is ", "my biological sex is ", "it's ", "its "):
+    for prefix in (
+        "i am ",
+        "i'm ",
+        "my sex is ",
+        "my biological sex is ",
+        "it's ",
+        "its ",
+    ):
         if cleaned.startswith(prefix):
-            cleaned = cleaned[len(prefix):].strip()
+            cleaned = cleaned[len(prefix) :].strip()
             break
     return _SEX_NORMALISATION.get(cleaned, cleaned)
 
@@ -267,6 +332,7 @@ _pending_turns: dict[str, asyncio.Task] = {}
 def _get_azure_voice() -> str:
     """Get the configured Azure TTS voice name."""
     from src.config import AZURE_TTS_VOICE
+
     return AZURE_TTS_VOICE
 
 
@@ -274,7 +340,7 @@ async def generate_twiml_say(text: str) -> str:
     """Generate TwiML <Say> or <Play> with Azure TTS (fallback to Polly)."""
     audio_url = await text_to_speech_url(text, _get_azure_voice())
     if audio_url:
-        return f'<Play>{saxutils.escape(audio_url)}</Play>'
+        return f"<Play>{saxutils.escape(audio_url)}</Play>"
     return f'<Say voice="{_TTS_VOICE}">{saxutils.escape(text)}</Say>'
 
 
@@ -302,7 +368,7 @@ async def generate_twiml_gather(
     """
     escaped_prompt = saxutils.escape(prompt)
     audio_url = await text_to_speech_url(prompt, _get_azure_voice())
-    hints_attr = f' hints="{saxutils.escape(hints)}"' if hints else ''
+    hints_attr = f' hints="{saxutils.escape(hints)}"' if hints else ""
 
     if audio_url:
         escaped_url = saxutils.escape(audio_url)
@@ -351,21 +417,22 @@ async def generate_twiml_handoff(text: str) -> str:
     without dead air.  Falls back to ``<Hangup>`` when unconfigured.
     """
     from src.config import NURSE_TRANSFER_NUMBER
+
     escaped_text = saxutils.escape(text)
     audio_url = await text_to_speech_url(text, _get_azure_voice())
 
     if NURSE_TRANSFER_NUMBER:
         num = saxutils.escape(NURSE_TRANSFER_NUMBER)
         if audio_url:
-            speech_tag = f'    <Play>{saxutils.escape(audio_url)}</Play>'
+            speech_tag = f"    <Play>{saxutils.escape(audio_url)}</Play>"
         else:
             speech_tag = f'    <Say voice="{_TTS_VOICE}">{escaped_text}</Say>'
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<Response>\n'
-            f'{speech_tag}\n'
-            f'    <Dial>{num}</Dial>\n'
-            '</Response>'
+            "<Response>\n"
+            f"{speech_tag}\n"
+            f"    <Dial>{num}</Dial>\n"
+            "</Response>"
         )
     return await generate_twiml_say_and_hangup(text)
 
@@ -402,7 +469,9 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
         # Move to NAME stage
         session.channel_metadata["stage"] = STAGE_NAME
         first_question = "I will be asking you a series of questions to help assess your symptoms. Can I start with your full name?"
-        session.conversation.append(ConversationTurn(role="assistant", text=first_question))
+        session.conversation.append(
+            ConversationTurn(role="assistant", text=first_question)
+        )
 
         repo.persist_session(session)
 
@@ -415,14 +484,16 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
         # Build TwiML: Play greeting (non-interruptible), then
         # Gather with the name question (allows caller to respond).
         greeting_tag = (
-            f'<Play>{saxutils.escape(greeting_url)}</Play>'
+            f"<Play>{saxutils.escape(greeting_url)}</Play>"
             if greeting_url
             else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(greeting)}</Say>'
         )
         if question_url:
-            question_tag = f'<Play>{saxutils.escape(question_url)}</Play>'
+            question_tag = f"<Play>{saxutils.escape(question_url)}</Play>"
         else:
-            question_tag = f'<Say voice="{_TTS_VOICE}">{saxutils.escape(first_question)}</Say>'
+            question_tag = (
+                f'<Say voice="{_TTS_VOICE}">{saxutils.escape(first_question)}</Say>'
+            )
 
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -435,10 +506,12 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
 
         logger.info(f"[TWILIO] Session {session.session_id} started for call {CallSid}")
         return Response(content=twiml, media_type="application/xml")
-        
+
     except Exception as e:
         logger.error(f"[TWILIO] Error in incoming call: {e}", exc_info=True)
-        error_twiml = await generate_twiml_say_and_hangup("Sorry, we encountered a technical error. Please try again later.")
+        error_twiml = await generate_twiml_say_and_hangup(
+            "Sorry, we encountered a technical error. Please try again later."
+        )
         return Response(content=error_twiml, media_type="application/xml")
 
 
@@ -447,20 +520,24 @@ async def handle_gather(
     request: Request,
     background_tasks: BackgroundTasks,
     CallSid: str = Form(...),
-    SpeechResult: Optional[str] = Form(None)
+    SpeechResult: Optional[str] = Form(None),
 ):
     """
     Handle Twilio <Gather> results — all state in OrchestratorSession via SessionRepository.
     """
     try:
-        logger.info(f"[TWILIO] Gather from {CallSid}: speech_len={len(SpeechResult) if SpeechResult else 0}")
+        logger.info(
+            f"[TWILIO] Gather from {CallSid}: speech_len={len(SpeechResult) if SpeechResult else 0}"
+        )
 
         repo = get_session_repository()
         session = repo.load_session_by_call(CallSid)
 
         if not session:
             logger.error(f"[TWILIO] No session found for call {CallSid}")
-            twiml = await generate_twiml_say_and_hangup("Sorry, your session has expired. Please call back.")
+            twiml = await generate_twiml_say_and_hangup(
+                "Sorry, your session has expired. Please call back."
+            )
             return Response(content=twiml, media_type="application/xml")
 
         session_id = session.session_id
@@ -478,7 +555,9 @@ async def handle_gather(
             return Response(content=twiml, media_type="application/xml")
 
         # Store patient's answer in conversation
-        session.conversation.append(ConversationTurn(role="caller", text=SpeechResult.strip()))
+        session.conversation.append(
+            ConversationTurn(role="caller", text=SpeechResult.strip())
+        )
 
         # Get current stage
         current_stage = session.channel_metadata.get("stage", STAGE_NAME)
@@ -501,9 +580,13 @@ async def handle_gather(
                     session.intake_state.caller_name = name_input
                     session.channel_metadata["stage"] = STAGE_AGE
                     next_question = "Thank you. What is your age?"
-                    session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+                    session.conversation.append(
+                        ConversationTurn(role="assistant", text=next_question)
+                    )
                     repo.persist_session(session)
-                    twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
+                    twiml = await generate_twiml_gather(
+                        next_question, "/api/v1/voice/gather"
+                    )
                     return Response(content=twiml, media_type="application/xml")
                 # STT produced garbage — re-prompt without advancing the stage
                 logger.warning(
@@ -520,7 +603,9 @@ async def handle_gather(
             session.intake_state.caller_name = name_input
             session.channel_metadata["stage"] = STAGE_AGE
             next_question = "Thank you. What is your age?"
-            session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=next_question)
+            )
             repo.persist_session(session)
             twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
             return Response(content=twiml, media_type="application/xml")
@@ -532,10 +617,13 @@ async def handle_gather(
                 session.channel_metadata["patient_age_raw"] = SpeechResult.strip()
             session.channel_metadata["stage"] = STAGE_SEX
             next_question = "And what is your biological sex? Please say male, female, or prefer not to say."
-            session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=next_question)
+            )
             repo.persist_session(session)
             twiml = await generate_twiml_gather(
-                next_question, "/api/v1/voice/gather",
+                next_question,
+                "/api/v1/voice/gather",
                 hints="male,female,prefer not to say",
             )
             return Response(content=twiml, media_type="application/xml")
@@ -544,11 +632,15 @@ async def handle_gather(
             session.intake_state.caller_sex = _normalise_sex(SpeechResult)
             session.channel_metadata["stage"] = STAGE_CHIEF_COMPLAINT
             next_question = "Thank you. Now, what brings you in today? Please describe your main symptom or concern."
-            session.conversation.append(ConversationTurn(role="assistant", text=next_question))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=next_question)
+            )
             repo.persist_session(session)
             twiml = await generate_twiml_gather(
-                next_question, "/api/v1/voice/gather",
-                timeout=10, speech_timeout="auto",
+                next_question,
+                "/api/v1/voice/gather",
+                timeout=10,
+                speech_timeout="auto",
             )
             return Response(content=twiml, media_type="application/xml")
 
@@ -570,11 +662,14 @@ async def handle_gather(
             async def _run_turn(sess, text):
                 """Background coroutine: run orchestrator + persist."""
                 import time as _t
+
                 _t0 = _t.monotonic()
                 orch = get_orchestrator()
                 res = await orch.process_turn(sess, text)
                 _ms = (_t.monotonic() - _t0) * 1000
-                logger.info(f"[TWILIO] Orchestrator completed in {_ms:.0f}ms for session {sess.session_id}")
+                logger.info(
+                    f"[TWILIO] Orchestrator completed in {_ms:.0f}ms for session {sess.session_id}"
+                )
                 r = get_session_repository()
                 r.persist_session(sess)
                 return res
@@ -594,18 +689,23 @@ async def handle_gather(
 
         # Should not reach here
         logger.error(f"[TWILIO] Unexpected state for session {session_id}")
-        twiml = await generate_twiml_say_and_hangup("Thank you for answering our questions. All information has been securely recorded and will be passed on to a nurse for review. A nurse will contact you promptly. If your symptoms worsen, please go to the emergency room or call emergency services.")
+        twiml = await generate_twiml_say_and_hangup(
+            "Thank you for answering our questions. All information has been securely recorded and will be passed on to a nurse for review. A nurse will contact you promptly. If your symptoms worsen, please go to the emergency room or call emergency services."
+        )
         return Response(content=twiml, media_type="application/xml")
-        
+
     except Exception as e:
         logger.error(f"[TWILIO] Error in gather: {e}", exc_info=True)
-        error_twiml = await generate_twiml_say_and_hangup("Sorry, we encountered an error. Please try again later.")
+        error_twiml = await generate_twiml_say_and_hangup(
+            "Sorry, we encountered an error. Please try again later."
+        )
         return Response(content=error_twiml, media_type="application/xml")
 
 
 # ---------------------------------------------------------------------------
 # /thinking — poll loop that plays typing sounds until the LLM is ready
 # ---------------------------------------------------------------------------
+
 
 @router.post("/thinking")
 async def handle_thinking(
@@ -625,7 +725,9 @@ async def handle_thinking(
 
         # No pending task — shouldn't happen, but recover gracefully
         if task is None:
-            logger.warning(f"[TWILIO] /thinking called with no pending task for {CallSid}")
+            logger.warning(
+                f"[TWILIO] /thinking called with no pending task for {CallSid}"
+            )
             twiml = await generate_twiml_gather(
                 "Sorry about the wait. Can you repeat that for me?",
                 "/api/v1/voice/gather",
@@ -657,7 +759,9 @@ async def handle_thinking(
 
         exc = task.exception()
         if exc is not None:
-            logger.error(f"[TWILIO] Orchestrator task failed for {CallSid}: {exc}", exc_info=exc)
+            logger.error(
+                f"[TWILIO] Orchestrator task failed for {CallSid}: {exc}", exc_info=exc
+            )
             twiml = await generate_twiml_say_and_hangup(
                 "I'm sorry, something went wrong. Please call back and we'll help you."
             )
@@ -673,6 +777,7 @@ async def handle_thinking(
         session_id = session.session_id if session else CallSid
 
         import time as _time
+
         _t_tts = _time.monotonic()
 
         if action == "escalate":
@@ -706,8 +811,10 @@ async def handle_thinking(
         else:
             # action == "ask" — continue with next question
             twiml = await generate_twiml_gather(
-                spoken_message, "/api/v1/voice/gather",
-                timeout=8, speech_timeout="auto",
+                spoken_message,
+                "/api/v1/voice/gather",
+                timeout=8,
+                speech_timeout="auto",
             )
             _tts_ms = (_time.monotonic() - _t_tts) * 1000
             logger.info(f"[TWILIO] TTS={_tts_ms:.0f}ms for session {session_id}")
@@ -717,7 +824,9 @@ async def handle_thinking(
         logger.error(f"[TWILIO] Error in /thinking: {e}", exc_info=True)
         # Clean up pending task
         _pending_turns.pop(CallSid, None)
-        error_twiml = await generate_twiml_say_and_hangup("Sorry, we encountered an error. Please try again later.")
+        error_twiml = await generate_twiml_say_and_hangup(
+            "Sorry, we encountered an error. Please try again later."
+        )
         return Response(content=error_twiml, media_type="application/xml")
 
 
@@ -725,7 +834,9 @@ def _build_session_metadata(session) -> dict:
     """Extract metadata dict from OrchestratorSession for report generation."""
     return {
         "patient_name": session.intake_state.caller_name or "Unknown",
-        "patient_age": str(session.intake_state.caller_age) if session.intake_state.caller_age else "Unknown",
+        "patient_age": str(session.intake_state.caller_age)
+        if session.intake_state.caller_age
+        else "Unknown",
         "patient_sex": session.intake_state.caller_sex or "Unknown",
         "chief_complaint": session.intake_state.chief_complaint or "Unknown",
     }
@@ -738,7 +849,7 @@ def _get_stage_question(stage: str) -> str:
         STAGE_AGE: "What is your age?",
         STAGE_SEX: "What is your biological sex? Please say male, female, or prefer not to say.",
         STAGE_CHIEF_COMPLAINT: "What brings you in today? Please describe your main symptom or concern.",
-        STAGE_DYNAMIC: "Can you tell me more about your symptoms?"
+        STAGE_DYNAMIC: "Can you tell me more about your symptoms?",
     }
     return questions.get(stage, "Can you tell me more?")
 
@@ -763,7 +874,9 @@ def _find_report_files(identifier: str) -> tuple[Path | None, Path | None]:
 
 
 @router.get("/reports")
-async def list_reports(limit: int = 50, month: Optional[str] = None, year: Optional[int] = None):
+async def list_reports(
+    limit: int = 50, month: Optional[str] = None, year: Optional[int] = None
+):
     """List all available reports, most recent first.
 
     Optional filters:
@@ -777,10 +890,16 @@ async def list_reports(limit: int = 50, month: Optional[str] = None, year: Optio
             search_dir = search_dir / str(year)
         if month:
             # Allow "01", "January", or "01-January"
-            month_dirs = sorted(search_dir.glob(f"*{month}*")) if search_dir.exists() else []
+            month_dirs = (
+                sorted(search_dir.glob(f"*{month}*")) if search_dir.exists() else []
+            )
             if month_dirs:
                 search_dir = month_dirs[0]
-        json_files = sorted(search_dir.rglob("*.json"), reverse=True) if search_dir.exists() else []
+        json_files = (
+            sorted(search_dir.rglob("*.json"), reverse=True)
+            if search_dir.exists()
+            else []
+        )
     else:
         json_files = sorted(REPORTS_DIR.rglob("*.json"), reverse=True)
 
@@ -788,12 +907,14 @@ async def list_reports(limit: int = 50, month: Optional[str] = None, year: Optio
     for f in json_files[:limit]:
         # Show path relative to reports dir for context
         rel_path = f.relative_to(REPORTS_DIR)
-        reports.append({
-            "filename": f.stem,
-            "path": str(rel_path),
-            "created": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
-            "size_bytes": f.stat().st_size,
-        })
+        reports.append(
+            {
+                "filename": f.stem,
+                "path": str(rel_path),
+                "created": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                "size_bytes": f.stat().st_size,
+            }
+        )
     return {"count": len(reports), "reports": reports}
 
 
@@ -808,8 +929,7 @@ async def get_report(identifier: str):
 
         if json_path is None or not json_path.exists():
             raise HTTPException(
-                status_code=404,
-                detail=f"Report not found for '{identifier}'"
+                status_code=404, detail=f"Report not found for '{identifier}'"
             )
 
         with open(json_path, "r") as f:
@@ -827,10 +947,12 @@ async def get_report(identifier: str):
             "report_files": {
                 "json": str(json_path),
                 "txt": str(txt_path) if txt_path else None,
-            }
+            },
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[REPORTS] Error retrieving report for {identifier}: {e}", exc_info=True)
+        logger.error(
+            f"[REPORTS] Error retrieving report for {identifier}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail="Error retrieving report")

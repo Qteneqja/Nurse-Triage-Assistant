@@ -4,6 +4,7 @@ Phase 3 — Storage Tests
 Tests for PostgresStorage CRUD operations, PHI control, and migration.
 Uses SQLite in-memory as a portable test backend.
 """
+
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -20,6 +21,7 @@ from src.orchestrator.schemas import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sqlite_engine():
@@ -52,6 +54,7 @@ def postgres_storage(sqlite_engine):
 # ---------------------------------------------------------------------------
 # Database Model Tests
 # ---------------------------------------------------------------------------
+
 
 class TestTriageSessionModel:
     """Test SQLAlchemy model for triage_sessions."""
@@ -134,9 +137,11 @@ class TestTriageTurnModel:
         db_session.add(turn)
         db_session.commit()
 
-        loaded = db_session.query(TriageTurnModel).filter_by(
-            session_id="turn-test-session", turn_index=1
-        ).one()
+        loaded = (
+            db_session.query(TriageTurnModel)
+            .filter_by(session_id="turn-test-session", turn_index=1)
+            .one()
+        )
         assert loaded.user_text == "I have chest pain"
         assert loaded.confidence_score == 0.85
         assert loaded.escalation_required is True
@@ -167,24 +172,23 @@ class TestTriageTurnModel:
         db_session.add(session)
         db_session.commit()
 
-        turn = TriageTurnModel(
-            session_id="cascade-test", turn_index=1
-        )
+        turn = TriageTurnModel(session_id="cascade-test", turn_index=1)
         db_session.add(turn)
         db_session.commit()
 
         db_session.delete(session)
         db_session.commit()
 
-        remaining = db_session.query(TriageTurnModel).filter_by(
-            session_id="cascade-test"
-        ).all()
+        remaining = (
+            db_session.query(TriageTurnModel).filter_by(session_id="cascade-test").all()
+        )
         assert len(remaining) == 0
 
 
 # ---------------------------------------------------------------------------
 # PostgresStorage CRUD Tests
 # ---------------------------------------------------------------------------
+
 
 class TestPostgresStorageCRUD:
     """Test PostgresStorage interface using SQLite backend."""
@@ -277,6 +281,7 @@ class TestPostgresStorageCRUD:
 # PHI Control Tests
 # ---------------------------------------------------------------------------
 
+
 class TestPHIControl:
     """Test that STORE_PHI setting controls text field storage."""
 
@@ -339,12 +344,14 @@ class TestPHIControl:
 # Migration Test
 # ---------------------------------------------------------------------------
 
+
 class TestMigration:
     """Test that SQLAlchemy models create tables correctly."""
 
     def test_tables_created(self, sqlite_engine):
         """All expected tables exist after create_all."""
         from sqlalchemy import inspect
+
         inspector = inspect(sqlite_engine)
         table_names = inspector.get_table_names()
         assert "triage_sessions" in table_names
@@ -353,27 +360,48 @@ class TestMigration:
     def test_session_columns(self, sqlite_engine):
         """triage_sessions has all expected columns."""
         from sqlalchemy import inspect
+
         inspector = inspect(sqlite_engine)
         columns = {c["name"] for c in inspector.get_columns("triage_sessions")}
         expected = {
-            "session_id", "channel", "created_at", "updated_at", "ended_at",
-            "status", "final_disposition", "escalation_reason",
-            "model_name", "model_version", "protocol_version_used", "metadata",
+            "session_id",
+            "channel",
+            "created_at",
+            "updated_at",
+            "ended_at",
+            "status",
+            "final_disposition",
+            "escalation_reason",
+            "model_name",
+            "model_version",
+            "protocol_version_used",
+            "metadata",
         }
         assert expected.issubset(columns)
 
     def test_turn_columns(self, sqlite_engine):
         """triage_turns has all expected columns."""
         from sqlalchemy import inspect
+
         inspector = inspect(sqlite_engine)
         columns = {c["name"] for c in inspector.get_columns("triage_turns")}
         expected = {
-            "id", "session_id", "turn_index", "timestamp",
-            "user_text", "system_text", "extracted_entities",
-            "red_flags_triggered", "rules_triggered",
-            "protocol_hits", "protocol_citations",
-            "confidence_score", "confidence_breakdown",
-            "disposition", "next_action", "escalation_required",
+            "id",
+            "session_id",
+            "turn_index",
+            "timestamp",
+            "user_text",
+            "system_text",
+            "extracted_entities",
+            "red_flags_triggered",
+            "rules_triggered",
+            "protocol_hits",
+            "protocol_citations",
+            "confidence_score",
+            "confidence_breakdown",
+            "disposition",
+            "next_action",
+            "escalation_required",
             "safety_events",
         }
         assert expected.issubset(columns)
@@ -383,35 +411,45 @@ class TestMigration:
 # Storage Factory Tests
 # ---------------------------------------------------------------------------
 
+
 class TestStorageFactory:
     """Test storage backend factory selection."""
 
     def test_memory_backend_default(self):
         """Default STORAGE_BACKEND=memory returns InMemoryOrchestratorStorage."""
         from src.storage.factory import reset_storage_backend
+
         reset_storage_backend()
 
         # Patch src.config directly — factory now reads live config at call time
-        with patch("src.config.STORAGE_BACKEND", "memory"), \
-             patch("src.config.ENVIRONMENT", "development"):
+        with (
+            patch("src.config.STORAGE_BACKEND", "memory"),
+            patch("src.config.ENVIRONMENT", "development"),
+        ):
             from src.storage.factory import get_storage_backend
             from src.storage.factory import reset_storage_backend as reset
+
             reset()  # Clear singleton
             backend = get_storage_backend()
             from src.storage.memory import InMemoryOrchestratorStorage
+
             assert isinstance(backend, InMemoryOrchestratorStorage)
             reset()
 
     def test_postgres_backend_requires_url(self):
         """STORAGE_BACKEND=postgres without DATABASE_URL raises."""
         from src.storage.factory import reset_storage_backend
+
         reset_storage_backend()
 
         # Patch src.config directly — factory now reads live config at call time
-        with patch("src.config.STORAGE_BACKEND", "postgres"), \
-             patch("src.config.DATABASE_URL", None):
+        with (
+            patch("src.config.STORAGE_BACKEND", "postgres"),
+            patch("src.config.DATABASE_URL", None),
+        ):
             from src.storage.factory import get_storage_backend
             from src.storage.factory import reset_storage_backend as reset
+
             reset()
             with pytest.raises(RuntimeError, match="DATABASE_URL"):
                 get_storage_backend()

@@ -11,6 +11,7 @@ Tests for:
 7. Postgres enforcement in production
 8. Protocol hierarchy (RULES > PROTOCOL > LLM)
 """
+
 from __future__ import annotations
 
 import os
@@ -92,7 +93,9 @@ class TestRedFlagRuleExecution:
         assert "LOSS_OF_CONSCIOUSNESS" in result.triggered_rule_ids
 
     def test_uncontrolled_bleeding_forces_er_now(self):
-        result = run_red_flag_rules(utterance="blood is gushing and won't stop bleeding")
+        result = run_red_flag_rules(
+            utterance="blood is gushing and won't stop bleeding"
+        )
         assert result.forced_disposition == "ER_NOW"
         assert "UNCONTROLLED_BLEEDING" in result.triggered_rule_ids
 
@@ -104,9 +107,7 @@ class TestRedFlagRuleExecution:
 
     def test_weighted_score_at_threshold_forces_urgent(self):
         # HIGH_FEVER(5) + SEVERE_PAIN(5) = 10 → URGENT
-        result = run_red_flag_rules(
-            utterance="very high fever and 9 out of 10 pain"
-        )
+        result = run_red_flag_rules(utterance="very high fever and 9 out of 10 pain")
         assert result.forced_disposition == "URGENT"
         assert result.total_score >= 10
 
@@ -247,9 +248,15 @@ class TestTriageOutputSchema:
         """Verify schema has all fields specified in requirements."""
         fields = set(TriageOutput.model_fields.keys())
         required = {
-            "disposition", "urgency_level", "confidence_score",
-            "rules_triggered", "red_flags_triggered", "escalation_required",
-            "protocol_references", "model_version", "timestamp",
+            "disposition",
+            "urgency_level",
+            "confidence_score",
+            "rules_triggered",
+            "red_flags_triggered",
+            "escalation_required",
+            "protocol_references",
+            "model_version",
+            "timestamp",
         }
         assert required.issubset(fields), f"Missing fields: {required - fields}"
 
@@ -403,8 +410,10 @@ class TestCentralizedSafetyGate:
             ),
             self._base_context(),
         )
-        assert "you have" not in decision.message_to_caller.lower() or \
-               "disease" not in decision.message_to_caller.lower()
+        assert (
+            "you have" not in decision.message_to_caller.lower()
+            or "disease" not in decision.message_to_caller.lower()
+        )
         assert len(decision.diagnosis_rewrites) >= 1
 
     def test_invalid_schema_uses_fallback(self):
@@ -435,9 +444,7 @@ class TestCentralizedSafetyGate:
         """If weighted flags triggered, LLM cannot claim SELF_CARE."""
         decision = safety_gate(
             self._base_llm_output(disposition="SELF_CARE"),
-            self._base_context(
-                caller_utterance="very high fever and 9 out of 10 pain"
-            ),
+            self._base_context(caller_utterance="very high fever and 9 out of 10 pain"),
         )
         # Weighted flags should prevent SELF_CARE
         assert decision.disposition != "SELF_CARE"
@@ -558,32 +565,41 @@ class TestPHIMasking:
 # 6. PRODUCTION POSTGRES ENFORCEMENT TESTS
 # ---------------------------------------------------------------------------
 
+
 class TestProductionPostgresEnforcement:
     """Verify Postgres is mandatory in production."""
 
     def test_production_requires_postgres_in_config(self):
         """Config validation should reject non-postgres in production."""
 
-        with patch.dict(os.environ, {
-            "ENVIRONMENT": "production",
-            "STORAGE_BACKEND": "memory",
-            "DEEPSEEK_API_KEY": "test-key",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "ENVIRONMENT": "production",
+                "STORAGE_BACKEND": "memory",
+                "DEEPSEEK_API_KEY": "test-key",
+            },
+        ):
             # Re-import to pick up new env vars
             import importlib
             import src.config
+
             importlib.reload(src.config)
             errors = src.config.validate_config()
-            assert any("postgres" in e.lower() for e in errors), \
+            assert any("postgres" in e.lower() for e in errors), (
                 f"Expected postgres requirement error, got: {errors}"
+            )
 
     def test_factory_raises_in_production_without_postgres(self):
         """Storage factory must raise RuntimeError in production without postgres."""
         from src.storage.factory import get_storage_backend, reset_storage_backend
+
         reset_storage_backend()
 
-        with patch("src.storage.factory.ENVIRONMENT", "production"), \
-             patch("src.storage.factory.STORAGE_BACKEND", "memory"):
+        with (
+            patch("src.storage.factory.ENVIRONMENT", "production"),
+            patch("src.storage.factory.STORAGE_BACKEND", "memory"),
+        ):
             with pytest.raises(RuntimeError, match="Production requires Postgres"):
                 get_storage_backend()
 
@@ -593,6 +609,7 @@ class TestProductionPostgresEnforcement:
 # ---------------------------------------------------------------------------
 # 7. DECISION TRACE COMPLETENESS TESTS
 # ---------------------------------------------------------------------------
+
 
 class TestDecisionTraceCompleteness:
     """Verify that decision traces include all required fields."""
@@ -641,23 +658,42 @@ class TestDecisionTraceCompleteness:
     def test_db_schema_has_all_session_fields(self):
         """Verify the DB model includes all required session fields."""
         from src.storage.models import TriageSessionModel
+
         columns = {c.name for c in TriageSessionModel.__table__.columns}
         required = {
-            "session_id", "caller_id", "model_name", "model_version",
-            "protocol_version_used", "final_disposition", "confidence_score",
-            "created_at", "finalized_at", "status",
+            "session_id",
+            "caller_id",
+            "model_name",
+            "model_version",
+            "protocol_version_used",
+            "final_disposition",
+            "confidence_score",
+            "created_at",
+            "finalized_at",
+            "status",
         }
         assert required.issubset(columns), f"Missing: {required - columns}"
 
     def test_db_schema_has_all_decision_fields(self):
         """Verify the decisions table includes all required fields."""
         from src.storage.models import DecisionModel
+
         columns = {c.name for c in DecisionModel.__table__.columns}
         required = {
-            "session_id", "turn_index", "disposition", "urgency_level",
-            "confidence_score", "escalation_required", "rules_triggered",
-            "red_flags_triggered", "protocol_references", "protocol_version",
-            "model_name", "model_version", "created_at", "finalized_at",
+            "session_id",
+            "turn_index",
+            "disposition",
+            "urgency_level",
+            "confidence_score",
+            "escalation_required",
+            "rules_triggered",
+            "red_flags_triggered",
+            "protocol_references",
+            "protocol_version",
+            "model_name",
+            "model_version",
+            "created_at",
+            "finalized_at",
             "gate_trace",
         }
         assert required.issubset(columns), f"Missing: {required - columns}"
@@ -666,6 +702,7 @@ class TestDecisionTraceCompleteness:
 # ---------------------------------------------------------------------------
 # 8. PROTOCOL HIERARCHY ENFORCEMENT
 # ---------------------------------------------------------------------------
+
 
 class TestProtocolHierarchy:
     """Verify RULES > PROTOCOL > LLM hierarchy."""
@@ -737,6 +774,7 @@ class TestProtocolHierarchy:
 # 9. SCHEMA FAILURE SIMULATION
 # ---------------------------------------------------------------------------
 
+
 class TestSchemaFailureSimulation:
     """Simulate schema validation failures and verify safe fallback."""
 
@@ -758,5 +796,7 @@ class TestSchemaFailureSimulation:
             pytest.fail("Schema validation should not raise on empty dict")
 
     def test_fallback_message_correct(self):
-        assert "cannot safely assess" in SAFE_FALLBACK_MESSAGE.lower() or \
-               "immediate medical attention" in SAFE_FALLBACK_MESSAGE.lower()
+        assert (
+            "cannot safely assess" in SAFE_FALLBACK_MESSAGE.lower()
+            or "immediate medical attention" in SAFE_FALLBACK_MESSAGE.lower()
+        )

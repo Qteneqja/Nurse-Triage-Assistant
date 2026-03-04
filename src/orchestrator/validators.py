@@ -9,6 +9,7 @@ Phase 1 additions:
 - post_check_safety_gate(): THIN WRAPPER → delegates to src.safety.gate
 - UNSAFE_INSTRUCTION_PATTERNS: curated unsafe-instruction detector
 """
+
 from __future__ import annotations
 
 import json
@@ -116,7 +117,9 @@ def parse_and_validate(
     return validate_against_schema(data, schema)
 
 
-def safe_intake_turn_default(fallback_question: str = "Can you tell me more about what you're experiencing?") -> IntakeTurnOutput:
+def safe_intake_turn_default(
+    fallback_question: str = "Can you tell me more about what you're experiencing?",
+) -> IntakeTurnOutput:
     """Return a safe default IntakeTurnOutput for when LLM fails.
 
     Args:
@@ -127,7 +130,11 @@ def safe_intake_turn_default(fallback_question: str = "Can you tell me more abou
     """
     return IntakeTurnOutput(
         extracted_fields_update=IntakeStatePatch(),
-        missing_fields_prioritized=["chief_complaint", "symptom_severity", "onset_time"],
+        missing_fields_prioritized=[
+            "chief_complaint",
+            "symptom_severity",
+            "onset_time",
+        ],
         next_question=fallback_question,
         llm_safety_flags=[],
         confidence=0.0,
@@ -160,18 +167,21 @@ def safe_finalize_default() -> FinalizeOutput:
             "A nurse will review your case and contact you soon. "
             "If your symptoms worsen, please go to the emergency room or call 9 1 1."
         ),
-        llm_safety_flags=[SafetyFlag(
-            source="llm",
-            level=SafetyLevel.ADVISORY,
-            flag="Automated reasoning failed — manual review required",
-            reason_for_audit="LLM-detected: Automated reasoning failed",
-        )],
+        llm_safety_flags=[
+            SafetyFlag(
+                source="llm",
+                level=SafetyLevel.ADVISORY,
+                flag="Automated reasoning failed — manual review required",
+                reason_for_audit="LLM-detected: Automated reasoning failed",
+            )
+        ],
     )
 
 
 # ---------------------------------------------------------------------------
 # Phase 1 — Two-attempt JSON validation with repair
 # ---------------------------------------------------------------------------
+
 
 async def validate_phase1_output(
     raw: str,
@@ -226,7 +236,8 @@ async def validate_phase1_output(
 
 # Patterns that indicate the LLM made a diagnosis
 _DIAGNOSIS_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
+    re.compile(p, re.IGNORECASE)
+    for p in [
         r"\byou\s+(have|are\s+suffering\s+from|are\s+experiencing)\b.{0,40}\b(disease|condition|syndrome|disorder|illness|infection|cancer|tumor)\b",
         r"\bthis\s+is\s+(likely\s+)?(a\s+)?(diagnosis|case\s+of|sign\s+of)\b",
         r"\bdiagnos(is|ed|ing)\b",
@@ -236,7 +247,8 @@ _DIAGNOSIS_PATTERNS = [
 
 # Patterns that indicate unsafe clinical instructions
 _UNSAFE_INSTRUCTION_PATTERNS = [
-    re.compile(p, re.IGNORECASE) for p in [
+    re.compile(p, re.IGNORECASE)
+    for p in [
         r"\b(take|use|apply|give)\s+(yourself\s+)?(\d+\s+)?(mg|milligram|tablet|dose|pill)\b",
         r"\byou\s+(don\s*'?\s*t|do\s+not)\s+need\s+(to\s+)?(see|call|go\s+to|visit|contact)\b",
         r"\bno\s+need\s+(for\s+)?(emergency|er|hospital|911|9\s*1\s*1|doctor)\b",
@@ -259,6 +271,7 @@ _URGENCY_ORDER = {
 
 class PostCheckViolation(Exception):
     """Raised when the post-check safety gate detects a violation."""
+
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason

@@ -14,6 +14,7 @@ Tests:
   7. GET /ready returns 503 when DB is unavailable (mock connection failure)
      Assert: response does NOT contain exception class names or stack traces
 """
+
 import hashlib
 import hmac
 import logging
@@ -28,6 +29,7 @@ from fastapi.testclient import TestClient
 # Helper: compute a valid Twilio signature for testing
 # ---------------------------------------------------------------------------
 
+
 def _make_twilio_signature(auth_token: str, url: str, params: dict) -> str:
     """Compute a valid Twilio X-Twilio-Signature for the given URL and POST params."""
     s = url
@@ -41,21 +43,29 @@ def _make_twilio_signature(auth_token: str, url: str, params: dict) -> str:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def _patch_config_prod():
     """Patch config to simulate production with Twilio signature validation enabled."""
-    with patch("src.security.twilio_signature.TWILIO_VALIDATE_SIGNATURE", True), \
-         patch("src.security.twilio_signature.TWILIO_AUTH_TOKEN", "test-auth-token-for-tests"), \
-         patch("src.security.twilio_signature.TWILIO_WEBHOOK_BASE_URL", ""), \
-         patch("src.security.twilio_signature.APP_ENV", "production"):
+    with (
+        patch("src.security.twilio_signature.TWILIO_VALIDATE_SIGNATURE", True),
+        patch(
+            "src.security.twilio_signature.TWILIO_AUTH_TOKEN",
+            "test-auth-token-for-tests",
+        ),
+        patch("src.security.twilio_signature.TWILIO_WEBHOOK_BASE_URL", ""),
+        patch("src.security.twilio_signature.APP_ENV", "production"),
+    ):
         yield
 
 
 @pytest.fixture
 def _patch_config_dev():
     """Patch config to simulate development with Twilio signature validation disabled."""
-    with patch("src.security.twilio_signature.TWILIO_VALIDATE_SIGNATURE", False), \
-         patch("src.security.twilio_signature.APP_ENV", "development"):
+    with (
+        patch("src.security.twilio_signature.TWILIO_VALIDATE_SIGNATURE", False),
+        patch("src.security.twilio_signature.APP_ENV", "development"),
+    ):
         yield
 
 
@@ -64,12 +74,14 @@ def client():
     """Create a TestClient for the FastAPI app."""
     # Import app fresh to avoid module-level config caching issues
     from src.main import app
+
     return TestClient(app, raise_server_exceptions=False)
 
 
 # ---------------------------------------------------------------------------
 # Twilio Signature Tests
 # ---------------------------------------------------------------------------
+
 
 class TestTwilioSignatureEnforcement:
     """Tests for Twilio webhook signature validation."""
@@ -106,7 +118,9 @@ class TestTwilioSignatureEnforcement:
         # Compute a valid signature for the test URL and params
         test_url = "http://testserver/api/v1/voice/incoming"
         test_params = {"CallSid": "CA123", "From": "+15551234567"}
-        valid_sig = _make_twilio_signature("test-auth-token-for-tests", test_url, test_params)
+        valid_sig = _make_twilio_signature(
+            "test-auth-token-for-tests", test_url, test_params
+        )
 
         response = client.post(
             "/api/v1/voice/incoming",
@@ -128,13 +142,17 @@ class TestTwilioSignatureEnforcement:
             # Should not be 403 — signature validation is skipped in dev
             assert response.status_code != 403
             # Verify warning was logged about skipping validation
-            assert any("SKIPPED" in record.message or "skipped" in record.message.lower()
-                      for record in caplog.records if "TwilioSig" in record.message)
+            assert any(
+                "SKIPPED" in record.message or "skipped" in record.message.lower()
+                for record in caplog.records
+                if "TwilioSig" in record.message
+            )
 
 
 # ---------------------------------------------------------------------------
 # Health Endpoint Tests
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpoints:
     """Tests for /health and /ready operational endpoints."""
@@ -159,14 +177,20 @@ class TestHealthEndpoints:
         """Test 7: GET /ready returns 503 when DB is unavailable.
         Assert: response does NOT contain exception class names or stack traces.
         """
+
         def _raise_connection_error():
             raise ConnectionError("could not connect to server: Connection refused")
 
-        with patch("src.main.STORAGE_BACKEND", "postgres"), \
-             patch("src.main.APP_ENV", "production"), \
-             patch("src.main.get_storage_backend", side_effect=ConnectionError(
-                 "could not connect to server: Connection refused"
-             )):
+        with (
+            patch("src.main.STORAGE_BACKEND", "postgres"),
+            patch("src.main.APP_ENV", "production"),
+            patch(
+                "src.main.get_storage_backend",
+                side_effect=ConnectionError(
+                    "could not connect to server: Connection refused"
+                ),
+            ),
+        ):
             response = client.get("/ready")
             assert response.status_code == 503
             body = response.json()

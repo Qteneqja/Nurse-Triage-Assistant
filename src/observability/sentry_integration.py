@@ -10,6 +10,7 @@ PHI Safeguards (Defense in Depth):
   3. Explicit capture points never include content fields
   4. Three layers of protection before any data reaches Sentry
 """
+
 from __future__ import annotations
 
 import logging
@@ -31,8 +32,15 @@ _SAFE_HEADERS = {"content-type", "user-agent", "x-request-id", "x-forwarded-for"
 
 # Keywords in breadcrumb data keys that may contain PHI
 _PHI_RISK_KEYWORDS = (
-    "transcript", "symptom", "patient", "caller",
-    "message", "body", "text", "content", "input",
+    "transcript",
+    "symptom",
+    "patient",
+    "caller",
+    "message",
+    "body",
+    "text",
+    "content",
+    "input",
 )
 
 
@@ -106,6 +114,7 @@ def set_sentry_context(
     """
     try:
         import sentry_sdk
+
         if session_id:
             sentry_sdk.set_tag("session_id", session_id)
         if call_sid:
@@ -131,6 +140,7 @@ def capture_llm_failure(
     """
     try:
         import sentry_sdk
+
         sentry_sdk.capture_message(
             f"LLM API failure: {error_type or 'unknown'}",
             level="error",
@@ -159,6 +169,7 @@ def capture_json_validation_failure(
     """
     try:
         import sentry_sdk
+
         sentry_sdk.capture_message(
             f"JSON validation failure: {schema_name}",
             level="warning",
@@ -185,6 +196,7 @@ def add_safety_gate_breadcrumb(
     """
     try:
         import sentry_sdk
+
         sentry_sdk.add_breadcrumb(
             category="safety_gate",
             message=f"Rule override: {rule_name} → {disposition_override}",
@@ -208,6 +220,7 @@ def capture_db_failure(error_type: str) -> None:
     """
     try:
         import sentry_sdk
+
         sentry_sdk.capture_message(
             f"Database connection failure: {error_type}",
             level="error",

@@ -12,6 +12,7 @@ Tests:
   5. Preserve structure without request data
   6. Scrub breadcrumbs
 """
+
 from __future__ import annotations
 
 import os
@@ -34,6 +35,7 @@ from src.observability.sentry_integration import (
 # Test 1: No init without DSN
 # ---------------------------------------------------------------------------
 
+
 def test_sentry_not_initialized_without_dsn():
     """Sentry must NOT initialize when SENTRY_DSN is empty or missing."""
     with patch.dict(os.environ, {"SENTRY_DSN": ""}, clear=False):
@@ -54,11 +56,14 @@ def test_sentry_not_initialized_without_dsn_unset():
 # Test 2: Init with DSN
 # ---------------------------------------------------------------------------
 
+
 def test_sentry_initialized_with_dsn():
     """Sentry should initialize when SENTRY_DSN is set to a valid value."""
     mock_init = MagicMock()
     with patch.dict(os.environ, {"SENTRY_DSN": "https://key@sentry.io/123"}):
-        with patch("src.observability.sentry_integration.sentry_sdk", create=True) as mock_sdk:
+        with patch(
+            "src.observability.sentry_integration.sentry_sdk", create=True
+        ) as mock_sdk:
             # Need to patch the import within the function
             with patch.dict("sys.modules", {"sentry_sdk": mock_sdk}):
                 mock_sdk.init = mock_init
@@ -67,13 +72,16 @@ def test_sentry_initialized_with_dsn():
                 mock_init.assert_called_once()
                 # Verify send_default_pii=False (HIPAA critical)
                 call_kwargs = mock_init.call_args
-                assert call_kwargs[1].get("send_default_pii") is False or \
-                       call_kwargs.kwargs.get("send_default_pii") is False
+                assert (
+                    call_kwargs[1].get("send_default_pii") is False
+                    or call_kwargs.kwargs.get("send_default_pii") is False
+                )
 
 
 # ---------------------------------------------------------------------------
 # Test 3: Scrub request body
 # ---------------------------------------------------------------------------
+
 
 def test_scrub_phi_removes_request_body():
     """PHI scrubbing must remove request body data — may contain transcript."""
@@ -104,6 +112,7 @@ def test_scrub_phi_removes_request_body():
 # ---------------------------------------------------------------------------
 # Test 4: Scrub headers
 # ---------------------------------------------------------------------------
+
 
 def test_scrub_phi_filters_headers():
     """Only allowlisted headers should survive PHI scrubbing."""
@@ -140,6 +149,7 @@ def test_scrub_phi_filters_headers():
 # Test 5: Preserve structure without request data
 # ---------------------------------------------------------------------------
 
+
 def test_scrub_phi_preserves_non_request_data():
     """Events without request data should pass through unchanged."""
     event = {
@@ -171,6 +181,7 @@ def test_scrub_phi_preserves_non_request_data():
 # ---------------------------------------------------------------------------
 # Test 6: Scrub breadcrumbs
 # ---------------------------------------------------------------------------
+
 
 def test_scrub_phi_redacts_breadcrumb_phi():
     """Breadcrumbs with PHI-risk data keys must be redacted."""
@@ -220,6 +231,7 @@ def test_scrub_phi_redacts_breadcrumb_phi():
 # ---------------------------------------------------------------------------
 # Bonus: capture functions don't crash when sentry is not installed
 # ---------------------------------------------------------------------------
+
 
 def test_capture_functions_no_crash_without_sentry():
     """Capture functions should silently no-op if sentry_sdk is not importable."""

@@ -8,6 +8,7 @@ Thin wrapper around AsyncOpenAI that enforces:
 - Automatic single-pass JSON repair
 - Fail-safe escalation on persistent failure
 """
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,16 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from src.llm.config import DEEPSEEK_BASE_URL, DEEPSEEK_API_KEY, DEEPSEEK_MODEL, LLM_TIMEOUT
-from src.observability.sentry_integration import capture_llm_failure, capture_json_validation_failure
+from src.llm.config import (
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_MODEL,
+    LLM_TIMEOUT,
+)
+from src.observability.sentry_integration import (
+    capture_llm_failure,
+    capture_json_validation_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +44,7 @@ T = TypeVar("T", bound=BaseModel)
 
 class LLMCallError(Exception):
     """Raised when the LLM call fails after retries and repair."""
+
     pass
 
 
@@ -53,6 +63,7 @@ class StructuredLLMClient:
     def __init__(self) -> None:
         # HARD FAIL: production requires a real API key
         from src.config import ENVIRONMENT
+
         if ENVIRONMENT == "production" and not DEEPSEEK_API_KEY:
             raise RuntimeError(
                 "Production requires DEEPSEEK_API_KEY. "
@@ -142,7 +153,9 @@ class StructuredLLMClient:
 
         # Step 1: raw call with JSON mode enabled for structured output
         try:
-            raw = await self._raw_call(messages, max_tokens, temperature, json_mode=True)
+            raw = await self._raw_call(
+                messages, max_tokens, temperature, json_mode=True
+            )
         except Exception as e:
             logger.error(f"[LLM:{cid}] Raw call failed after retries: {e}")
             capture_llm_failure(
@@ -231,7 +244,9 @@ class StructuredLLMClient:
         ]
 
         try:
-            raw = await self._raw_call(repair_messages, max_tokens, temperature=0.1, json_mode=True)
+            raw = await self._raw_call(
+                repair_messages, max_tokens, temperature=0.1, json_mode=True
+            )
         except Exception as e:
             logger.error(f"[LLM:{cid}] Repair call failed: {e}")
             return None

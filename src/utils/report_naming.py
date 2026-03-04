@@ -13,6 +13,7 @@ Example:   reports/2026/01-January/2026-01-30_143256_John-Smith_ER-NOW_a5f4b1b6
 - Disposition gives quick triage context
 - Short UUID suffix guarantees uniqueness
 """
+
 from __future__ import annotations
 
 import calendar

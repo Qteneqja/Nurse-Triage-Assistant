@@ -13,6 +13,7 @@ Modes:
 Run in CI:
   GOLDEN_CALL_MODE=deterministic_only DISABLE_EXTERNAL_CALLS=1 pytest tests/golden_calls/test_golden_calls.py -v
 """
+
 from __future__ import annotations
 
 import json
@@ -41,6 +42,7 @@ CASES_DIR = Path(__file__).parent / "cases"
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def golden_cases() -> List[dict]:
     """Load all golden-call case files, validated against schema."""
@@ -67,6 +69,7 @@ def llm_block_patches():
 # ---------------------------------------------------------------------------
 # Assertion helpers
 # ---------------------------------------------------------------------------
+
 
 def _format_failure_detail(case: dict, result: GoldenCallResult) -> str:
     """Format a detailed failure message with expected vs actual for every field."""
@@ -192,6 +195,7 @@ def _check_confidence(case: dict, result: GoldenCallResult) -> List[str]:
 # Tests — parametrized over all case files
 # ---------------------------------------------------------------------------
 
+
 def _get_case_ids():
     """Get all case file paths for parametrization."""
     if not CASES_DIR.exists():
@@ -267,10 +271,12 @@ def test_llm_blocked_in_deterministic_mode():
     [p.start() for p in patches]
     try:
         from src.llm.client import StructuredLLMClient
+
         client = StructuredLLMClient.__new__(StructuredLLMClient)
 
         with pytest.raises(RuntimeError, match="External LLM call attempted"):
             import asyncio
+
             asyncio.get_event_loop().run_until_complete(client._raw_call([]))
     finally:
         for p in patches:
