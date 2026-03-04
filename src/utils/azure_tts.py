@@ -11,6 +11,7 @@ Flow:
 
 Fully async — uses httpx.AsyncClient so it never blocks the event loop.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -43,6 +44,7 @@ async def warm_up() -> None:
     """
     try:
         from src.config import AZURE_SPEECH_KEY, AZURE_TTS_VOICE
+
         if not AZURE_SPEECH_KEY:
             return
         voice = AZURE_TTS_VOICE or "en-US-AvaMultilingualNeural"
@@ -51,7 +53,9 @@ async def warm_up() -> None:
         if url:
             logger.info("[AzureTTS] Pre-warm complete — pipeline ready")
         else:
-            logger.warning("[AzureTTS] Pre-warm returned None (will retry on first call)")
+            logger.warning(
+                "[AzureTTS] Pre-warm returned None (will retry on first call)"
+            )
     except Exception as exc:
         logger.warning(f"[AzureTTS] Pre-warm failed (non-fatal): {exc}")
 
@@ -92,7 +96,9 @@ async def synthesize_speech(
     region = speech_region or AZURE_SPEECH_REGION
 
     if not key or not region:
-        logger.warning("[AzureTTS] AZURE_SPEECH_KEY or AZURE_SPEECH_REGION not configured")
+        logger.warning(
+            "[AzureTTS] AZURE_SPEECH_KEY or AZURE_SPEECH_REGION not configured"
+        )
         return None
 
     url = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
@@ -124,10 +130,14 @@ async def synthesize_speech(
         elapsed = time.time() - start
 
         if response.status_code == 200:
-            logger.info(f"[AzureTTS] Synthesized {len(text)} chars in {elapsed:.2f}s ({len(response.content)} bytes)")
+            logger.info(
+                f"[AzureTTS] Synthesized {len(text)} chars in {elapsed:.2f}s ({len(response.content)} bytes)"
+            )
             return response.content
         else:
-            logger.error(f"[AzureTTS] Failed: HTTP {response.status_code} — {response.text[:200]}")
+            logger.error(
+                f"[AzureTTS] Failed: HTTP {response.status_code} — {response.text[:200]}"
+            )
             return None
 
     except Exception as exc:
@@ -143,10 +153,17 @@ def _upload_to_blob(audio_bytes: bytes, blob_name: str) -> Optional[str]:
         logger.warning("[AzureTTS] No blob storage configured")
         return None
 
-    from azure.storage.blob import BlobServiceClient, ContentSettings, generate_blob_sas, BlobSasPermissions
+    from azure.storage.blob import (
+        BlobServiceClient,
+        ContentSettings,
+        generate_blob_sas,
+        BlobSasPermissions,
+    )
     from datetime import datetime, timedelta, timezone
 
-    blob_service = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
+    blob_service = BlobServiceClient.from_connection_string(
+        AZURE_STORAGE_CONNECTION_STRING
+    )
     container_name = "tts-audio"
     container_client = blob_service.get_container_client(container_name)
 
@@ -197,7 +214,9 @@ async def text_to_speech_url(
             logger.debug(f"[AzureTTS] Cache hit: {cache_k}")
             return url
         else:
-            logger.info(f"[AzureTTS] Cache entry expiring soon, regenerating: {cache_k}")
+            logger.info(
+                f"[AzureTTS] Cache entry expiring soon, regenerating: {cache_k}"
+            )
             del _audio_cache[cache_k]
 
     try:
@@ -219,7 +238,9 @@ async def text_to_speech_url(
         if result:
             blob_url, expiry_ts = result
             _audio_cache[cache_k] = (blob_url, expiry_ts)
-            logger.info(f"[AzureTTS] Ready: {blob_name} (expires in {_SAS_LIFETIME_HOURS}h)")
+            logger.info(
+                f"[AzureTTS] Ready: {blob_name} (expires in {_SAS_LIFETIME_HOURS}h)"
+            )
             return blob_url
         return None
 

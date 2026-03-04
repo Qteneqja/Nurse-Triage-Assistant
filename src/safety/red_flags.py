@@ -17,6 +17,7 @@ Phase 1 additions:
   score ≥ 10     → URGENT
   else           → UNDECIDED
 """
+
 from __future__ import annotations
 
 import re
@@ -30,6 +31,7 @@ from src.orchestrator.schemas import RedFlagResult, SafetyLevel
 # Phase 1: Structured Red Flag Definitions
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class RedFlagDefinition:
     """A single, explicitly-defined red flag for Phase 1 scoring.
@@ -42,6 +44,7 @@ class RedFlagDefinition:
         recommended_disposition: The disposition this flag alone recommends.
         patterns: Optional regex patterns for utterance matching.
     """
+
     id: str
     description: str
     recommended_disposition: str  # "ER_NOW" | "URGENT" | "UNDECIDED"
@@ -267,7 +270,9 @@ _PHASE1_WEIGHTED_FLAGS: List[RedFlagDefinition] = [
 ]
 
 # Combined lookup
-_ALL_PHASE1_FLAGS: List[RedFlagDefinition] = _PHASE1_CRITICAL_FLAGS + _PHASE1_WEIGHTED_FLAGS
+_ALL_PHASE1_FLAGS: List[RedFlagDefinition] = (
+    _PHASE1_CRITICAL_FLAGS + _PHASE1_WEIGHTED_FLAGS
+)
 
 # Fast pattern-to-flag index (compiled at module load)
 _COMPILED_FLAGS: List[tuple] = []  # (RedFlagDefinition, List[re.Pattern])
@@ -562,8 +567,14 @@ def check_state(
     # Check LLM-reported red flags for known critical patterns
     if red_flags_reported:
         critical_keywords = [
-            "chest pain", "breathing", "stroke", "bleeding",
-            "unconscious", "seizure", "anaphylaxis", "suicid",
+            "chest pain",
+            "breathing",
+            "stroke",
+            "bleeding",
+            "unconscious",
+            "seizure",
+            "anaphylaxis",
+            "suicid",
         ]
         for flag in red_flags_reported:
             flag_lower = flag.lower()
@@ -575,7 +586,9 @@ def check_state(
                             "Based on what you've told me, this may require emergency care. "
                             "Please call 9 1 1 or go to the nearest emergency room immediately."
                         )
-                        reason = f"LLM-reported red flag contains critical keyword: {flag}"
+                        reason = (
+                            f"LLM-reported red flag contains critical keyword: {flag}"
+                        )
                     break
 
     if matched:

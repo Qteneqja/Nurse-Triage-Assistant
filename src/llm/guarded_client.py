@@ -9,6 +9,7 @@ Enforce with:
   - test_no_direct_deepseek_usage (static grep)
   - runtime guard in DeepSeekClient (caller check)
 """
+
 from __future__ import annotations
 
 import json
@@ -32,17 +33,19 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 # Fields on Pydantic models that contain caller/file-facing text
-_OUTBOUND_TEXT_FIELDS = frozenset({
-    "next_question",
-    "response_to_caller",
-    "patient_summary",
-    "sbar_report",
-    "disposition_reasoning",
-    "safety_net_instructions",
-    "script_to_say",
-    "flag",
-    "reason_for_audit",
-})
+_OUTBOUND_TEXT_FIELDS = frozenset(
+    {
+        "next_question",
+        "response_to_caller",
+        "patient_summary",
+        "sbar_report",
+        "disposition_reasoning",
+        "safety_net_instructions",
+        "script_to_say",
+        "flag",
+        "reason_for_audit",
+    }
+)
 
 
 @dataclass
@@ -52,6 +55,7 @@ class GuardedLLM:
     Every method ensures the output passes through the unified gate
     before it can be used downstream.
     """
+
     _client: StructuredLLMClient = field(default_factory=get_structured_client)
 
     # ── Triage decision (JSON → FinalDecision) ────────────────────────────
@@ -79,7 +83,9 @@ class GuardedLLM:
 
         parsed = _extract_json(raw_text)
         if parsed is None:
-            logger.warning(f"[GUARDED:{cid}] No JSON in LLM response, gating empty dict")
+            logger.warning(
+                f"[GUARDED:{cid}] No JSON in LLM response, gating empty dict"
+            )
             parsed = {}
 
         return gate_triage_output(parsed, ctx)
@@ -195,6 +201,7 @@ def get_guarded_llm() -> GuardedLLM:
 # Private helpers
 # ---------------------------------------------------------------------------
 
+
 def _extract_json(text: str) -> Optional[dict]:
     """Extract JSON object from raw LLM text."""
     if not text:
@@ -232,7 +239,7 @@ def _gate_model_text_fields(
 ) -> None:
     """Gate all outbound text fields on a Pydantic model in-place."""
     klass = model.__class__
-    if not hasattr(klass, 'model_fields'):
+    if not hasattr(klass, "model_fields"):
         return  # Not a real Pydantic model (e.g. mock in tests)
     for field_name in klass.model_fields:
         if field_name not in _OUTBOUND_TEXT_FIELDS:

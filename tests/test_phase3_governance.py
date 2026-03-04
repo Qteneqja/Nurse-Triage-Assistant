@@ -3,6 +3,7 @@ Phase 3 — Governance Tests
 
 Tests for protocol status gating, schema validation, and governance enforcement.
 """
+
 import json
 import os
 import pytest
@@ -21,6 +22,7 @@ from src.governance.protocol_status import (
 # ---------------------------------------------------------------------------
 # Protocol Schema Validation
 # ---------------------------------------------------------------------------
+
 
 class TestProtocolSchemaValidation:
     """Test protocol JSON governance schema validation."""
@@ -93,6 +95,7 @@ class TestProtocolSchemaValidation:
 # Protocol Status Gating
 # ---------------------------------------------------------------------------
 
+
 class TestProtocolStatusGating:
     """Test governance-based protocol filtering."""
 
@@ -137,6 +140,7 @@ class TestProtocolStatusGating:
 # ---------------------------------------------------------------------------
 # Approved Protocols Existence Check
 # ---------------------------------------------------------------------------
+
 
 class TestApprovedProtocolsExist:
     """Test startup validation of approved protocols."""
@@ -218,12 +222,14 @@ class TestApprovedProtocolsExist:
 # Integration with Retriever
 # ---------------------------------------------------------------------------
 
+
 class TestGovernanceRetrieverIntegration:
     """Test that the retriever respects governance filtering."""
 
     def test_retriever_loads_approved_protocols(self):
         """ProtocolRetriever loading respects approved status filter."""
         from src.protocols.retriever import load_protocols
+
         protocols = load_protocols()
         # All default protocols have status=approved, so all should load
         assert len(protocols) > 0
@@ -259,6 +265,7 @@ class TestGovernanceRetrieverIntegration:
                 json.dump(p2, f)
 
             from src.protocols.retriever import load_protocols
+
             with patch("src.governance.protocol_status.ENVIRONMENT", "production"):
                 protocols = load_protocols(protocol_dir=tmpdir, apply_governance=True)
 
@@ -271,43 +278,54 @@ class TestGovernanceRetrieverIntegration:
 # Config Validation Tests
 # ---------------------------------------------------------------------------
 
+
 class TestConfigValidation:
     """Test centralized configuration validation."""
 
     def test_valid_config(self):
         """Valid config passes validation."""
         from src.config import validate_config
-        with patch("src.config.STORAGE_BACKEND", "memory"), \
-             patch("src.config.CONFIDENCE_MIN_THRESHOLD", 0.60), \
-             patch("src.config.REDFLAG_SCORE_THRESHOLD", 10), \
-             patch("src.config.ENVIRONMENT", "development"):
+
+        with (
+            patch("src.config.STORAGE_BACKEND", "memory"),
+            patch("src.config.CONFIDENCE_MIN_THRESHOLD", 0.60),
+            patch("src.config.REDFLAG_SCORE_THRESHOLD", 10),
+            patch("src.config.ENVIRONMENT", "development"),
+        ):
             errors = validate_config()
             assert len(errors) == 0
 
     def test_invalid_storage_backend(self):
         """Invalid STORAGE_BACKEND generates error."""
         from src.config import validate_config
-        with patch("src.config.STORAGE_BACKEND", "redis"), \
-             patch("src.config.CONFIDENCE_MIN_THRESHOLD", 0.60), \
-             patch("src.config.REDFLAG_SCORE_THRESHOLD", 10), \
-             patch("src.config.ENVIRONMENT", "development"):
+
+        with (
+            patch("src.config.STORAGE_BACKEND", "redis"),
+            patch("src.config.CONFIDENCE_MIN_THRESHOLD", 0.60),
+            patch("src.config.REDFLAG_SCORE_THRESHOLD", 10),
+            patch("src.config.ENVIRONMENT", "development"),
+        ):
             errors = validate_config()
             assert any("STORAGE_BACKEND" in e for e in errors)
 
     def test_postgres_without_url(self):
         """STORAGE_BACKEND=postgres without DATABASE_URL generates error."""
         from src.config import validate_config
-        with patch("src.config.STORAGE_BACKEND", "postgres"), \
-             patch("src.config.DATABASE_URL", None), \
-             patch("src.config.CONFIDENCE_MIN_THRESHOLD", 0.60), \
-             patch("src.config.REDFLAG_SCORE_THRESHOLD", 10), \
-             patch("src.config.ENVIRONMENT", "development"):
+
+        with (
+            patch("src.config.STORAGE_BACKEND", "postgres"),
+            patch("src.config.DATABASE_URL", None),
+            patch("src.config.CONFIDENCE_MIN_THRESHOLD", 0.60),
+            patch("src.config.REDFLAG_SCORE_THRESHOLD", 10),
+            patch("src.config.ENVIRONMENT", "development"),
+        ):
             errors = validate_config()
             assert any("DATABASE_URL" in e for e in errors)
 
     def test_old_env_var_backward_compat(self):
         """Old CONFIDENCE_THRESHOLD env var is accepted with deprecation."""
         import warnings
+
         old_env = {
             "CONFIDENCE_THRESHOLD": "0.70",
         }
@@ -318,6 +336,7 @@ class TestConfigValidation:
                 with warnings.catch_warnings(record=True) as w:
                     warnings.simplefilter("always")
                     import src.config as cfg
+
                     val = cfg._env_with_deprecation(
                         "CONFIDENCE_MIN_THRESHOLD", "CONFIDENCE_THRESHOLD", "0.60"
                     )

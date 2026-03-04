@@ -4,6 +4,7 @@ Structured JSON Logging — Phase 5
 Provides structured JSON log formatter and per-request context injection.
 Every log line includes request_id, call_sid, session_id, turn_index, etc.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,9 @@ _request_id: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
 _call_sid: ContextVar[Optional[str]] = ContextVar("call_sid", default=None)
 _session_id: ContextVar[Optional[str]] = ContextVar("session_id", default=None)
 _turn_index: ContextVar[Optional[int]] = ContextVar("turn_index", default=None)
-_escalation_required: ContextVar[Optional[bool]] = ContextVar("escalation_required", default=None)
+_escalation_required: ContextVar[Optional[bool]] = ContextVar(
+    "escalation_required", default=None
+)
 _disposition: ContextVar[Optional[str]] = ContextVar("disposition", default=None)
 
 
@@ -87,14 +90,20 @@ class StructuredJSONFormatter(logging.Formatter):
         return json.dumps(log_entry, default=str)
 
 
-def configure_structured_logging(log_format: str = "json", level: int | str = logging.INFO) -> None:
+def configure_structured_logging(
+    log_format: str = "json", level: int | str = logging.INFO
+) -> None:
     """Configure the root logger with structured JSON or text format.
 
     Args:
         log_format: "json" for JSON lines, "text" for human-readable.
         level: Logging level (int like logging.INFO, or string like "WARNING").
     """
-    resolved_level = level if isinstance(level, int) else getattr(logging, level.upper(), logging.INFO)
+    resolved_level = (
+        level
+        if isinstance(level, int)
+        else getattr(logging, level.upper(), logging.INFO)
+    )
 
     root = logging.getLogger()
 

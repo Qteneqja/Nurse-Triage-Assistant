@@ -13,6 +13,7 @@ Each rule has:
 - Weight (for scoring)
 - Critical flag (bypasses scoring — instant override)
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RuleContext:
     """Input context for rule evaluation. Built from session state."""
+
     utterance: str = ""
     chief_complaint: str = ""
     red_flags_reported: List[str] = field(default_factory=list)
@@ -60,6 +62,7 @@ class RedFlagRule:
         weight: Integer weight for scoring (used when not critical).
         critical: If True, forces disposition immediately regardless of score.
     """
+
     id: str
     description: str
     condition: Callable[[RuleContext], bool]
@@ -75,6 +78,7 @@ class RedFlagRule:
 @dataclass
 class RedFlagRuleResult:
     """Aggregated result from running all red-flag rules."""
+
     forced_disposition: Optional[str] = None  # None = no override
     total_score: int = 0
     triggered_rule_ids: List[str] = field(default_factory=list)
@@ -243,7 +247,6 @@ RED_FLAG_RULES: List[RedFlagRule] = [
         weight=0,
         critical=True,
     ),
-
     # ── WEIGHTED RULES (contribute to score; ≥10 = URGENT) ────────────
     RedFlagRule(
         id="HIGH_FEVER",
@@ -265,12 +268,15 @@ RED_FLAG_RULES: List[RedFlagRule] = [
     RedFlagRule(
         id="SEVERE_PAIN",
         description="Severe pain (8-10/10)",
-        condition=lambda ctx: _matches(
-            ctx.combined_text,
-            r"(8|9|10)\s*(out\s+of\s+10|\/\s*10|\s*on\s+scale)",
-            r"pain.*(8|9|10).*/\s*10",
-            r"(worst|unbearable|excruciating|10[\s/]10)\s+pain",
-        ) or ctx.symptom_severity == "severe",
+        condition=lambda ctx: (
+            _matches(
+                ctx.combined_text,
+                r"(8|9|10)\s*(out\s+of\s+10|\/\s*10|\s*on\s+scale)",
+                r"pain.*(8|9|10).*/\s*10",
+                r"(worst|unbearable|excruciating|10[\s/]10)\s+pain",
+            )
+            or ctx.symptom_severity == "severe"
+        ),
         forced_disposition="URGENT",
         escalation_script=(
             "Severe pain at that level needs prompt medical attention. "
@@ -282,11 +288,18 @@ RED_FLAG_RULES: List[RedFlagRule] = [
     RedFlagRule(
         id="PEDIATRIC_HIGH_FEVER",
         description="High fever in infant/toddler (<3 months with any fever)",
-        condition=lambda ctx: _matches(
-            ctx.combined_text,
-            r"(infant|baby|newborn|3\s*month|2\s*month|1\s*month).*(fever|temp)",
-            r"fever.*(infant|baby|newborn|3\s*month)",
-        ) or (ctx.caller_age is not None and ctx.caller_age < 1 and _matches(ctx.combined_text, r"fever|temp")),
+        condition=lambda ctx: (
+            _matches(
+                ctx.combined_text,
+                r"(infant|baby|newborn|3\s*month|2\s*month|1\s*month).*(fever|temp)",
+                r"fever.*(infant|baby|newborn|3\s*month)",
+            )
+            or (
+                ctx.caller_age is not None
+                and ctx.caller_age < 1
+                and _matches(ctx.combined_text, r"fever|temp")
+            )
+        ),
         forced_disposition="URGENT",
         escalation_script=(
             "A fever in a very young child needs immediate medical evaluation. "
@@ -309,6 +322,7 @@ def get_rule(rule_id: str) -> Optional[RedFlagRule]:
 # ---------------------------------------------------------------------------
 # Rule engine execution
 # ---------------------------------------------------------------------------
+
 
 def run_red_flag_rules(
     utterance: str = "",
@@ -369,13 +383,15 @@ def run_red_flag_rules(
         if triggered:
             result.triggered_rule_ids.append(rule.id)
             result.triggered_descriptions.append(rule.description)
-            result.all_triggers.append({
-                "rule_id": rule.id,
-                "description": rule.description,
-                "forced_disposition": rule.forced_disposition,
-                "weight": rule.weight,
-                "critical": rule.critical,
-            })
+            result.all_triggers.append(
+                {
+                    "rule_id": rule.id,
+                    "description": rule.description,
+                    "forced_disposition": rule.forced_disposition,
+                    "weight": rule.weight,
+                    "critical": rule.critical,
+                }
+            )
 
             if rule.critical:
                 any_critical = True
@@ -397,7 +413,8 @@ def run_red_flag_rules(
         result.forced_disposition = "URGENT"
         # Use the script from the highest-weight triggered rule
         weighted_triggers = [
-            r for r in RED_FLAG_RULES
+            r
+            for r in RED_FLAG_RULES
             if r.id in result.triggered_rule_ids and not r.critical
         ]
         if weighted_triggers:

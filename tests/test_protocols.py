@@ -9,6 +9,7 @@ Covers:
 5. Decision trace includes protocol hits properly.
 6. Empty / no-match scenarios handled gracefully.
 """
+
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -38,6 +39,7 @@ from src.orchestrator.schemas import (
 # Helpers
 # -----------------------------------------------------------------------
 
+
 def _make_session(**kwargs) -> OrchestratorSession:
     defaults = {
         "session_id": "proto-test-001",
@@ -49,14 +51,16 @@ def _make_session(**kwargs) -> OrchestratorSession:
 
 
 def _valid_phase1_json() -> str:
-    return json.dumps({
-        "confidence_score": 0.8,
-        "escalation_required": False,
-        "red_flags_triggered": [],
-        "rules_triggered": [],
-        "next_action": "ASK_QUESTION",
-        "disposition": "UNDECIDED",
-    })
+    return json.dumps(
+        {
+            "confidence_score": 0.8,
+            "escalation_required": False,
+            "red_flags_triggered": [],
+            "rules_triggered": [],
+            "next_action": "ASK_QUESTION",
+            "disposition": "UNDECIDED",
+        }
+    )
 
 
 def _make_intake_output(**kwargs) -> IntakeTurnOutput:
@@ -87,6 +91,7 @@ def _make_finalize_output(**kwargs) -> FinalizeOutput:
 def _valid_phase1_result(**overrides):
     """Return a valid Phase1TurnOutput for mock structured_call."""
     from src.orchestrator.schemas import Phase1Disposition, Phase1NextAction
+
     defaults = {
         "confidence_score": 0.8,
         "escalation_required": False,
@@ -99,9 +104,13 @@ def _valid_phase1_result(**overrides):
     return Phase1TurnOutput(**defaults)
 
 
-def _make_protocol(id: str = "PROTO-TEST", title: str = "Test Protocol",
-                   keywords: list | None = None, body: str = "Test body",
-                   disposition_notes: str = "") -> Protocol:
+def _make_protocol(
+    id: str = "PROTO-TEST",
+    title: str = "Test Protocol",
+    keywords: list | None = None,
+    body: str = "Test body",
+    disposition_notes: str = "",
+) -> Protocol:
     return Protocol(
         id=id,
         title=title,
@@ -116,6 +125,7 @@ def _make_protocol(id: str = "PROTO-TEST", title: str = "Test Protocol",
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION 1 — Protocol Loading
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestProtocolLoading:
     """Tests for loading protocols from disk."""
@@ -149,6 +159,7 @@ class TestProtocolLoading:
 # SECTION 2 — Tokenization & Scoring Helpers
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestTokenization:
     def test_tokenize_basic(self):
         tokens = _tokenize("I have severe chest pain")
@@ -169,6 +180,7 @@ class TestTokenization:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION 3 — Retrieval Relevance
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestRetrieverRelevance:
     """Retriever should return relevant protocols for representative complaints."""
@@ -192,7 +204,9 @@ class TestRetrieverRelevance:
         assert any(r.id == "PROTO-003" for r in results)
 
     def test_fever_returns_fever_protocol(self):
-        results = self.retriever.retrieve(chief_complaint="I have a high fever and chills")
+        results = self.retriever.retrieve(
+            chief_complaint="I have a high fever and chills"
+        )
         assert len(results) >= 1
         assert any(r.id == "PROTO-004" for r in results)
 
@@ -227,12 +241,16 @@ class TestRetrieverRelevance:
 
     def test_max_top_k_respected(self):
         retriever = ProtocolRetriever(top_k=1)
-        results = retriever.retrieve(chief_complaint="chest pain with breathing difficulty")
+        results = retriever.retrieve(
+            chief_complaint="chest pain with breathing difficulty"
+        )
         assert len(results) <= 1
 
     def test_no_match_returns_empty(self):
         """Completely irrelevant complaint should return empty."""
-        results = self.retriever.retrieve(chief_complaint="I need to renew a prescription")
+        results = self.retriever.retrieve(
+            chief_complaint="I need to renew a prescription"
+        )
         assert len(results) == 0
 
     def test_empty_input_returns_empty(self):
@@ -269,6 +287,7 @@ class TestRetrieverRelevance:
 # SECTION 4 — Retriever Failure Safety
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestRetrieverFailureSafety:
     """Protocol retrieval failures must not crash the system."""
 
@@ -291,11 +310,20 @@ class TestRetrieverFailureSafety:
         bad_file.write_text("{invalid json", encoding="utf-8")
 
         good_file = tmp_path / "good.json"
-        good_file.write_text(json.dumps({
-            "id": "PROTO-GOOD", "title": "Good", "keywords": ["test"],
-            "body": "body", "disposition_notes": "", "last_updated": "2026-01-01",
-            "version": "1.0",
-        }), encoding="utf-8")
+        good_file.write_text(
+            json.dumps(
+                {
+                    "id": "PROTO-GOOD",
+                    "title": "Good",
+                    "keywords": ["test"],
+                    "body": "body",
+                    "disposition_notes": "",
+                    "last_updated": "2026-01-01",
+                    "version": "1.0",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         protocols = load_protocols(tmp_path)
         assert len(protocols) == 1
@@ -305,6 +333,7 @@ class TestRetrieverFailureSafety:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION 5 — Orchestrator Integration
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestOrchestratorProtocolIntegration:
     """Orchestrator should call retriever and inject protocol context into LLM."""
@@ -333,7 +362,9 @@ class TestOrchestratorProtocolIntegration:
             for msg in phase1_messages
             if msg.get("role") == "system"
         )
-        assert has_protocol_context, "Phase1 LLM messages should include protocol context"
+        assert has_protocol_context, (
+            "Phase1 LLM messages should include protocol context"
+        )
 
         # Intake messages should also have protocol context
         mock_llm.call.call_args_list[1].kwargs.get("messages", [])
@@ -388,7 +419,9 @@ class TestOrchestratorProtocolIntegration:
 
         # Create a retriever that explodes
         broken_retriever = ProtocolRetriever(protocols=[])
-        broken_retriever.retrieve = MagicMock(side_effect=RuntimeError("retriever crashed"))
+        broken_retriever.retrieve = MagicMock(
+            side_effect=RuntimeError("retriever crashed")
+        )
 
         orch = Orchestrator(llm_client=mock_llm, protocol_retriever=broken_retriever)
         session = _make_session()
@@ -404,6 +437,7 @@ class TestOrchestratorProtocolIntegration:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION 6 — Safety Hierarchy Preserved
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestProtocolCannotDowngradeUrgency:
     """Protocol context must NEVER downgrade urgency or override red flags."""
@@ -443,8 +477,10 @@ class TestProtocolCannotDowngradeUrgency:
         # Check the Phase1 messages sent to LLM
         phase1_messages = mock_llm.call.call_args_list[0].kwargs.get("messages", [])
         protocol_msg = [
-            msg["content"] for msg in phase1_messages
-            if msg.get("role") == "system" and "PROTOCOL CONTEXT" in msg.get("content", "")
+            msg["content"]
+            for msg in phase1_messages
+            if msg.get("role") == "system"
+            and "PROTOCOL CONTEXT" in msg.get("content", "")
         ]
         assert len(protocol_msg) >= 1
         assert "NOT" in protocol_msg[0] and "downgrade" in protocol_msg[0]
@@ -453,6 +489,7 @@ class TestProtocolCannotDowngradeUrgency:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SECTION 7 — Schema Tests
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestProtocolSchemas:
     """ProtocolHit and updated DecisionTraceEntry schemas work correctly."""
@@ -497,15 +534,18 @@ class TestProtocolSchemas:
 # SECTION 8 — Protocol Format Context
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestFormatProtocolContext:
     """_format_protocol_context produces well-structured system messages."""
 
     def test_format_includes_all_snippets(self):
         snippets = [
-            ProtocolSnippet(id="P1", title="Proto 1", version="1.0",
-                            excerpt="excerpt 1", score=5.0),
-            ProtocolSnippet(id="P2", title="Proto 2", version="2.0",
-                            excerpt="excerpt 2", score=3.0),
+            ProtocolSnippet(
+                id="P1", title="Proto 1", version="1.0", excerpt="excerpt 1", score=5.0
+            ),
+            ProtocolSnippet(
+                id="P2", title="Proto 2", version="2.0", excerpt="excerpt 2", score=3.0
+            ),
         ]
         text = Orchestrator._format_protocol_context(snippets)
         assert "P1" in text

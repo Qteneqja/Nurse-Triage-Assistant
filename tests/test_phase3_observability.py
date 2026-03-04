@@ -4,6 +4,7 @@ Phase 3 — Observability Tests
 Tests for structured logging, metrics counters/histograms, and
 health/ready/metrics API endpoints.
 """
+
 import json
 import logging
 import pytest
@@ -21,6 +22,7 @@ from src.observability.logging import (
 # ---------------------------------------------------------------------------
 # Metrics Registry
 # ---------------------------------------------------------------------------
+
 
 class TestMetricsRegistry:
     """Test the custom metrics registry."""
@@ -109,6 +111,7 @@ class TestMetricsRegistry:
 # Structured Logging
 # ---------------------------------------------------------------------------
 
+
 class TestStructuredLogging:
     """Test the structured JSON log formatter and context vars."""
 
@@ -184,6 +187,7 @@ class TestStructuredLogging:
 # API Endpoints (health, ready, metrics)
 # ---------------------------------------------------------------------------
 
+
 class TestHealthEndpoints:
     """Test /health, /ready, /metrics endpoints via TestClient."""
 
@@ -194,11 +198,14 @@ class TestHealthEndpoints:
         mock_backend = MagicMock()
         mock_backend.get_active_session_count.return_value = 3
         # Patch config to avoid startup failures in test
-        with patch("src.main.require_valid_config"), \
-             patch("src.main.validate_approved_protocols_exist"), \
-             patch("src.main.get_storage_backend", return_value=mock_backend):
+        with (
+            patch("src.main.require_valid_config"),
+            patch("src.main.validate_approved_protocols_exist"),
+            patch("src.main.get_storage_backend", return_value=mock_backend),
+        ):
             from src.main import app
             from starlette.testclient import TestClient
+
             self.client = TestClient(app, raise_server_exceptions=False)
             yield
 
@@ -226,18 +233,21 @@ class TestHealthEndpoints:
 # Security Middleware — Rate Limiter
 # ---------------------------------------------------------------------------
 
+
 class TestSecurityMiddleware:
     """Test the _RateLimitStore directly."""
 
     def test_rate_limiter_allows_normal_traffic(self):
         """Normal traffic under rate limit is allowed."""
         from src.security.middleware import _RateLimitStore
+
         store = _RateLimitStore("100/minute")
         assert store.is_allowed("127.0.0.1") is True
 
     def test_rate_limiter_blocks_excess(self):
         """Traffic exceeding rate limit is blocked."""
         from src.security.middleware import _RateLimitStore
+
         store = _RateLimitStore("2/minute")
         assert store.is_allowed("10.0.0.1") is True
         assert store.is_allowed("10.0.0.1") is True
@@ -246,6 +256,7 @@ class TestSecurityMiddleware:
     def test_rate_limiter_different_ips_independent(self):
         """Different IPs have independent rate limits."""
         from src.security.middleware import _RateLimitStore
+
         store = _RateLimitStore("1/minute")
         assert store.is_allowed("10.0.0.1") is True
         assert store.is_allowed("10.0.0.2") is True
@@ -256,6 +267,7 @@ class TestSecurityMiddleware:
         """Rate limiter remains correct under concurrent thread access."""
         import threading
         from src.security.middleware import _RateLimitStore
+
         store = _RateLimitStore("50/minute")
         results: list[bool] = []
         barrier = threading.Barrier(10)
@@ -280,12 +292,14 @@ class TestSecurityMiddleware:
 # Client IP Extraction (X-Forwarded-For)
 # ---------------------------------------------------------------------------
 
+
 class TestClientIPExtraction:
     """Test _extract_client_ip with and without proxy headers."""
 
     def test_no_proxy_uses_client_host(self):
         """Without TRUST_PROXY_HEADERS, uses request.client.host."""
         from src.security.middleware import _extract_client_ip
+
         request = MagicMock()
         request.client.host = "10.0.0.1"
         request.headers = {}
@@ -295,6 +309,7 @@ class TestClientIPExtraction:
     def test_proxy_xff_public_ip(self):
         """With TRUST_PROXY_HEADERS, picks first public IP from XFF."""
         from src.security.middleware import _extract_client_ip
+
         request = MagicMock()
         request.client.host = "172.17.0.1"
         request.headers = {"x-forwarded-for": "203.0.113.50, 10.0.0.1, 172.17.0.1"}
@@ -304,6 +319,7 @@ class TestClientIPExtraction:
     def test_proxy_xff_all_private_uses_first(self):
         """When all XFF IPs are private, use first entry."""
         from src.security.middleware import _extract_client_ip
+
         request = MagicMock()
         request.client.host = "172.17.0.1"
         request.headers = {"x-forwarded-for": "10.0.0.1, 192.168.1.1"}
@@ -313,6 +329,7 @@ class TestClientIPExtraction:
     def test_proxy_disabled_ignores_xff(self):
         """When TRUST_PROXY_HEADERS=False, XFF is ignored."""
         from src.security.middleware import _extract_client_ip
+
         request = MagicMock()
         request.client.host = "127.0.0.1"
         request.headers = {"x-forwarded-for": "203.0.113.50"}
@@ -324,12 +341,14 @@ class TestClientIPExtraction:
 # Active Session Count (public API)
 # ---------------------------------------------------------------------------
 
+
 class TestActiveSessionCount:
     """Test get_active_session_count on both storage backends."""
 
     def test_memory_storage_count(self):
         """InMemoryOrchestratorStorage tracks active session count."""
         from src.storage.memory import InMemoryOrchestratorStorage
+
         store = InMemoryOrchestratorStorage()
         assert store.get_active_session_count() == 0
         s1 = store.create_session()

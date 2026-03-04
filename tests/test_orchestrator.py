@@ -10,6 +10,7 @@ Covers:
 - Fallback on LLM failure
 - Deterministic override of LLM disposition
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -33,16 +34,20 @@ import json as _json
 # Helpers
 # -----------------------------------------------------------------------
 
+
 def _valid_phase1_json() -> str:
     """Return a minimal valid Phase1TurnOutput JSON for mock _raw_call."""
-    return _json.dumps({
-        "confidence_score": 0.8,
-        "escalation_required": False,
-        "red_flags_triggered": [],
-        "rules_triggered": [],
-        "next_action": "ASK_QUESTION",
-        "disposition": "UNDECIDED",
-    })
+    return _json.dumps(
+        {
+            "confidence_score": 0.8,
+            "escalation_required": False,
+            "red_flags_triggered": [],
+            "rules_triggered": [],
+            "next_action": "ASK_QUESTION",
+            "disposition": "UNDECIDED",
+        }
+    )
+
 
 def _valid_phase1_result(**overrides) -> "Phase1TurnOutput":
     """Return a valid Phase1TurnOutput for mock structured_call."""
@@ -56,6 +61,7 @@ def _valid_phase1_result(**overrides) -> "Phase1TurnOutput":
     }
     defaults.update(overrides)
     return Phase1TurnOutput(**defaults)
+
 
 def _make_session(**kwargs) -> OrchestratorSession:
     """Create a test orchestrator session."""
@@ -99,6 +105,7 @@ def _make_finalize_output(**kwargs) -> FinalizeOutput:
 # Test: Deterministic red flag escalation
 # -----------------------------------------------------------------------
 
+
 class TestDeterministicEscalation:
     @pytest.mark.asyncio
     async def test_breathing_emergency_triggers_escalation(self):
@@ -137,6 +144,7 @@ class TestDeterministicEscalation:
 # -----------------------------------------------------------------------
 # Test: Normal questioning flow
 # -----------------------------------------------------------------------
+
 
 class TestNormalFlow:
     @pytest.mark.asyncio
@@ -181,6 +189,7 @@ class TestNormalFlow:
 # -----------------------------------------------------------------------
 # Test: Finalize triggers
 # -----------------------------------------------------------------------
+
 
 def _make_complete_session(**kwargs) -> OrchestratorSession:
     """Create a session that has passed the minimum turn & field gates.
@@ -239,7 +248,9 @@ class TestFinalizeDecision:
         mock_llm = MagicMock()
         intake_output = _make_intake_output(confidence=0.3)
         finalize_output = _make_finalize_output()
-        mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output, finalize_output])
+        mock_llm.call = AsyncMock(
+            side_effect=[_valid_phase1_result(), intake_output, finalize_output]
+        )
 
         orch = Orchestrator(llm_client=mock_llm)
         session = _make_session(max_turns=1)  # Already at limit after 1 turn
@@ -257,7 +268,9 @@ class TestFinalizeDecision:
             confidence=0.6,  # below threshold but no missing fields
         )
         finalize_output = _make_finalize_output()
-        mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output, finalize_output])
+        mock_llm.call = AsyncMock(
+            side_effect=[_valid_phase1_result(), intake_output, finalize_output]
+        )
 
         orch = Orchestrator(llm_client=mock_llm)
         session = _make_complete_session()
@@ -305,6 +318,7 @@ class TestFinalizeDecision:
 # Test: LLM failure fallback
 # -----------------------------------------------------------------------
 
+
 class TestLLMFailure:
     @pytest.mark.asyncio
     async def test_llm_failure_uses_fallback(self):
@@ -334,6 +348,7 @@ class TestLLMFailure:
 # Test: Deterministic override of LLM disposition
 # -----------------------------------------------------------------------
 
+
 class TestDeterministicOverride:
     @pytest.mark.asyncio
     async def test_override_llm_disposition_when_rules_triggered(self):
@@ -349,7 +364,9 @@ class TestDeterministicOverride:
 
         # Simulate deterministic rules having been triggered
         assert session.audit_trace is not None
-        session.audit_trace.deterministic_rules_triggered.append("severe_breathing_difficulty")
+        session.audit_trace.deterministic_rules_triggered.append(
+            "severe_breathing_difficulty"
+        )
 
         result = await orch.finalize(session)
 
@@ -360,6 +377,7 @@ class TestDeterministicOverride:
 # -----------------------------------------------------------------------
 # Test: Audit trace
 # -----------------------------------------------------------------------
+
 
 class TestAuditTrace:
     @pytest.mark.asyncio
@@ -375,7 +393,9 @@ class TestAuditTrace:
         await orch.process_turn(session, "I have a headache")
 
         assert session.audit_trace is not None
-        assert len(session.audit_trace.entries) >= 2  # turn_start + intake_turn_complete
+        assert (
+            len(session.audit_trace.entries) >= 2
+        )  # turn_start + intake_turn_complete
         assert session.audit_trace.entries[0].step == "turn_start"
 
 
@@ -383,18 +403,21 @@ class TestAuditTrace:
 # Test: Coercion visibility
 # -----------------------------------------------------------------------
 
+
 class TestCoercionVisibility:
     @pytest.mark.asyncio
     async def test_coercion_tagged_when_string_flags(self):
         """When LLM returns string safety flags, coercion is recorded in session."""
         mock_llm = MagicMock()
         # Return an IntakeTurnOutput with string safety flags (will be coerced)
-        intake_output = IntakeTurnOutput.model_validate({
-            "next_question": "When did this start?",
-            "llm_safety_flags": ["possible chest pain"],
-            "confidence": 0.3,
-            "missing_fields_prioritized": ["onset_time"],
-        })
+        intake_output = IntakeTurnOutput.model_validate(
+            {
+                "next_question": "When did this start?",
+                "llm_safety_flags": ["possible chest pain"],
+                "confidence": 0.3,
+                "missing_fields_prioritized": ["onset_time"],
+            }
+        )
         mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), intake_output])
 
         orch = Orchestrator(llm_client=mock_llm)
@@ -442,6 +465,7 @@ class TestCoercionVisibility:
 # Test: List-field merge semantics
 # -----------------------------------------------------------------------
 
+
 class TestListFieldMerge:
     @pytest.mark.asyncio
     async def test_list_merge_dedupes_case_insensitive(self):
@@ -458,7 +482,14 @@ class TestListFieldMerge:
             extracted_fields_update=IntakeStatePatch(meds=["Tylenol", "aspirin"]),
             confidence=0.4,
         )
-        mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), turn1_output, _valid_phase1_result(), turn2_output])
+        mock_llm.call = AsyncMock(
+            side_effect=[
+                _valid_phase1_result(),
+                turn1_output,
+                _valid_phase1_result(),
+                turn2_output,
+            ]
+        )
 
         orch = Orchestrator(llm_client=mock_llm)
         session = _make_session()
@@ -501,7 +532,14 @@ class TestListFieldMerge:
             extracted_fields_update=IntakeStatePatch(notes="Second note"),
             confidence=0.4,
         )
-        mock_llm.call = AsyncMock(side_effect=[_valid_phase1_result(), turn1_output, _valid_phase1_result(), turn2_output])
+        mock_llm.call = AsyncMock(
+            side_effect=[
+                _valid_phase1_result(),
+                turn1_output,
+                _valid_phase1_result(),
+                turn2_output,
+            ]
+        )
 
         orch = Orchestrator(llm_client=mock_llm)
         session = _make_session()

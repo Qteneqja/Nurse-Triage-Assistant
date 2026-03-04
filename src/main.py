@@ -1,4 +1,5 @@
-﻿"""Main FastAPI Application — Phase 5 SaaS Infrastructure"""
+"""Main FastAPI Application — Phase 5 SaaS Infrastructure"""
+
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -46,6 +47,7 @@ logger = logging.getLogger(__name__)
 # Correlation-ID / Request-ID middleware
 # ---------------------------------------------------------------------------
 
+
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """Inject a unique request ID into every request and propagate to logs."""
 
@@ -91,7 +93,9 @@ async def lifespan(app: FastAPI):
                 raise
 
     # Governance — validate approved protocols exist
-    protocol_dir = Path(__file__).resolve().parent.parent / "protocols" / PROTOCOL_VERSION
+    protocol_dir = (
+        Path(__file__).resolve().parent.parent / "protocols" / PROTOCOL_VERSION
+    )
     try:
         validate_approved_protocols_exist(protocol_dir)
     except RuntimeError as e:
@@ -104,6 +108,7 @@ async def lifespan(app: FastAPI):
     # Pre-warm Azure TTS so the first call doesn't cold-start
     try:
         from src.utils.azure_tts import warm_up as _tts_warm_up
+
         await _tts_warm_up()
     except Exception as exc:
         logger.warning(f"[STARTUP] TTS warm-up failed (non-fatal): {exc}")
@@ -116,6 +121,7 @@ async def lifespan(app: FastAPI):
     # Warn if blob storage is not configured (reports will only be written
     # to ephemeral local disk, lost on container restart).
     from src.config import AZURE_STORAGE_CONNECTION_STRING
+
     if not AZURE_STORAGE_CONNECTION_STRING:
         if APP_ENV in ("staging", "production"):
             logger.warning(
@@ -185,6 +191,7 @@ async def health_check():
     Updated: Production Hardening Step 2.
     """
     from datetime import datetime, timezone
+
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
@@ -192,6 +199,7 @@ async def health_check():
 async def serve_typing_sound():
     """Serve the keyboard-typing hold sound (no auth — fetched by Twilio <Play>)."""
     from src.utils.typing_sound import get_typing_sound_wav
+
     return Response(
         content=get_typing_sound_wav(),
         media_type="audio/wav",
@@ -218,6 +226,7 @@ async def readiness_check():
                 checks["database"] = "connected" if db_ok else "unreachable"
                 if not db_ok:
                     from fastapi.responses import JSONResponse
+
                     return JSONResponse(
                         status_code=503,
                         content={"status": "not_ready", "database": "unavailable"},
@@ -226,6 +235,7 @@ async def readiness_check():
                 checks["database"] = "not_applicable"
         except Exception as exc:
             from fastapi.responses import JSONResponse
+
             # In production: do NOT include exception messages, stack traces,
             # or any internal details (HIPAA / security best practice).
             if APP_ENV == "production":

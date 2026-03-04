@@ -4,6 +4,7 @@ Storage Backend Factory — Phase 4 Hardened
 Selects and initializes the storage backend based on STORAGE_BACKEND env var.
 Enforces Postgres as mandatory backend in production — no in-memory fallback.
 """
+
 from __future__ import annotations
 
 import logging
@@ -42,6 +43,7 @@ def get_storage_backend() -> StorageInterface:
     # correctly.  Do NOT cache the values in module-level aliases — those are
     # frozen at import time and won't reflect reloads.
     import src.config as _live_cfg
+
     _env = _live_cfg.ENVIRONMENT
     _backend = _live_cfg.STORAGE_BACKEND
     _db_url = _live_cfg.DATABASE_URL
@@ -55,11 +57,10 @@ def get_storage_backend() -> StorageInterface:
 
     if _backend == "postgres":
         from src.storage.postgres import PostgresStorage
+
         if not _db_url:
             capture_db_failure("missing_database_url")
-            raise RuntimeError(
-                "DATABASE_URL is required when STORAGE_BACKEND=postgres"
-            )
+            raise RuntimeError("DATABASE_URL is required when STORAGE_BACKEND=postgres")
         try:
             storage = PostgresStorage(_db_url)
             storage.initialize()
@@ -70,9 +71,12 @@ def get_storage_backend() -> StorageInterface:
         logger.info("[StorageFactory] Using PostgresStorage backend")
     else:
         from src.storage.memory import InMemoryOrchestratorStorage
+
         storage = InMemoryOrchestratorStorage()
         _storage_instance = storage
-        logger.info("[StorageFactory] Using InMemoryOrchestratorStorage backend (dev/test)")
+        logger.info(
+            "[StorageFactory] Using InMemoryOrchestratorStorage backend (dev/test)"
+        )
 
     return _storage_instance
 

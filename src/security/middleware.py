@@ -3,6 +3,7 @@ Security Middleware — Phase 3
 
 Rate limiting and safe error handling for production deployment.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Client IP extraction
 # ---------------------------------------------------------------------------
+
 
 def _extract_client_ip(request: Request) -> str:
     """Return the best-effort client IP address.
@@ -53,6 +55,7 @@ def _extract_client_ip(request: Request) -> str:
 # ---------------------------------------------------------------------------
 # Thread-safe in-memory rate limiter
 # ---------------------------------------------------------------------------
+
 
 class _RateLimitStore:
     """Thread-safe sliding-window rate limiter per client IP."""
@@ -151,6 +154,7 @@ class SafeErrorMiddleware(BaseHTTPMiddleware):
             else:
                 # Dev/staging: include error details but mask any PHI
                 from src.safety.phi_masking import mask_phi
+
                 return JSONResponse(
                     status_code=500,
                     content={

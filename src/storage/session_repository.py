@@ -8,6 +8,7 @@ Session state is ALWAYS loaded from the backend and persisted after
 every mutation. No in-memory dictionaries outside the storage backend.
 Crash/restart does not lose session state (when backed by Postgres).
 """
+
 from __future__ import annotations
 
 import logging

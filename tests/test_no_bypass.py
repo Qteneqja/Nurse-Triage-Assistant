@@ -8,6 +8,7 @@ These tests enforce the architectural invariant:
 If any of these tests fail, it means a bypass path has been introduced.
 Fix the code, not the test.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -23,28 +24,33 @@ SRC_ROOT = pathlib.Path(__file__).resolve().parent.parent / "src"
 TESTS_ROOT = pathlib.Path(__file__).resolve().parent
 
 # Modules that ARE allowed to import DeepSeekClient / get_deepseek_client
-_ALLOWED_DEEPSEEK_IMPORTERS = frozenset({
-    # The guarded wrapper that wraps StructuredLLMClient
-    "src/llm/guarded_client.py",
-    # The client itself
-    "src/llm/deepseek_client.py",
-    # StructuredLLMClient (its own module)
-    "src/llm/client.py",
-    # Legacy re-export shim (backward compat for test imports)
-    "src/llm/__init__.py",
-})
+_ALLOWED_DEEPSEEK_IMPORTERS = frozenset(
+    {
+        # The guarded wrapper that wraps StructuredLLMClient
+        "src/llm/guarded_client.py",
+        # The client itself
+        "src/llm/deepseek_client.py",
+        # StructuredLLMClient (its own module)
+        "src/llm/client.py",
+        # Legacy re-export shim (backward compat for test imports)
+        "src/llm/__init__.py",
+    }
+)
 
 # Modules allowed to import StructuredLLMClient
-_ALLOWED_STRUCTURED_IMPORTERS = frozenset({
-    "src/llm/guarded_client.py",
-    "src/llm/client.py",
-    "src/llm/__init__.py",
-})
+_ALLOWED_STRUCTURED_IMPORTERS = frozenset(
+    {
+        "src/llm/guarded_client.py",
+        "src/llm/client.py",
+        "src/llm/__init__.py",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # 1. STATIC: No direct DeepSeekClient usage
 # ---------------------------------------------------------------------------
+
 
 class TestNoDirectDeepSeekUsage:
     """Fail if any source file imports get_deepseek_client outside allowed set."""
@@ -99,7 +105,9 @@ class TestCanonicalDispositions:
         assert expected in CANONICAL_DISPOSITIONS
         assert normalize_disposition(legacy) == expected
 
-    @pytest.mark.parametrize("bad", ["TRIAGE", "LOW", "MAYBE", "NEEDS_REVIEW", "999", ""])
+    @pytest.mark.parametrize(
+        "bad", ["TRIAGE", "LOW", "MAYBE", "NEEDS_REVIEW", "999", ""]
+    )
     def test_unknown_maps_to_human_review(self, bad):
         assert normalize_disposition(bad) == "HUMAN_REVIEW"
 
@@ -132,6 +140,7 @@ class TestCanonicalDispositions:
 # 3. OUTBOUND TEXT GATE
 # ---------------------------------------------------------------------------
 
+
 class TestOutboundTextGate:
     """gate_outbound_text must block unsafe content."""
 
@@ -143,14 +152,20 @@ class TestOutboundTextGate:
         """Text containing a diagnosis must be rewritten."""
         text = "You have pneumonia. Please go to the ER."
         gated = gate_outbound_text(text, ctx, "question")
-        assert "pneumonia" not in gated.lower() or "may be consistent with" in gated.lower()
+        assert (
+            "pneumonia" not in gated.lower()
+            or "may be consistent with" in gated.lower()
+        )
 
     def test_unsafe_instruction_removed(self, ctx):
         """Instructions like 'take 2 tablets' must be removed."""
         text = "Take 2 mg of medication every 6 hours and you're fine."
         gated = gate_outbound_text(text, ctx, "question")
         # At least one unsafe pattern should trigger
-        assert "you're fine" not in gated.lower() or "[safety instruction removed]" in gated.lower()
+        assert (
+            "you're fine" not in gated.lower()
+            or "[safety instruction removed]" in gated.lower()
+        )
 
     def test_phi_probing_blocked(self, ctx):
         """Text requesting SSN or insurance must be blocked."""
@@ -160,7 +175,7 @@ class TestOutboundTextGate:
 
     def test_empty_text_passes_through(self, ctx):
         """Empty string passes through gate_outbound_text unchanged.
-        
+
         Fallback handling is done at the GuardedLLM layer, not the gate.
         """
         gated = gate_outbound_text("", ctx, "question")
@@ -185,13 +200,19 @@ class TestGuardedLLMContract:
 
     def test_outbound_text_fields_cover_key_fields(self):
         """All user-facing text field names must be in the gated set."""
-        required = {"next_question", "patient_summary", "sbar_report",
-                     "disposition_reasoning", "safety_net_instructions"}
+        required = {
+            "next_question",
+            "patient_summary",
+            "sbar_report",
+            "disposition_reasoning",
+            "safety_net_instructions",
+        }
         assert required.issubset(_OUTBOUND_TEXT_FIELDS)
 
     def test_guarded_llm_wraps_client(self):
         """GuardedLLM must wrap StructuredLLMClient."""
         from unittest.mock import MagicMock
+
         mock_client = MagicMock()
         g = GuardedLLM(_client=mock_client)
         assert g._client is mock_client
@@ -201,16 +222,18 @@ class TestGuardedLLMContract:
 # 5. DEEPSEEK CLIENT RUNTIME GUARD
 # ---------------------------------------------------------------------------
 
+
 class TestDeepSeekRuntimeGuard:
     """DeepSeekClient methods must reject calls outside GuardedLLM context."""
 
     def _make_bare_client(self):
         """Create a DeepSeekClient without __init__ (avoids OpenAI setup)."""
         from src.llm.deepseek_client import DeepSeekClient
+
         DeepSeekClient._guarded_context = False
         client = DeepSeekClient.__new__(DeepSeekClient)
-        object.__setattr__(client, 'client', None)  # type: ignore[assignment]
-        object.__setattr__(client, 'model', 'test')
+        object.__setattr__(client, "client", None)  # type: ignore[assignment]
+        object.__setattr__(client, "model", "test")
         return client
 
     def test_check_guarded_raises_directly(self):
@@ -219,16 +242,20 @@ class TestDeepSeekRuntimeGuard:
         with pytest.raises(RuntimeError, match="outside GuardedLLM context"):
             client._check_guarded("test_method")
 
-    @pytest.mark.parametrize("method", [
-        "get_triage_decision",
-        "generate_patient_summary",
-        "generate_clinician_sbar",
-        "generate_handoff_report",
-    ])
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "get_triage_decision",
+            "generate_patient_summary",
+            "generate_clinician_sbar",
+            "generate_handoff_report",
+        ],
+    )
     def test_guard_present_in_method(self, method):
         """Each public LLM method must call _check_guarded."""
         import inspect
         from src.llm.deepseek_client import DeepSeekClient
+
         source = inspect.getsource(getattr(DeepSeekClient, method))
         assert "_check_guarded" in source, (
             f"DeepSeekClient.{method} does not call _check_guarded"
@@ -237,6 +264,7 @@ class TestDeepSeekRuntimeGuard:
     def test_guarded_context_flag_defaults_off(self):
         """The class flag must default to False (fail-closed)."""
         from src.llm.deepseek_client import DeepSeekClient
+
         # Reset to default
         DeepSeekClient._guarded_context = False
         assert DeepSeekClient._guarded_context is False
@@ -246,6 +274,7 @@ class TestDeepSeekRuntimeGuard:
 # 6. LEGACY REST PATH DISABLED
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyRESTDisabled:
     """Legacy REST endpoints that bypassed the gate must return 410."""
 
@@ -253,6 +282,7 @@ class TestLegacyRESTDisabled:
     def client(self):
         from fastapi.testclient import TestClient
         from src.main import app
+
         return TestClient(app, raise_server_exceptions=False)
 
     def test_submit_answer_returns_404(self, client):
@@ -278,12 +308,14 @@ class TestLegacyRESTDisabled:
 # 7. LEGACY HANDOFF REPORT DEPRECATED
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyHandoffDeprecated:
     """generate_handoff_report_background must raise RuntimeError."""
 
     @pytest.mark.asyncio
     async def test_legacy_handoff_raises(self):
         from src.twilio.routes import generate_handoff_report_background
+
         with pytest.raises(RuntimeError, match="deprecated"):
             await generate_handoff_report_background("sid", {}, [], None)
 
@@ -292,12 +324,14 @@ class TestLegacyHandoffDeprecated:
 # 8. PHI MASKING INSTALLED ON ROOT LOGGER
 # ---------------------------------------------------------------------------
 
+
 class TestPHIMaskingInstalled:
     """PHIMaskingFilter must be installed on the root logger."""
 
     def test_phi_filter_on_root(self):
         import logging
         from src.safety.phi_masking import PHIMaskingFilter
+
         root = logging.getLogger()
         filter_types = [type(f) for f in root.filters]
         assert PHIMaskingFilter in filter_types, (
@@ -310,6 +344,7 @@ class TestPHIMaskingInstalled:
 # 9. POSTGRES PHI MASKING
 # ---------------------------------------------------------------------------
 
+
 class TestPostgresPHIMasking:
     """Postgres storage must apply mask_phi when STORE_PHI=False."""
 
@@ -318,6 +353,7 @@ class TestPostgresPHIMasking:
         # Static analysis: read the source and check
         import inspect
         from src.storage.postgres import PostgresStorage
+
         source = inspect.getsource(PostgresStorage._sync_turns)
         # Must contain mask_phi call
         assert "mask_phi" in source, (
@@ -331,6 +367,7 @@ class TestPostgresPHIMasking:
 # ---------------------------------------------------------------------------
 # 10. UNIFIED GATE IS SINGLE ENTRY POINT
 # ---------------------------------------------------------------------------
+
 
 class TestSingleGateEntryPoint:
     """The old safety_gate.py must be a thin re-export wrapper."""
@@ -350,6 +387,7 @@ class TestSingleGateEntryPoint:
         """post_check_safety_gate in validators must delegate to unified gate."""
         import inspect
         from src.orchestrator.validators import post_check_safety_gate
+
         source = inspect.getsource(post_check_safety_gate)
         assert "gate_outbound_text" in source, (
             "post_check_safety_gate does not delegate to gate_outbound_text"

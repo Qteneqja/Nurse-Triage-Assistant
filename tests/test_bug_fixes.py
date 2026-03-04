@@ -41,10 +41,16 @@ from src.twilio.routes import generate_twiml_gather
 class TestGenerateTwimlGather:
     """Unit tests for the TwiML Gather builder."""
 
-    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    @patch(
+        "src.twilio.routes.text_to_speech_url",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_gather_contains_prompt_inside_gather_tag(self, _mock_tts):
         """The prompt must be spoken *inside* <Gather> so Twilio captures speech."""
-        twiml = await generate_twiml_gather("What is your name?", "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather(
+            "What is your name?", "/api/v1/voice/gather"
+        )
         assert "<Gather" in twiml
         assert "What is your name?" in twiml
         # The prompt must sit between <Gather …> and </Gather>
@@ -53,7 +59,11 @@ class TestGenerateTwimlGather:
         inner = twiml[gather_start:gather_end]
         assert "What is your name?" in inner
 
-    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    @patch(
+        "src.twilio.routes.text_to_speech_url",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_no_fallback_say_outside_gather(self, _mock_tts):
         """After the fix, there must be NO <Say> element outside </Gather>.
 
@@ -61,7 +71,9 @@ class TestGenerateTwimlGather:
         apology, then <Redirect> fires the server handler which produces a
         *second* apology + stage question.
         """
-        twiml = await generate_twiml_gather("What is your name?", "/api/v1/voice/gather")
+        twiml = await generate_twiml_gather(
+            "What is your name?", "/api/v1/voice/gather"
+        )
         gather_end_pos = twiml.index("</Gather>") + len("</Gather>")
         after_gather = twiml[gather_end_pos:]
         # Must not contain a second <Say> after </Gather>
@@ -70,7 +82,11 @@ class TestGenerateTwimlGather:
             f"Trailing TwiML:\n{after_gather}"
         )
 
-    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    @patch(
+        "src.twilio.routes.text_to_speech_url",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_redirect_present_after_gather(self, _mock_tts):
         """A <Redirect> must follow </Gather> so the server handles silence."""
         twiml = await generate_twiml_gather("Test prompt.", "/api/v1/voice/gather")
@@ -78,7 +94,11 @@ class TestGenerateTwimlGather:
         after_gather = twiml[gather_end_pos:]
         assert "<Redirect" in after_gather
 
-    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    @patch(
+        "src.twilio.routes.text_to_speech_url",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_single_say_count_in_entire_twiml(self, _mock_tts):
         """The complete TwiML must have exactly ONE <Say> element (the prompt)."""
         twiml = await generate_twiml_gather("How old are you?", "/api/v1/voice/gather")
@@ -88,7 +108,11 @@ class TestGenerateTwimlGather:
             "Multiple <Say> elements produce compound/double prompts."
         )
 
-    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    @patch(
+        "src.twilio.routes.text_to_speech_url",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_empty_speech_twiml_contains_only_one_apology(self, _mock_tts):
         """Verify the canonical apology TwiML emitted for empty speech.
 
@@ -103,7 +127,11 @@ class TestGenerateTwimlGather:
         # Only one <Say> — no stacked prompts
         assert twiml.count("<Say") == 1
 
-    @patch("src.twilio.routes.text_to_speech_url", new_callable=AsyncMock, return_value=None)
+    @patch(
+        "src.twilio.routes.text_to_speech_url",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     async def test_empty_speech_twiml_no_stage_question_text(self, _mock_tts):
         """The empty-speech TwiML must NOT contain stage question wording.
 
@@ -145,6 +173,7 @@ from src.orchestrator.schemas import (  # noqa: E402
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _make_session(chief_complaint: str = "stomach pain") -> OrchestratorSession:
     """Minimal session that has passed scripted intake and is in DYNAMIC stage."""
     s = OrchestratorSession(session_id="test-bug2")
@@ -158,7 +187,7 @@ def _make_session(chief_complaint: str = "stomach pain") -> OrchestratorSession:
 def _low_confidence_phase1(red_flags: list[str] | None = None) -> Phase1TurnOutput:
     """Phase1TurnOutput that simulates confidence below threshold."""
     return Phase1TurnOutput(
-        confidence_score=0.30,          # below 0.60 threshold
+        confidence_score=0.30,  # below 0.60 threshold
         escalation_required=False,
         red_flags_triggered=red_flags or [],
         rules_triggered=[],
@@ -167,7 +196,9 @@ def _low_confidence_phase1(red_flags: list[str] | None = None) -> Phase1TurnOutp
     )
 
 
-def _normal_intake_output(question: str = "How long have you had this pain?") -> IntakeTurnOutput:
+def _normal_intake_output(
+    question: str = "How long have you had this pain?",
+) -> IntakeTurnOutput:
     return IntakeTurnOutput(
         extracted_fields_update=IntakeStatePatch(),
         missing_fields_prioritized=["onset_time"],
@@ -178,6 +209,7 @@ def _normal_intake_output(question: str = "How long have you had this pain?") ->
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
+
 
 class TestLowConfidenceContinueIntake:
     """Bug 2: low confidence without red flags must NOT escalate."""
@@ -364,7 +396,9 @@ class TestLowConfidenceWithRedFlagsStillEscalates:
 
         mock_guarded = AsyncMock()
         mock_guarded.structured_call = AsyncMock(
-            return_value=_low_confidence_phase1(red_flags=["shortness_of_breath_severe"])
+            return_value=_low_confidence_phase1(
+                red_flags=["shortness_of_breath_severe"]
+            )
         )
         orch._guarded = mock_guarded
         mock_retriever = MagicMock()
@@ -380,7 +414,9 @@ class TestLowConfidenceWithRedFlagsStillEscalates:
 class TestLowConfidenceContinueIntakeSBARProgression:
     """Verify the deterministic SBAR follow-up question ordering."""
 
-    _CONFIDENCE_PATCH = "src.orchestrator.schemas.ConfidenceBreakdown.clamp_and_finalise"
+    _CONFIDENCE_PATCH = (
+        "src.orchestrator.schemas.ConfidenceBreakdown.clamp_and_finalise"
+    )
 
     @pytest.mark.asyncio
     async def test_missing_onset_asked_first(self):
@@ -445,6 +481,7 @@ class TestLowConfidenceContinueIntakeSBARProgression:
 # BUG 3 (regression): Low-confidence branch must apply extracted fields
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class TestLowConfidenceAppliesExtractedFields:
     """Regression: the low-confidence "continue intake" branch must resolve
     the concurrent intake LLM call and apply extracted_fields_update to
@@ -454,7 +491,9 @@ class TestLowConfidenceAppliesExtractedFields:
     loops on the same missing SBAR slot forever.
     """
 
-    _CONFIDENCE_PATCH = "src.orchestrator.schemas.ConfidenceBreakdown.clamp_and_finalise"
+    _CONFIDENCE_PATCH = (
+        "src.orchestrator.schemas.ConfidenceBreakdown.clamp_and_finalise"
+    )
 
     @staticmethod
     def _make_session_missing_onset() -> OrchestratorSession:
@@ -661,7 +700,9 @@ class TestLowConfidenceLoopBreaker:
     forced-choice wording (but do NOT escalate).
     """
 
-    _CONFIDENCE_PATCH = "src.orchestrator.schemas.ConfidenceBreakdown.clamp_and_finalise"
+    _CONFIDENCE_PATCH = (
+        "src.orchestrator.schemas.ConfidenceBreakdown.clamp_and_finalise"
+    )
 
     @staticmethod
     def _intake_no_extraction() -> IntakeTurnOutput:
@@ -697,7 +738,7 @@ class TestLowConfidenceLoopBreaker:
                 result = await orch.process_turn(session, "I don't know exactly")
 
             assert result["action"] == "ask", (
-                f"Turn {i+1}: must still be 'ask', not escalate."
+                f"Turn {i + 1}: must still be 'ask', not escalate."
             )
 
         # After 3 repeats, the wording should be the forced-choice variant

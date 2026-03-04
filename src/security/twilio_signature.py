@@ -16,6 +16,7 @@ Because FastAPI/Starlette already parses the body before middleware can
 access it in BaseHTTPMiddleware, we implement this as a FastAPI dependency
 injected into the Twilio router.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -70,7 +71,9 @@ async def validate_twilio_signature(request: Request) -> None:
         return
 
     if not TWILIO_AUTH_TOKEN:
-        logger.error("[TwilioSig] TWILIO_VALIDATE_SIGNATURE=true but no TWILIO_AUTH_TOKEN set")
+        logger.error(
+            "[TwilioSig] TWILIO_VALIDATE_SIGNATURE=true but no TWILIO_AUTH_TOKEN set"
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server misconfiguration: Twilio auth token not set.",
@@ -84,7 +87,8 @@ async def validate_twilio_signature(request: Request) -> None:
         logger.warning(
             "[TwilioSig] SECURITY: Missing X-Twilio-Signature header — "
             "source_ip=%s endpoint=%s reason=missing_signature",
-            source_ip, request.url.path,
+            source_ip,
+            request.url.path,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -95,9 +99,13 @@ async def validate_twilio_signature(request: Request) -> None:
     # If behind reverse proxy, set TWILIO_WEBHOOK_BASE_URL to the public URL;
     # otherwise request.url is used automatically.
     if TWILIO_WEBHOOK_BASE_URL:
-        url = urljoin(TWILIO_WEBHOOK_BASE_URL.rstrip("/") + "/", request.url.path.lstrip("/"))
+        url = urljoin(
+            TWILIO_WEBHOOK_BASE_URL.rstrip("/") + "/", request.url.path.lstrip("/")
+        )
     else:
-        url = str(request.url).split("?")[0]  # Twilio uses POST, no query string normally
+        url = str(request.url).split("?")[
+            0
+        ]  # Twilio uses POST, no query string normally
 
     # Log URL used for signature validation at DEBUG level (no query params or body)
     logger.debug("[TwilioSig] Validating signature against URL: %s", url)
@@ -115,7 +123,8 @@ async def validate_twilio_signature(request: Request) -> None:
         logger.warning(
             "[TwilioSig] SECURITY: Invalid signature — "
             "source_ip=%s endpoint=%s reason=signature_mismatch",
-            source_ip, request.url.path,
+            source_ip,
+            request.url.path,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

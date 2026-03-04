@@ -10,6 +10,7 @@ Legacy REST intake path is removed. Only endpoints:
   GET  /{id}      — Get session state summary
   DELETE /{id}    — Delete session
 """
+
 import logging
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
@@ -26,8 +27,10 @@ router = APIRouter()
 # Request / Response schemas (API-level, not domain-level)
 # ---------------------------------------------------------------------------
 
+
 class StartRequest(BaseModel):
     """Start a new triage session."""
+
     chief_complaint: Optional[str] = None
     call_sid: Optional[str] = None
 
@@ -39,6 +42,7 @@ class StartResponse(BaseModel):
 
 class TurnRequest(BaseModel):
     """Submit patient text for one orchestrator turn."""
+
     user_text: str = Field(..., min_length=1, max_length=2000)
 
 
@@ -61,7 +65,10 @@ class SessionSummary(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/start", response_model=StartResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/start", response_model=StartResponse, status_code=status.HTTP_201_CREATED
+)
 async def start_session(request: StartRequest):
     """Create a new triage session via the unified storage backend."""
     try:

@@ -15,6 +15,7 @@ Implements deterministic regex-based masking for:
 
 All masking is irreversible — original data cannot be recovered from masked output.
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,49 +42,64 @@ _MASK_MRN = "[REDACTED_MRN]"
 _PHI_PATTERNS: List[tuple] = [
     # SSN: 123-45-6789 or 123 45 6789
     ("ssn", re.compile(r"\b\d{3}[-\s]\d{2}[-\s]\d{4}\b"), _MASK_SSN),
-
     # Phone numbers: various US formats
-    ("phone", re.compile(
-        r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
-    ), _MASK_PHONE),
-
+    (
+        "phone",
+        re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
+        _MASK_PHONE,
+    ),
     # Email addresses
-    ("email", re.compile(
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-    ), _MASK_EMAIL),
-
+    (
+        "email",
+        re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"),
+        _MASK_EMAIL,
+    ),
     # Date of birth patterns: MM/DD/YYYY, MM-DD-YYYY, YYYY-MM-DD
-    ("dob", re.compile(
-        r"\b(?:(?:0[1-9]|1[0-2])[/\-](?:0[1-9]|[12]\d|3[01])[/\-](?:19|20)\d{2}|"
-        r"(?:19|20)\d{2}[/\-](?:0[1-9]|1[0-2])[/\-](?:0[1-9]|[12]\d|3[01]))\b"
-    ), _MASK_DOB),
-
+    (
+        "dob",
+        re.compile(
+            r"\b(?:(?:0[1-9]|1[0-2])[/\-](?:0[1-9]|[12]\d|3[01])[/\-](?:19|20)\d{2}|"
+            r"(?:19|20)\d{2}[/\-](?:0[1-9]|1[0-2])[/\-](?:0[1-9]|[12]\d|3[01]))\b"
+        ),
+        _MASK_DOB,
+    ),
     # Street addresses (e.g., "123 Main Street", "456 Oak Ave")
-    ("address", re.compile(
-        r"\b\d{1,5}\s+(?:[A-Z][a-z]+\s+)+"
-        r"(?:Street|St|Avenue|Ave|Boulevard|Blvd|Drive|Dr|Lane|Ln|"
-        r"Road|Rd|Circle|Cir|Court|Ct|Way|Place|Pl)\b",
-        re.IGNORECASE,
-    ), _MASK_ADDRESS),
-
+    (
+        "address",
+        re.compile(
+            r"\b\d{1,5}\s+(?:[A-Z][a-z]+\s+)+"
+            r"(?:Street|St|Avenue|Ave|Boulevard|Blvd|Drive|Dr|Lane|Ln|"
+            r"Road|Rd|Circle|Cir|Court|Ct|Way|Place|Pl)\b",
+            re.IGNORECASE,
+        ),
+        _MASK_ADDRESS,
+    ),
     # Medical record numbers (MRN patterns: MRN followed by digits)
-    ("mrn", re.compile(
-        r"\b(?:MRN|mrn|Medical\s+Record)\s*[:#]?\s*\d{4,12}\b",
-        re.IGNORECASE,
-    ), _MASK_MRN),
-
+    (
+        "mrn",
+        re.compile(
+            r"\b(?:MRN|mrn|Medical\s+Record)\s*[:#]?\s*\d{4,12}\b",
+            re.IGNORECASE,
+        ),
+        _MASK_MRN,
+    ),
     # Names after "my name is" / "I am" / "name:" patterns
-    ("name_context", re.compile(
-        r"(?:my\s+name\s+is|i\s+am|name\s*:\s*|patient\s*:\s*)"
-        r"\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})",
-        re.IGNORECASE,
-    ), _MASK_NAME),
+    (
+        "name_context",
+        re.compile(
+            r"(?:my\s+name\s+is|i\s+am|name\s*:\s*|patient\s*:\s*)"
+            r"\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})",
+            re.IGNORECASE,
+        ),
+        _MASK_NAME,
+    ),
 ]
 
 
 # ---------------------------------------------------------------------------
 # Core masking function
 # ---------------------------------------------------------------------------
+
 
 def mask_phi(text: str) -> str:
     """Mask all detected PHI in the given text.
@@ -127,8 +143,7 @@ def mask_phi_in_dict(data: dict, keys_to_mask: Optional[List[str]] = None) -> di
             result[key] = mask_phi_in_dict(value, keys_to_mask)
         elif isinstance(value, list):
             result[key] = [
-                mask_phi(item) if isinstance(item, str) else item
-                for item in value
+                mask_phi(item) if isinstance(item, str) else item for item in value
             ]
         else:
             result[key] = value
@@ -159,6 +174,7 @@ def mask_transcript(transcript: List[Dict]) -> List[Dict]:
 # Log masking wrapper
 # ---------------------------------------------------------------------------
 
+
 class PHIMaskingFilter(logging.Filter):
     """Logging filter that masks PHI in log messages."""
 
@@ -168,8 +184,7 @@ class PHIMaskingFilter(logging.Filter):
         if record.args:
             if isinstance(record.args, tuple):
                 record.args = tuple(
-                    mask_phi(a) if isinstance(a, str) else a
-                    for a in record.args
+                    mask_phi(a) if isinstance(a, str) else a for a in record.args
                 )
             elif isinstance(record.args, dict):
                 record.args = {

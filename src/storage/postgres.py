@@ -6,6 +6,7 @@ Uses synchronous engine for simplicity (runs in thread pool with FastAPI).
 
 PHI control: respects STORE_PHI setting for text fields.
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,7 +40,8 @@ class PostgresStorage(StorageInterface):
 
         self._engine = create_engine(url, pool_pre_ping=True, echo=False)
         self._SessionFactory = sessionmaker(
-            bind=self._engine, expire_on_commit=False,
+            bind=self._engine,
+            expire_on_commit=False,
         )
 
     def initialize(self) -> None:
@@ -101,12 +103,16 @@ class PostgresStorage(StorageInterface):
 
             db_session.updated_at = datetime.now(timezone.utc)
             db_session.status = self._compute_status(session)
-            db_session.metadata_json = {"session_state": session.model_dump(mode="json")}
+            db_session.metadata_json = {
+                "session_state": session.model_dump(mode="json")
+            }
 
             if session.is_finalized:
                 db_session.ended_at = datetime.now(timezone.utc)
                 if session.finalize_output:
-                    db_session.final_disposition = session.finalize_output.disposition.value
+                    db_session.final_disposition = (
+                        session.finalize_output.disposition.value
+                    )
 
             # Persist decision trace as turns
             self._sync_turns(db, session)
@@ -132,17 +138,23 @@ class PostgresStorage(StorageInterface):
                 return None
             return self._deserialize_session(db_session)
 
-    def _deserialize_session(self, db_session: TriageSessionModel) -> Optional[OrchestratorSession]:
+    def _deserialize_session(
+        self, db_session: TriageSessionModel
+    ) -> Optional[OrchestratorSession]:
         """Deserialize OrchestratorSession from metadata_json column."""
         meta = db_session.metadata_json or {}
         state_data = meta.get("session_state")
         if state_data is None:
-            logger.warning(f"[PostgresStorage] No session_state in metadata for {db_session.session_id}")
+            logger.warning(
+                f"[PostgresStorage] No session_state in metadata for {db_session.session_id}"
+            )
             return None
         try:
             return OrchestratorSession.model_validate(state_data)
         except Exception as exc:
-            logger.error(f"[PostgresStorage] Failed to deserialize session {db_session.session_id}: {exc}")
+            logger.error(
+                f"[PostgresStorage] Failed to deserialize session {db_session.session_id}: {exc}"
+            )
             return None
 
     def delete_session(self, session_id: str) -> None:
@@ -156,11 +168,15 @@ class PostgresStorage(StorageInterface):
 
     def _sync_turns(self, db: SASession, session: OrchestratorSession) -> None:
         """Sync decision trace entries to triage_turns table."""
-        existing_count = db.execute(
-            select(TriageTurnModel.turn_index).where(
-                TriageTurnModel.session_id == session.session_id
+        existing_count = (
+            db.execute(
+                select(TriageTurnModel.turn_index).where(
+                    TriageTurnModel.session_id == session.session_id
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         existing_indices = set(existing_count)
 
         for entry in session.decision_trace:
@@ -171,16 +187,34 @@ class PostgresStorage(StorageInterface):
                 session_id=session.session_id,
                 turn_index=entry.turn_number,
                 timestamp=entry.timestamp,
-                user_text=entry.user_text if STORE_PHI else (mask_phi(entry.user_text) if entry.user_text else None),
-                system_text=entry.system_response if STORE_PHI else (mask_phi(entry.system_response) if entry.system_response else None),
+                user_text=entry.user_text
+                if STORE_PHI
+                else (mask_phi(entry.user_text) if entry.user_text else None),
+                system_text=entry.system_response
+                if STORE_PHI
+                else (
+                    mask_phi(entry.system_response) if entry.system_response else None
+                ),
                 phi_masked=not STORE_PHI,
-                extracted_entities=entry.extracted_entities if entry.extracted_entities else None,
-                red_flags_triggered=entry.red_flags_triggered if entry.red_flags_triggered else None,
-                rules_triggered=entry.rules_triggered if entry.rules_triggered else None,
-                protocol_hits=[h.model_dump() for h in entry.protocol_hits] if entry.protocol_hits else None,
-                protocol_citations=entry.protocol_citations if entry.protocol_citations else None,
+                extracted_entities=entry.extracted_entities
+                if entry.extracted_entities
+                else None,
+                red_flags_triggered=entry.red_flags_triggered
+                if entry.red_flags_triggered
+                else None,
+                rules_triggered=entry.rules_triggered
+                if entry.rules_triggered
+                else None,
+                protocol_hits=[h.model_dump() for h in entry.protocol_hits]
+                if entry.protocol_hits
+                else None,
+                protocol_citations=entry.protocol_citations
+                if entry.protocol_citations
+                else None,
                 confidence_score=entry.confidence_score,
-                confidence_breakdown=entry.confidence_breakdown.model_dump() if entry.confidence_breakdown else None,
+                confidence_breakdown=entry.confidence_breakdown.model_dump()
+                if entry.confidence_breakdown
+                else None,
                 disposition=entry.disposition,
                 escalation_required=entry.escalation_required,
                 safety_events=None,  # Populated if safety flags exist
@@ -220,9 +254,12 @@ class PostgresStorage(StorageInterface):
     def get_active_session_count(self) -> int:
         """Return the number of active sessions from DB."""
         from sqlalchemy import func
+
         with self._SessionFactory() as db:
             count = db.execute(
-                select(func.count()).select_from(TriageSessionModel).where(
+                select(func.count())
+                .select_from(TriageSessionModel)
+                .where(
                     TriageSessionModel.status == "active",
                     TriageSessionModel.deleted_at.is_(None),
                 )

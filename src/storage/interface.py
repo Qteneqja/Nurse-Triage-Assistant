@@ -4,6 +4,7 @@ Storage Interface
 Abstract base class for session storage.
 Allows swapping between in-memory (MVP) and Redis (future) implementations.
 """
+
 from __future__ import annotations
 
 import abc

@@ -7,6 +7,7 @@ Covers:
 - Default fallback objects
 - Handling of malformed inputs
 """
+
 import json
 
 from src.orchestrator.validators import (
@@ -27,6 +28,7 @@ from src.orchestrator.schemas import (
 # -----------------------------------------------------------------------
 # extract_json
 # -----------------------------------------------------------------------
+
 
 class TestExtractJson:
     def test_clean_json(self):
@@ -66,6 +68,7 @@ class TestExtractJson:
 # -----------------------------------------------------------------------
 # validate_against_schema — IntakeTurnOutput
 # -----------------------------------------------------------------------
+
 
 class TestValidateIntakeTurnOutput:
     def test_valid_data(self):
@@ -118,6 +121,7 @@ class TestValidateIntakeTurnOutput:
 # validate_against_schema — FinalizeOutput
 # -----------------------------------------------------------------------
 
+
 class TestValidateFinalizeOutput:
     def test_valid_finalize(self):
         data = {
@@ -150,24 +154,33 @@ class TestValidateFinalizeOutput:
 # parse_and_validate (end-to-end)
 # -----------------------------------------------------------------------
 
+
 class TestParseAndValidate:
     def test_clean_json_string(self):
-        raw = json.dumps({
-            "next_question": "Tell me more",
-            "extracted_fields_update": {},
-            "missing_fields_prioritized": [],
-            "llm_safety_flags": [],
-            "confidence": 0.2,
-        })
+        raw = json.dumps(
+            {
+                "next_question": "Tell me more",
+                "extracted_fields_update": {},
+                "missing_fields_prioritized": [],
+                "llm_safety_flags": [],
+                "confidence": 0.2,
+            }
+        )
         obj, err = parse_and_validate(raw, IntakeTurnOutput)
         assert err is None
         assert obj is not None
 
     def test_markdown_wrapped(self):
-        raw = "```json\n" + json.dumps({
-            "next_question": "How bad is it?",
-            "confidence": 0.4,
-        }) + "\n```"
+        raw = (
+            "```json\n"
+            + json.dumps(
+                {
+                    "next_question": "How bad is it?",
+                    "confidence": 0.4,
+                }
+            )
+            + "\n```"
+        )
         obj, err = parse_and_validate(raw, IntakeTurnOutput)
         assert err is None
         assert obj is not None
@@ -184,6 +197,7 @@ class TestParseAndValidate:
 # Safe defaults
 # -----------------------------------------------------------------------
 
+
 class TestSafeDefaults:
     def test_intake_default(self):
         result = safe_intake_turn_default()
@@ -199,4 +213,7 @@ class TestSafeDefaults:
         result = safe_finalize_default()
         assert isinstance(result, FinalizeOutput)
         assert result.disposition == DispositionCategory.HUMAN_REVIEW
-        assert "nurse" in result.patient_summary.lower() or "review" in result.patient_summary.lower()
+        assert (
+            "nurse" in result.patient_summary.lower()
+            or "review" in result.patient_summary.lower()
+        )

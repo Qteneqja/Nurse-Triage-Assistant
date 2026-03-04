@@ -10,6 +10,7 @@ Blob path mirrors local report structure:
 
 Falls back gracefully if Azure Storage is not configured (local-only mode).
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,7 +38,9 @@ def _get_container_client():
     from src.config import AZURE_STORAGE_CONNECTION_STRING, AZURE_BLOB_CONTAINER
 
     if not AZURE_STORAGE_CONNECTION_STRING:
-        logger.info("[BlobStorage] AZURE_STORAGE_CONNECTION_STRING not set — blob upload disabled")
+        logger.info(
+            "[BlobStorage] AZURE_STORAGE_CONNECTION_STRING not set — blob upload disabled"
+        )
         return None
 
     try:
@@ -46,7 +49,9 @@ def _get_container_client():
         _blob_service_client = BlobServiceClient.from_connection_string(
             AZURE_STORAGE_CONNECTION_STRING
         )
-        _container_client = _blob_service_client.get_container_client(AZURE_BLOB_CONTAINER)
+        _container_client = _blob_service_client.get_container_client(
+            AZURE_BLOB_CONTAINER
+        )
 
         # Create container if it doesn't exist
         if not _container_client.exists():
@@ -112,7 +117,9 @@ def upload_report_to_blob(
         return blob_url
 
     except Exception as exc:
-        logger.error(f"[BlobStorage] Failed to upload {blob_name}: {exc}", exc_info=True)
+        logger.error(
+            f"[BlobStorage] Failed to upload {blob_name}: {exc}", exc_info=True
+        )
         return None
 
 
@@ -127,5 +134,7 @@ def upload_reports_to_blob(
     """
     return {
         "json_url": upload_report_to_blob(json_path, reports_dir, "application/json"),
-        "txt_url": upload_report_to_blob(txt_path, reports_dir, "text/plain; charset=utf-8"),
+        "txt_url": upload_report_to_blob(
+            txt_path, reports_dir, "text/plain; charset=utf-8"
+        ),
     }
