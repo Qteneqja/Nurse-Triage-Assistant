@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.api.routes import router as intake_router
+from src.api.reports import router as reports_router
 from src.twilio.routes import router as twilio_router
 from src.storage.factory import get_storage_backend
 from src.config import (
@@ -174,6 +175,7 @@ else:
     )
 
 app.include_router(intake_router, prefix="/api/v1/intake", tags=["Intake"])
+app.include_router(reports_router, prefix="/api/v1", tags=["Reports"])
 app.include_router(twilio_router, prefix="/api/v1/voice", tags=["Twilio Voice"])
 
 
