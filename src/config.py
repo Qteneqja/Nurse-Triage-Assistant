@@ -32,10 +32,10 @@ logger = logging.getLogger(__name__)
 
 APP_ENV: str = os.getenv(
     "APP_ENV", "development"
-)  # "development" | "staging" | "production"
-if APP_ENV not in ("development", "staging", "production"):
+)  # "development" | "staging" | "production" | "test"
+if APP_ENV not in ("development", "staging", "production", "test"):
     raise RuntimeError(
-        f"APP_ENV must be development|staging|production, got '{APP_ENV}'"
+        f"APP_ENV must be development|staging|production|test, got '{APP_ENV}'"
     )
 
 
