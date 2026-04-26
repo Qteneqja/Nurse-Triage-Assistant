@@ -11,7 +11,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta, UTC
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from src.orchestrator.schemas import OrchestratorSession, AuditTrace
 from src.storage.interface import StorageInterface
@@ -29,6 +29,7 @@ class InMemoryOrchestratorStorage(StorageInterface):
         self._sessions: Dict[str, OrchestratorSession] = {}
         self._call_index: Dict[str, str] = {}  # CallSid -> session_id
         self._expiry: Dict[str, datetime] = {}  # session_id -> expiry time
+        self._extractions: Dict[str, list[Any]] = {}
         self._cleanup_task: asyncio.Task | None = None
 
     def start_cleanup(self) -> None:
@@ -54,7 +55,11 @@ class InMemoryOrchestratorStorage(StorageInterface):
 
     # ---- StorageInterface implementation ----
 
-    def create_session(self, call_sid: str | None = None) -> OrchestratorSession:
+    def create_session(
+        self,
+        call_sid: str | None = None,
+        workflow_route: Any | None = None,
+    ) -> OrchestratorSession:
         """Create and persist a new orchestrator session."""
         session_id = str(uuid.uuid4())
         session = OrchestratorSession(
@@ -62,6 +67,7 @@ class InMemoryOrchestratorStorage(StorageInterface):
             call_sid=call_sid,
             audit_trace=AuditTrace(session_id=session_id, call_sid=call_sid),
         )
+        _apply_workflow_route(session, workflow_route)
         self._sessions[session_id] = session
         self._expiry[session_id] = datetime.now(UTC) + timedelta(
             minutes=SESSION_TTL_MINUTES
@@ -97,18 +103,53 @@ class InMemoryOrchestratorStorage(StorageInterface):
         """Delete a session."""
         self._remove(session_id)
 
+    def save_extraction(self, extraction: Any) -> None:
+        """Persist a post-call extraction in memory for tests/dev."""
+        session_id = getattr(extraction, "session_id", None)
+        if not session_id:
+            return
+        self._extractions.setdefault(session_id, []).append(extraction)
+
+    def get_extractions(self, session_id: str) -> list[Any]:
+        """Return saved extraction results for a session."""
+        return list(self._extractions.get(session_id, []))
+
     # ---- Internals ----
 
     def _remove(self, session_id: str) -> None:
         """Remove session and all index entries."""
         session = self._sessions.pop(session_id, None)
         self._expiry.pop(session_id, None)
+        self._extractions.pop(session_id, None)
         if session and session.call_sid:
             self._call_index.pop(session.call_sid, None)
 
     def get_active_session_count(self) -> int:
         """Return the number of currently tracked sessions."""
         return len(self._sessions)
+
+
+def _apply_workflow_route(
+    session: OrchestratorSession,
+    workflow_route: Any | None,
+) -> None:
+    if workflow_route is None:
+        return
+    session.organization_id = getattr(workflow_route, "organization_id", None)
+    session.vertical_key = getattr(workflow_route, "vertical_key", None)
+    session.workflow_id = getattr(workflow_route, "workflow_id", None)
+    session.workflow_version = getattr(workflow_route, "workflow_version", None)
+    session.phone_number_id = getattr(workflow_route, "phone_number_id", None)
+    session.channel_metadata["route"] = {
+        "organization_id": session.organization_id,
+        "vertical_key": session.vertical_key,
+        "workflow_id": session.workflow_id,
+        "workflow_version": session.workflow_version,
+        "phone_number_id": session.phone_number_id,
+        "fallback_used": getattr(workflow_route, "fallback_used", False),
+        "fallback_reason": getattr(workflow_route, "fallback_reason", None),
+        "audit_metadata": getattr(workflow_route, "audit_metadata", {}),
+    }
 
 
 # ---- Access through factory ----

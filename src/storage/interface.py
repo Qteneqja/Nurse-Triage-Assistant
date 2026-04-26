@@ -8,7 +8,7 @@ Allows swapping between in-memory (MVP) and Redis (future) implementations.
 from __future__ import annotations
 
 import abc
-from typing import Optional
+from typing import Any, Optional
 
 from src.orchestrator.schemas import OrchestratorSession
 
@@ -37,9 +37,17 @@ class StorageInterface(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def create_session(self, call_sid: str | None = None) -> OrchestratorSession:
+    def create_session(
+        self,
+        call_sid: str | None = None,
+        workflow_route: Any | None = None,
+    ) -> OrchestratorSession:
         """Create a new orchestrator session and persist it."""
         ...
+
+    def save_extraction(self, extraction: Any) -> None:
+        """Persist a post-call extraction result when supported."""
+        return None
 
     def check_connectivity(self) -> bool:
         """Check if the storage backend is reachable.

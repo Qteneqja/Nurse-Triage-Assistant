@@ -120,6 +120,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"[STARTUP] Storage backend: {STORAGE_BACKEND}")
     logger.info(f"[STARTUP] APP_ENV={APP_ENV}")
 
+    # Register built-in platform workflows after storage/config are ready.
+    from src.platform.workflows.registry import ensure_default_workflows_registered
+
+    ensure_default_workflows_registered()
+
     # Warn if blob storage is not configured (reports will only be written
     # to ephemeral local disk, lost on container restart).
     from src.config import AZURE_STORAGE_CONNECTION_STRING

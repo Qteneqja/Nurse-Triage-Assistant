@@ -12,7 +12,7 @@ Crash/restart does not lose session state (when backed by Postgres).
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from src.orchestrator.schemas import OrchestratorSession
 from src.storage.factory import get_storage_backend
@@ -26,9 +26,16 @@ class SessionRepository:
     def __init__(self) -> None:
         self._backend = get_storage_backend()
 
-    def create_session(self, call_sid: str | None = None) -> OrchestratorSession:
+    def create_session(
+        self,
+        call_sid: str | None = None,
+        workflow_route: Any | None = None,
+    ) -> OrchestratorSession:
         """Create a new session and persist it."""
-        session = self._backend.create_session(call_sid=call_sid)
+        session = self._backend.create_session(
+            call_sid=call_sid,
+            workflow_route=workflow_route,
+        )
         logger.info(f"[SessionRepo] Created session {session.session_id}")
         return session
 
@@ -55,6 +62,10 @@ class SessionRepository:
     def check_connectivity(self) -> bool:
         """Check backend connectivity."""
         return self._backend.check_connectivity()
+
+    def persist_extraction(self, extraction: Any) -> None:
+        """Persist a post-call extraction if the backend supports it."""
+        self._backend.save_extraction(extraction)
 
 
 # Singleton

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session as SASession, sessionmaker
@@ -20,7 +20,12 @@ from sqlalchemy.orm import Session as SASession, sessionmaker
 from src.config import DATABASE_URL, ENVIRONMENT, STORE_PHI
 from src.orchestrator.schemas import AuditTrace, OrchestratorSession
 from src.storage.interface import StorageInterface
-from src.storage.models import Base, TriageSessionModel, TriageTurnModel
+from src.storage.models import (
+    Base,
+    ConversationExtractionModel,
+    TriageSessionModel,
+    TriageTurnModel,
+)
 from src.safety.phi_masking import mask_phi
 
 logger = logging.getLogger(__name__)
@@ -71,13 +76,18 @@ class PostgresStorage(StorageInterface):
 
     # ---- StorageInterface implementation ----
 
-    def create_session(self, call_sid: str | None = None) -> OrchestratorSession:
+    def create_session(
+        self,
+        call_sid: str | None = None,
+        workflow_route: Any | None = None,
+    ) -> OrchestratorSession:
         session_id = str(uuid.uuid4())
         session = OrchestratorSession(
             session_id=session_id,
             call_sid=call_sid,
             audit_trace=AuditTrace(session_id=session_id, call_sid=call_sid),
         )
+        _apply_workflow_route(session, workflow_route)
 
         # Persist to DB with full serialized state
         with self._SessionFactory() as db:
@@ -86,6 +96,11 @@ class PostgresStorage(StorageInterface):
                 caller_id=call_sid,
                 channel="twilio" if call_sid else "api",
                 status="active",
+                organization_id=session.organization_id,
+                vertical_key=session.vertical_key,
+                workflow_id=session.workflow_id,
+                workflow_version=session.workflow_version,
+                phone_number_id=session.phone_number_id,
                 metadata_json={"session_state": session.model_dump(mode="json")},
             )
             db.add(db_session)
@@ -103,6 +118,11 @@ class PostgresStorage(StorageInterface):
 
             db_session.updated_at = datetime.now(timezone.utc)
             db_session.status = self._compute_status(session)
+            db_session.organization_id = session.organization_id
+            db_session.vertical_key = session.vertical_key
+            db_session.workflow_id = session.workflow_id
+            db_session.workflow_version = session.workflow_version
+            db_session.phone_number_id = session.phone_number_id
             db_session.metadata_json = {
                 "session_state": session.model_dump(mode="json")
             }
@@ -116,6 +136,31 @@ class PostgresStorage(StorageInterface):
 
             # Persist decision trace as turns
             self._sync_turns(db, session)
+            db.commit()
+
+    def save_extraction(self, extraction: Any) -> None:
+        """Persist a post-call structured extraction."""
+        raw_output = getattr(extraction, "raw_model_output", None)
+        raw_output_json = {"raw": raw_output} if isinstance(raw_output, str) else raw_output
+
+        with self._SessionFactory() as db:
+            record = ConversationExtractionModel(
+                id=getattr(extraction, "extraction_id", None) or str(uuid.uuid4()),
+                session_id=extraction.session_id,
+                organization_id=getattr(extraction, "organization_id", None),
+                vertical_key=extraction.vertical,
+                workflow_id=extraction.workflow_id,
+                schema_version=extraction.schema_version,
+                summary=extraction.summary,
+                entities_json=extraction.entities or {},
+                metrics_json=extraction.metrics or {},
+                flags_json=extraction.flags or [],
+                recommended_actions_json=extraction.recommended_actions or [],
+                confidence_score=extraction.confidence_score,
+                raw_output_json=raw_output_json,
+                created_at=extraction.created_at,
+            )
+            db.add(record)
             db.commit()
 
     def load_session(self, session_id: str) -> Optional[OrchestratorSession]:
@@ -265,3 +310,26 @@ class PostgresStorage(StorageInterface):
                 )
             ).scalar()
             return count or 0
+
+
+def _apply_workflow_route(
+    session: OrchestratorSession,
+    workflow_route: Any | None,
+) -> None:
+    if workflow_route is None:
+        return
+    session.organization_id = getattr(workflow_route, "organization_id", None)
+    session.vertical_key = getattr(workflow_route, "vertical_key", None)
+    session.workflow_id = getattr(workflow_route, "workflow_id", None)
+    session.workflow_version = getattr(workflow_route, "workflow_version", None)
+    session.phone_number_id = getattr(workflow_route, "phone_number_id", None)
+    session.channel_metadata["route"] = {
+        "organization_id": session.organization_id,
+        "vertical_key": session.vertical_key,
+        "workflow_id": session.workflow_id,
+        "workflow_version": session.workflow_version,
+        "phone_number_id": session.phone_number_id,
+        "fallback_used": getattr(workflow_route, "fallback_used", False),
+        "fallback_reason": getattr(workflow_route, "fallback_reason", None),
+        "audit_metadata": getattr(workflow_route, "audit_metadata", {}),
+    }
