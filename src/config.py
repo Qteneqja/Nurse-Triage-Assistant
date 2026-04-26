@@ -61,6 +61,12 @@ def _env_with_deprecation(new_name: str, old_name: str, default: str) -> str:
     return default
 
 
+def _env_flag(name: str, default: str) -> bool:
+    """Read a boolean environment flag."""
+
+    return os.getenv(name, default).lower() in ("true", "1", "yes")
+
+
 # ---------------------------------------------------------------------------
 # Application version (single source of truth: VERSION file at repo root)
 # ---------------------------------------------------------------------------
@@ -129,6 +135,41 @@ ESCALATION_SCORE_THRESHOLD: float = float(REDFLAG_SCORE_THRESHOLD)
 PROTOCOL_VERSION: str = os.getenv("PROTOCOL_VERSION", "v1")
 # ENVIRONMENT kept for backward compat; prefer APP_ENV going forward
 ENVIRONMENT: str = os.getenv("ENVIRONMENT", APP_ENV)  # synced from APP_ENV
+
+# ---------------------------------------------------------------------------
+# Platform workflow routing
+# ---------------------------------------------------------------------------
+
+DEFAULT_WORKFLOW_ID: str = os.getenv("DEFAULT_WORKFLOW_ID", "healthcare_triage_v1")
+DEFAULT_VERTICAL_KEY: str = os.getenv("DEFAULT_VERTICAL_KEY", "healthcare")
+DEFAULT_WORKFLOW_VERSION: str = os.getenv("DEFAULT_WORKFLOW_VERSION", "v1")
+
+# Generic fallback flag. The legacy healthcare-named env var remains supported
+# for compatibility with Phase 10 deployments.
+ENABLE_DEFAULT_WORKFLOW_ROUTE: bool = _env_flag(
+    "ENABLE_DEFAULT_WORKFLOW_ROUTE",
+    os.getenv(
+        "ENABLE_DEFAULT_HEALTHCARE_ROUTE",
+        "false" if ENVIRONMENT == "production" else "true",
+    ),
+)
+ENABLE_DEFAULT_HEALTHCARE_ROUTE: bool = ENABLE_DEFAULT_WORKFLOW_ROUTE
+
+# Workflow hints are convenient in local/dev tools but should not be accepted
+# in production unless explicitly enabled.
+ENABLE_WORKFLOW_HINT_ROUTE: bool = _env_flag(
+    "ENABLE_WORKFLOW_HINT_ROUTE",
+    "false" if ENVIRONMENT == "production" else "true",
+)
+
+# Default route bootstrap inputs.
+DEFAULT_ORGANIZATION_NAME: str = os.getenv(
+    "DEFAULT_ORGANIZATION_NAME", "Default Healthcare Organization"
+)
+DEFAULT_ORGANIZATION_SLUG: str = os.getenv(
+    "DEFAULT_ORGANIZATION_SLUG", "default-healthcare"
+)
+DEFAULT_TWILIO_PHONE_NUMBER: str = os.getenv("DEFAULT_TWILIO_PHONE_NUMBER", "")
 
 # ---------------------------------------------------------------------------
 # Twilio
@@ -213,9 +254,9 @@ def validate_config() -> list[str]:
     if STORAGE_BACKEND == "postgres" and not DATABASE_URL:
         errors.append("DATABASE_URL is required when STORAGE_BACKEND=postgres")
 
-    if APP_ENV not in ("development", "staging", "production"):
+    if APP_ENV not in ("development", "staging", "production", "test"):
         errors.append(
-            f"APP_ENV must be development|staging|production, got '{APP_ENV}'"
+            f"APP_ENV must be development|staging|production|test, got '{APP_ENV}'"
         )
 
     # --- Staging + Production shared requirements ---
@@ -240,6 +281,11 @@ def validate_config() -> list[str]:
             errors.append(
                 "DATABASE_URL is required in production (STORAGE_BACKEND=postgres)"
             )
+        if ENABLE_WORKFLOW_HINT_ROUTE:
+            errors.append(
+                "ENABLE_WORKFLOW_HINT_ROUTE must be false in production unless "
+                "a specific operational exception is approved."
+            )
 
     if not (0.0 <= CONFIDENCE_MIN_THRESHOLD <= 1.0):
         errors.append(
@@ -250,6 +296,16 @@ def validate_config() -> list[str]:
         errors.append(
             f"REDFLAG_SCORE_THRESHOLD must be >= 1, got {REDFLAG_SCORE_THRESHOLD}"
         )
+
+    if ENABLE_DEFAULT_WORKFLOW_ROUTE:
+        if not DEFAULT_WORKFLOW_ID:
+            errors.append("DEFAULT_WORKFLOW_ID is required when default routing is enabled")
+        if not DEFAULT_VERTICAL_KEY:
+            errors.append("DEFAULT_VERTICAL_KEY is required when default routing is enabled")
+        if not DEFAULT_WORKFLOW_VERSION:
+            errors.append(
+                "DEFAULT_WORKFLOW_VERSION is required when default routing is enabled"
+            )
 
     return errors
 
@@ -270,5 +326,12 @@ def require_valid_config() -> None:
     logger.info(f"[CONFIG] STORE_PHI={STORE_PHI}")
     logger.info(f"[CONFIG] ENVIRONMENT={ENVIRONMENT}")
     logger.info(f"[CONFIG] PROTOCOL_VERSION={PROTOCOL_VERSION}")
+    logger.info(f"[CONFIG] DEFAULT_VERTICAL_KEY={DEFAULT_VERTICAL_KEY}")
+    logger.info(f"[CONFIG] DEFAULT_WORKFLOW_ID={DEFAULT_WORKFLOW_ID}")
+    logger.info(f"[CONFIG] DEFAULT_WORKFLOW_VERSION={DEFAULT_WORKFLOW_VERSION}")
+    logger.info(
+        f"[CONFIG] ENABLE_DEFAULT_WORKFLOW_ROUTE={ENABLE_DEFAULT_WORKFLOW_ROUTE}"
+    )
+    logger.info(f"[CONFIG] ENABLE_WORKFLOW_HINT_ROUTE={ENABLE_WORKFLOW_HINT_ROUTE}")
     logger.info(f"[CONFIG] TWILIO_VALIDATE_SIGNATURE={TWILIO_VALIDATE_SIGNATURE}")
     logger.info(f"[CONFIG] RUN_MIGRATIONS_ON_STARTUP={RUN_MIGRATIONS_ON_STARTUP}")

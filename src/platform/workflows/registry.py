@@ -1,0 +1,87 @@
+"""Deterministic workflow registry."""
+
+from __future__ import annotations
+
+from threading import RLock
+
+from src.platform.workflows.base import BaseWorkflow
+from src.platform.workflows.schemas import WorkflowDefinition
+
+
+class WorkflowNotFoundError(KeyError):
+    """Raised when a workflow cannot be resolved from the registry."""
+
+
+class WorkflowRegistry:
+    """Small, testable registry keyed by workflow_id."""
+
+    def __init__(self) -> None:
+        self._workflows: dict[str, BaseWorkflow] = {}
+        self._defaults_by_vertical: dict[str, str] = {}
+
+    def register(self, workflow: BaseWorkflow, *, make_default: bool = True) -> None:
+        definition = workflow.get_definition()
+        self._workflows[definition.workflow_id] = workflow
+        if make_default or definition.vertical not in self._defaults_by_vertical:
+            self._defaults_by_vertical[definition.vertical] = definition.workflow_id
+
+    def get(self, workflow_id: str) -> BaseWorkflow:
+        try:
+            return self._workflows[workflow_id]
+        except KeyError as exc:
+            raise WorkflowNotFoundError(
+                f"Workflow '{workflow_id}' is not registered"
+            ) from exc
+
+    def list_workflows(self) -> list[WorkflowDefinition]:
+        return [
+            self._workflows[key].get_definition()
+            for key in sorted(self._workflows.keys())
+        ]
+
+    def get_default_for_vertical(self, vertical: str) -> BaseWorkflow:
+        workflow_id = self._defaults_by_vertical.get(vertical)
+        if workflow_id is None:
+            raise WorkflowNotFoundError(
+                f"No default workflow is registered for vertical '{vertical}'"
+            )
+        return self.get(workflow_id)
+
+
+_registry: WorkflowRegistry | None = None
+_registry_lock = RLock()
+_defaults_registered = False
+
+
+def get_workflow_registry() -> WorkflowRegistry:
+    """Return the process-local workflow registry singleton."""
+
+    global _registry
+    with _registry_lock:
+        if _registry is None:
+            _registry = WorkflowRegistry()
+        return _registry
+
+
+def reset_workflow_registry() -> None:
+    """Reset the singleton registry. Intended for tests."""
+
+    global _registry, _defaults_registered
+    with _registry_lock:
+        _registry = None
+        _defaults_registered = False
+
+
+def ensure_default_workflows_registered() -> WorkflowRegistry:
+    """Register built-in workflows exactly once."""
+
+    global _defaults_registered
+    registry = get_workflow_registry()
+    with _registry_lock:
+        if not _defaults_registered:
+            from src.verticals.healthcare.workflow import HealthcareTriageWorkflow
+
+            registry.register(HealthcareTriageWorkflow(), make_default=True)
+            _defaults_registered = True
+    return registry
+
