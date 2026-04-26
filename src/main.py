@@ -15,6 +15,7 @@ from src.twilio.routes import router as twilio_router
 from src.storage.factory import get_storage_backend
 from src.config import (
     APP_ENV,
+    APP_VERSION,
     STORAGE_BACKEND,
     ENVIRONMENT,
     LOG_FORMAT,
@@ -139,7 +140,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down...")
 
 
-app = FastAPI(title="Triage API", version="5.0.0", lifespan=lifespan)
+app = FastAPI(title="Triage API", version=APP_VERSION, lifespan=lifespan)
 
 # Phase 5: Correlation-ID middleware (outermost)
 app.add_middleware(CorrelationIDMiddleware)
@@ -181,7 +182,7 @@ app.include_router(twilio_router, prefix="/api/v1/voice", tags=["Twilio Voice"])
 
 @app.get("/")
 async def root():
-    return {"service": "Triage API", "status": "operational", "version": "5.0.0"}
+    return {"service": "Triage API", "status": "operational", "version": APP_VERSION}
 
 
 @app.get("/health")

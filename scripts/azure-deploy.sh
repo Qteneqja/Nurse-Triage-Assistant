@@ -39,8 +39,15 @@ PG_DB_NAME="${PG_DB_NAME:-triage_db}"
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
 TWILIO_AUTH_TOKEN="${TWILIO_AUTH_TOKEN:-}"
 
-# Image tag
-IMAGE_TAG="${IMAGE_TAG:-5.0.0}"
+# Image tag — reads from VERSION file (single source of truth)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION_FILE="${SCRIPT_DIR}/../VERSION"
+if [ -f "$VERSION_FILE" ]; then
+    DEFAULT_TAG="$(cat "$VERSION_FILE" | tr -d '\n\r')"
+else
+    DEFAULT_TAG="5.0.0"
+fi
+IMAGE_TAG="${IMAGE_TAG:-$DEFAULT_TAG}"
 
 # Optional: custom domain for CORS
 DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN:-}"

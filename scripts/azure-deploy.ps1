@@ -36,8 +36,15 @@ $PG_DB_NAME = if ($env:PG_DB_NAME) { $env:PG_DB_NAME }    else { "triage_db" }
 $DEEPSEEK_API_KEY = $env:DEEPSEEK_API_KEY
 $TWILIO_AUTH_TOKEN = $env:TWILIO_AUTH_TOKEN
 
-# Image tag
-$IMAGE_TAG = if ($env:IMAGE_TAG) { $env:IMAGE_TAG } else { "5.0.0" }
+# Image tag — reads from VERSION file (single source of truth)
+$VERSION_FILE = Join-Path $PSScriptRoot '..\VERSION'
+if (Test-Path $VERSION_FILE) {
+    $DEFAULT_TAG = (Get-Content $VERSION_FILE -Raw).Trim()
+}
+else {
+    $DEFAULT_TAG = '5.0.0'
+}
+$IMAGE_TAG = if ($env:IMAGE_TAG) { $env:IMAGE_TAG } else { $DEFAULT_TAG }
 
 # Optional: custom domain for CORS
 $DASHBOARD_DOMAIN = $env:DASHBOARD_DOMAIN
