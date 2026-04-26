@@ -62,6 +62,17 @@ def _env_with_deprecation(new_name: str, old_name: str, default: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Application version (single source of truth: VERSION file at repo root)
+# ---------------------------------------------------------------------------
+
+_version_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "VERSION")
+try:
+    with open(_version_file) as _vf:
+        APP_VERSION: str = _vf.read().strip()
+except FileNotFoundError:
+    APP_VERSION = "5.0.0"  # fallback
+
+# ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
 
