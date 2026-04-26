@@ -587,6 +587,11 @@ class OrchestratorSession(BaseModel):
 
     session_id: str
     call_sid: Optional[str] = None
+    organization_id: Optional[str] = None
+    vertical_key: Optional[str] = None
+    workflow_id: Optional[str] = None
+    workflow_version: Optional[str] = None
+    phone_number_id: Optional[str] = None
     turn_count: int = 0
     max_turns: int = 12
     confidence_threshold: float = 0.75

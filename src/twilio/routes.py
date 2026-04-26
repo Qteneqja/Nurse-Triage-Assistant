@@ -18,7 +18,17 @@ from typing import Optional
 
 from src.storage.session_repository import get_session_repository
 from src.orchestrator.orchestrator import get_orchestrator
-from src.orchestrator.schemas import ConversationTurn
+from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
+from src.platform.workflows.registry import ensure_default_workflows_registered
+from src.platform.workflows.router import (
+    get_workflow_engine,
+    get_workflow_route_resolver,
+)
+from src.platform.workflows.schemas import (
+    WorkflowContext,
+    WorkflowInput,
+    WorkflowTurnResult,
+)
 from src.safety.phi_masking import mask_phi
 from src.config import STORE_PHI
 from src.security.twilio_signature import validate_twilio_signature
@@ -113,6 +123,14 @@ async def _generate_orchestrator_report_background(
             )
 
         # ── Phase 3: Build structured report ─────────────────────────────
+        try:
+            _run_post_call_extraction(orch_session)
+        except Exception as extraction_exc:
+            logger.warning(
+                f"[BACKGROUND] Post-call extraction failed (non-fatal): {extraction_exc}",
+                exc_info=True,
+            )
+
         structured = {
             "patient": {
                 "name": session_metadata.get("patient_name", "Unknown"),
@@ -480,7 +498,11 @@ async def generate_twiml_handoff(text: str) -> str:
 
 
 @router.post("/incoming")
-async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
+async def handle_incoming_call(
+    request: Request,
+    CallSid: str = Form(...),
+    To: Optional[str] = Form(None),
+):
     """
     Handle incoming Twilio call — create session via SessionRepository
     and start scripted intake.
@@ -488,8 +510,21 @@ async def handle_incoming_call(request: Request, CallSid: str = Form(...)):
     try:
         logger.info(f"[TWILIO] Incoming call: {CallSid}")
 
+        ensure_default_workflows_registered()
+        route = get_workflow_route_resolver().resolve(called_phone_number=To)
+
+        if route.safe_response_required:
+            logger.error("[TWILIO] Incoming call could not be safely routed")
+            twiml = await generate_twiml_say_and_hangup(
+                "We are unable to safely route this call right now. "
+                "If this is an emergency, please hang up and call 9 1 1. "
+                "Otherwise, please contact the clinic directly."
+            )
+            return Response(content=twiml, media_type="application/xml")
+
         repo = get_session_repository()
-        session = repo.create_session(call_sid=CallSid)
+        session = repo.create_session(call_sid=CallSid, workflow_route=route)
+        session.channel_metadata["called_phone_number"] = To
 
         # Track scripted intake stage
         session.channel_metadata["stage"] = STAGE_GREETING
@@ -702,19 +737,34 @@ async def handle_gather(
             speech_text = SpeechResult.strip()
 
             async def _run_turn(sess, text):
-                """Background coroutine: run orchestrator + persist."""
+                """Background coroutine: run workflow + persist."""
                 import time as _t
 
                 _t0 = _t.monotonic()
-                orch = get_orchestrator()
-                res = await orch.process_turn(sess, text)
+                context = _build_workflow_context(sess, request=request)
+                workflow_input = WorkflowInput(
+                    user_text=text,
+                    session_state=sess.model_dump(mode="json"),
+                    called_phone_number=sess.channel_metadata.get(
+                        "called_phone_number"
+                    ),
+                    metadata={"channel": "twilio"},
+                )
+                turn_result = await get_workflow_engine().handle_turn(
+                    context,
+                    workflow_input,
+                )
+                updated_session = OrchestratorSession.model_validate(
+                    turn_result.updated_state
+                )
+                res = _workflow_turn_to_legacy_result(turn_result)
                 _ms = (_t.monotonic() - _t0) * 1000
                 logger.info(
-                    f"[TWILIO] Orchestrator completed in {_ms:.0f}ms for session {sess.session_id}"
+                    f"[TWILIO] Workflow completed in {_ms:.0f}ms for session {sess.session_id}"
                 )
                 r = get_session_repository()
-                r.persist_session(sess)
-                return res
+                r.persist_session(updated_session)
+                return res, updated_session
 
             task = asyncio.create_task(_run_turn(session, speech_text))
             _pending_turns[CallSid] = (task, session)
@@ -811,7 +861,15 @@ async def handle_thinking(
             )
             return Response(content=twiml, media_type="application/xml")
 
-        result = task.result()
+        task_result = task.result()
+        if (
+            isinstance(task_result, tuple)
+            and len(task_result) == 2
+            and isinstance(task_result[1], OrchestratorSession)
+        ):
+            result, session_obj = task_result
+        else:
+            result = task_result
         action = result["action"]
         spoken_message = result["message"]
 
@@ -888,6 +946,82 @@ def _build_session_metadata(session) -> dict:
         "patient_sex": session.intake_state.caller_sex or "Unknown",
         "chief_complaint": session.intake_state.chief_complaint or "Unknown",
     }
+
+
+def _build_workflow_context(
+    session: OrchestratorSession,
+    request: Request | None = None,
+) -> WorkflowContext:
+    """Build a generic workflow context from a stored orchestrator session."""
+    request_id = request.headers.get("X-Request-ID") if request else None
+    route_metadata = session.channel_metadata.get("route", {})
+    return WorkflowContext(
+        session_id=session.session_id,
+        organization_id=session.organization_id
+        or route_metadata.get("organization_id"),
+        phone_number_id=session.phone_number_id or route_metadata.get("phone_number_id"),
+        call_sid=session.call_sid,
+        vertical=session.vertical_key or "healthcare",
+        workflow_id=session.workflow_id or "healthcare_triage_v1",
+        workflow_version=session.workflow_version or "v1",
+        metadata={
+            "channel": "twilio",
+            "stage": session.channel_metadata.get("stage"),
+            "route": route_metadata,
+        },
+        request_id=request_id,
+        correlation_id=request_id,
+    )
+
+
+def _workflow_turn_to_legacy_result(turn_result: WorkflowTurnResult) -> dict:
+    """Convert platform workflow result to the legacy Twilio action contract."""
+    if turn_result.escalation_required:
+        action = "escalate"
+    elif turn_result.should_finalize:
+        action = "finalize"
+    else:
+        action = "ask"
+
+    return {
+        "action": action,
+        "message": turn_result.assistant_text,
+        "workflow_turn": turn_result.model_dump(mode="json"),
+    }
+
+
+def _run_post_call_extraction(session: OrchestratorSession) -> None:
+    """Run read-only post-call extraction for workflows that support it."""
+    from src.platform.extraction.service import get_extraction_service
+    from src.platform.workflows.registry import ensure_default_workflows_registered
+
+    if not session.is_finalized or session.finalize_output is None:
+        logger.warning(
+            "[BACKGROUND] Skipping post-call extraction before finalized result is stored "
+            "for session %s",
+            session.session_id,
+        )
+        return
+
+    context = _build_workflow_context(session)
+    registry = ensure_default_workflows_registered()
+    workflow = registry.get(context.workflow_id)
+    definition = workflow.get_definition()
+    if not definition.supports_post_call_extraction:
+        return
+
+    if hasattr(workflow, "build_final_result_from_session"):
+        final_result = workflow.build_final_result_from_session(context, session)
+    else:
+        raise RuntimeError("Synchronous extraction final result builder is unavailable")
+
+    transcript = [turn.model_dump(mode="json") for turn in session.conversation]
+    get_extraction_service().extract_and_persist(
+        transcript=transcript,
+        final_result=final_result,
+        workflow_context=context,
+        extraction_schema=workflow.get_extraction_schema(),
+    )
 
 
 def _get_stage_question(stage: str) -> str:

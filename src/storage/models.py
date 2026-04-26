@@ -92,6 +92,17 @@ class TriageSessionModel(Base):
     metadata_json: Mapped[Optional[dict]] = mapped_column(
         "metadata", JSON, nullable=True
     )
+    organization_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=True, index=True
+    )
+    vertical_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    workflow_id: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, index=True
+    )
+    workflow_version: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    phone_number_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("phone_numbers.id"), nullable=True, index=True
+    )
     # Soft delete
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -123,6 +134,11 @@ class TriageSessionModel(Base):
     )
     rule_triggers: Mapped[list["RuleTriggerModel"]] = relationship(
         "RuleTriggerModel",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    extractions: Mapped[list["ConversationExtractionModel"]] = relationship(
+        "ConversationExtractionModel",
         back_populates="session",
         cascade="all, delete-orphan",
     )
@@ -351,3 +367,193 @@ class RuleTriggerModel(Base):
 
     def __repr__(self) -> str:
         return f"<RuleTrigger session={self.session_id} rule={self.rule_id}>"
+
+
+# ---------------------------------------------------------------------------
+# Phase 10 SaaS routing foundation
+# ---------------------------------------------------------------------------
+
+
+class OrganizationModel(Base):
+    """Tenant organization."""
+
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    workflows: Mapped[list["OrganizationWorkflowModel"]] = relationship(
+        "OrganizationWorkflowModel",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+    phone_numbers: Mapped[list["PhoneNumberModel"]] = relationship(
+        "PhoneNumberModel",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+
+
+class VerticalModel(Base):
+    """Supported product vertical."""
+
+    __tablename__ = "verticals"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    workflows: Mapped[list["OrganizationWorkflowModel"]] = relationship(
+        "OrganizationWorkflowModel",
+        back_populates="vertical",
+    )
+    phone_numbers: Mapped[list["PhoneNumberModel"]] = relationship(
+        "PhoneNumberModel",
+        back_populates="vertical",
+    )
+
+
+class OrganizationWorkflowModel(Base):
+    """Workflow enabled for an organization and vertical."""
+
+    __tablename__ = "organization_workflows"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    organization_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    vertical_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("verticals.id"), nullable=False, index=True
+    )
+    workflow_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    workflow_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=True)
+    config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    organization: Mapped["OrganizationModel"] = relationship(
+        "OrganizationModel", back_populates="workflows"
+    )
+    vertical: Mapped["VerticalModel"] = relationship(
+        "VerticalModel", back_populates="workflows"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "vertical_id",
+            "workflow_id",
+            name="uq_org_workflows_org_vertical_workflow",
+        ),
+        Index(
+            "ix_org_workflows_org_vertical_default",
+            "organization_id",
+            "vertical_id",
+            "is_default",
+        ),
+    )
+
+
+class PhoneNumberModel(Base):
+    """Inbound provider phone number mapped to a workflow."""
+
+    __tablename__ = "phone_numbers"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    organization_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    vertical_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("verticals.id"), nullable=False, index=True
+    )
+    workflow_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    e164_number: Mapped[str] = mapped_column(
+        String(32), nullable=False, unique=True, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(50), default="twilio")
+    provider_sid: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    label: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    organization: Mapped["OrganizationModel"] = relationship(
+        "OrganizationModel", back_populates="phone_numbers"
+    )
+    vertical: Mapped["VerticalModel"] = relationship(
+        "VerticalModel", back_populates="phone_numbers"
+    )
+
+
+class ConversationExtractionModel(Base):
+    """Post-call structured extraction result."""
+
+    __tablename__ = "conversation_extractions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    organization_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("organizations.id"), nullable=True, index=True
+    )
+    vertical_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    workflow_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    schema_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    entities_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    metrics_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    flags_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    recommended_actions_json: Mapped[list] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    confidence_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    raw_output_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+    session: Mapped["TriageSessionModel"] = relationship(
+        "TriageSessionModel", back_populates="extractions"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ConversationExtraction session={self.session_id} workflow={self.workflow_id}>"
