@@ -142,5 +142,15 @@ def _register_default_agents(service: ExtractionService) -> None:
     ensure_default_workflows_registered()
     from src.verticals.healthcare.constants import HEALTHCARE_TRIAGE_WORKFLOW_ID
     from src.verticals.healthcare.extraction import HealthcareExtractionAgent
+    from src.verticals.property_management.constants import (
+        PROPERTY_MAINTENANCE_WORKFLOW_ID,
+    )
+    from src.verticals.property_management.extraction import (
+        PropertyMaintenanceExtractionAgent,
+    )
 
     service.register(HEALTHCARE_TRIAGE_WORKFLOW_ID, HealthcareExtractionAgent())
+    service.register(
+        PROPERTY_MAINTENANCE_WORKFLOW_ID,
+        PropertyMaintenanceExtractionAgent(),
+    )

@@ -28,28 +28,31 @@ echo " Resource Group: $RG"
 echo " App           : $APP"
 echo ""
 
-SECRETS_ARGS=""
-ENV_ARGS=""
+SECRETS_ARGS=()
+SECRET_ENV_ARGS=()
 
 # DeepSeek API Key
 if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
-    SECRETS_ARGS="${SECRETS_ARGS} deepseek-api-key=${DEEPSEEK_API_KEY}"
+    SECRETS_ARGS+=("deepseek-api-key=${DEEPSEEK_API_KEY}")
+    SECRET_ENV_ARGS+=("DEEPSEEK_API_KEY=secretref:deepseek-api-key")
     echo "  [UPDATE] deepseek-api-key"
 fi
 
 # Twilio Auth Token
 if [[ -n "${TWILIO_AUTH_TOKEN:-}" ]]; then
-    SECRETS_ARGS="${SECRETS_ARGS} twilio-auth-token=${TWILIO_AUTH_TOKEN}"
+    SECRETS_ARGS+=("twilio-auth-token=${TWILIO_AUTH_TOKEN}")
+    SECRET_ENV_ARGS+=("TWILIO_AUTH_TOKEN=secretref:twilio-auth-token")
     echo "  [UPDATE] twilio-auth-token"
 fi
 
 # Database URL
 if [[ -n "${DATABASE_URL:-}" ]]; then
-    SECRETS_ARGS="${SECRETS_ARGS} database-url=${DATABASE_URL}"
+    SECRETS_ARGS+=("database-url=${DATABASE_URL}")
+    SECRET_ENV_ARGS+=("DATABASE_URL=secretref:database-url")
     echo "  [UPDATE] database-url"
 fi
 
-if [[ -z "$SECRETS_ARGS" ]]; then
+if [[ ${#SECRETS_ARGS[@]} -eq 0 ]]; then
     echo "  No secrets to update. Set env vars before running:"
     echo "    export DEEPSEEK_API_KEY='new-key'"
     echo "    export TWILIO_AUTH_TOKEN='new-token'"
@@ -62,10 +65,18 @@ echo ">>> Updating secrets ..."
 az containerapp secret set \
     --resource-group "$RG" \
     --name "$APP" \
-    --secrets $SECRETS_ARGS \
+    --secrets "${SECRETS_ARGS[@]}" \
     --output none
 
 echo "    Secrets updated."
+
+echo ">>> Pointing app env vars at secret references ..."
+az containerapp update \
+    --resource-group "$RG" \
+    --name "$APP" \
+    --set-env-vars "${SECRET_ENV_ARGS[@]}" \
+    --output none
+echo "    Env vars now reference Container App secrets."
 
 # Update env vars if CORS or other non-secret values are provided
 if [[ -n "${CORS_ALLOWED_ORIGINS:-}" ]]; then
