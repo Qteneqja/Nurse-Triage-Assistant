@@ -1,27 +1,23 @@
 name: Trigger auto deployment for nurse-triage-api
 
-# When this action will be executed
 on:
-  # Automatically trigger it when detected changes in repo
   push:
     branches:
       - main
     paths:
-    - '**'
-    - '.github/workflows/nurse-triage-api-AutoDeployTrigger-58c15c36-b65d-4acc-a121-a29399dcc40c.yml'
-
-  # Allow manual trigger 
-  workflow_dispatch:      
+      - '**'
+      - '.github/workflows/nurse-triage-api-AutoDeployTrigger-58c15c36-b65d-4acc-a121-a29399dcc40c.yml'
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions: 
-      id-token: write #This is required for requesting the OIDC JWT Token
-      contents: read #Required when GH token is used to authenticate with private repo
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
-      - name: Checkout to the branch
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Azure Login
@@ -31,14 +27,24 @@ jobs:
           tenant-id: ${{ secrets.NURSETRIAGEAPI_AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.NURSETRIAGEAPI_AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push container image to registry
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          appSourcePath: ${{ github.workspace }}
-          dockerfilePath: Dockerfile
-          acrName: nursetriageacr7351
-          containerAppName: nurse-triage-api
-          resourceGroup: nurse-triage-eastus-rg
-          imageToBuild: nursetriageacr7351.azurecr.io/nurse-triage-api:${{ github.sha }}
+      - name: Log in to ACR
+        run: |
+          ACR_TOKEN=$(az acr login --name nursetriageacr7351 --expose-token --output tsv --query accessToken)
+          echo "$ACR_TOKEN" | docker login nursetriageacr7351.azurecr.io \
+            --username 00000000-0000-0000-0000-000000000000 \
+            --password-stdin
+
+      - name: Build and push image
+        run: |
+          docker build -t nursetriageacr7351.azurecr.io/nurse-triage-api:${{ github.sha }} .
+          docker push nursetriageacr7351.azurecr.io/nurse-triage-api:${{ github.sha }}
+
+      - name: Deploy to Container App
+        run: |
+          az extension add --name containerapp --upgrade --yes
+          az containerapp update \
+            --name nurse-triage-api \
+            --resource-group nurse-triage-eastus-rg \
+            --image nursetriageacr7351.azurecr.io/nurse-triage-api:${{ github.sha }}
 
 
