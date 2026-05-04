@@ -36,11 +36,9 @@ jobs:
         with:
           appSourcePath: ${{ github.workspace }}
           dockerfilePath: Dockerfile
-          registryUrl: nursetriageacr6413.azurecr.io
-          registryUsername: ${{ secrets.NURSETRIAGEAPI_REGISTRY_USERNAME }}
-          registryPassword: ${{ secrets.NURSETRIAGEAPI_REGISTRY_PASSWORD }}
+          acrName: nursetriageacr7351
           containerAppName: nurse-triage-api
-          resourceGroup: nurse-triage-eastus-rg
-          imageToBuild: nursetriageacr6413.azurecr.io/nurse-triage-api:${{ github.sha }}
+          resourceGroup: nurse-triage-rg
+          imageToBuild: nursetriageacr7351.azurecr.io/nurse-triage-api:${{ github.sha }}
 
 
