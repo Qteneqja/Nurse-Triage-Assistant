@@ -4,8 +4,8 @@ name: Trigger auto deployment for nurse-triage-api
 on:
   # Automatically trigger it when detected changes in repo
   push:
-    branches: 
-      [ main ]
+    branches:
+      - main
     paths:
     - '**'
     - '.github/workflows/nurse-triage-api-AutoDeployTrigger-58c15c36-b65d-4acc-a121-a29399dcc40c.yml'
@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v2
