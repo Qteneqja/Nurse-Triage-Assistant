@@ -21,23 +21,20 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Literal, Optional
-from unittest.mock import AsyncMock, MagicMock
+from typing import Literal
 
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.orchestrator.orchestrator import Orchestrator
 from src.orchestrator.schemas import (
-    AuditTrace,
     DispositionCategory,
     FinalizeOutput,
     IntakeTurnOutput,
     IntakeStatePatch,
     OrchestratorSession,
-    StructuredIntakeState,
 )
-from src.llm.client import StructuredLLMClient, get_structured_client
+from src.llm.client import get_structured_client
 
 logging.basicConfig(
     level=logging.INFO,
@@ -209,7 +206,7 @@ async def run_scenario(
     if session.safety_flags:
         print(f"  Safety flags: {[f.flag for f in session.safety_flags]}")
 
-    print(f"\n  Intake State:")
+    print("\n  Intake State:")
     state = session.intake_state.model_dump(exclude_none=True, exclude_defaults=True)
     for k, v in state.items():
         print(f"    {k}: {v}")

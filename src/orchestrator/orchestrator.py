@@ -73,6 +73,9 @@ from src.observability.sentry_integration import add_safety_gate_breadcrumb
 from src.protocols.retriever import ProtocolRetriever, ProtocolSnippet, get_retriever
 from src.observability.metrics import get_metrics
 from src.observability.logging import set_log_context, clear_log_context
+from src.verticals.healthcare.completeness import (
+    evaluate_healthcare_intake_completeness,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +326,15 @@ def _get_loop_breaker_question(slot: str | None, original_question: str) -> str:
     return original_question
 
 
+def _llm_failure_reason(exc: BaseException) -> str:
+    """Classify structured LLM failures into audit-safe stop reasons."""
+
+    text = str(exc).lower()
+    if any(term in text for term in ("json", "schema", "validation", "repair")):
+        return "llm_validation_failure"
+    return "llm_timeout"
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -349,6 +361,25 @@ class Orchestrator:
         else:
             self._guarded = get_guarded_llm()
         self._retriever = protocol_retriever or get_retriever()
+
+    @staticmethod
+    def _mark_finalized(
+        session: OrchestratorSession,
+        reason: str,
+        correlation_id: str | None = None,
+    ) -> None:
+        """Record a machine-readable stop condition before ending a session."""
+
+        session.is_finalized = True
+        session.finalization_reason = reason
+        session.channel_metadata["finalization_reason"] = reason
+        if session.audit_trace is not None:
+            session.audit_trace.add_entry(
+                step="finalization_reason",
+                agent="orchestrator",
+                output_summary=f"reason={reason}",
+                correlation_id=correlation_id,
+            )
 
     # ------------------------------------------------------------------ #
     # Mode 1: Questioning turn
@@ -439,7 +470,7 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            self._mark_finalized(session, "workflow_error", correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -449,6 +480,7 @@ class Orchestrator:
                 response=escalation_msg,
                 red_flags=[f"exception:{exc}"],
                 rules=["fail_closed:red_flag_exception"],
+                finalization_reason="workflow_error",
             )
             metrics.triage_escalations_total.inc()
             metrics.red_flag_triggers_total.inc()
@@ -496,7 +528,7 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            self._mark_finalized(session, "critical_red_flag", correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -506,6 +538,7 @@ class Orchestrator:
                 response=escalation_msg,
                 red_flags=rf_triggered_ids,
                 rules=["pre_check:critical_flag"],
+                finalization_reason="critical_red_flag",
             )
             metrics.triage_escalations_total.inc()
             metrics.red_flag_triggers_total.inc(len(rf_triggered_ids) or 1)
@@ -548,7 +581,7 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            self._mark_finalized(session, "red_flag_score_threshold", correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -558,6 +591,7 @@ class Orchestrator:
                 response=escalation_msg,
                 red_flags=rf_triggered_ids,
                 rules=[f"pre_check:score={rf_score}"],
+                finalization_reason="red_flag_score_threshold",
             )
             metrics.triage_escalations_total.inc()
             metrics.red_flag_triggers_total.inc(len(rf_triggered_ids) or 1)
@@ -606,7 +640,11 @@ class Orchestrator:
                     session.conversation.append(
                         ConversationTurn(role="assistant", text=gate_msg)
                     )
-                    session.is_finalized = True
+                    self._mark_finalized(
+                        session,
+                        gate_decision.transfer_reason or "caller_requested_human",
+                        correlation_id,
+                    )
 
                 session.audit_trace.add_entry(
                     step="transfer_control_gate",
@@ -634,6 +672,11 @@ class Orchestrator:
                     resistance_count=gate_decision.resistance_count,
                     transfer_reason=gate_decision.transfer_reason,
                     override_applied=gate_decision.override_applied,
+                    finalization_reason=(
+                        gate_decision.transfer_reason
+                        if is_escalating
+                        else None
+                    ),
                 )
 
                 if is_escalating:
@@ -676,7 +719,9 @@ class Orchestrator:
                 session.conversation.append(
                     ConversationTurn(role="assistant", text=escalation_msg)
                 )
-                session.is_finalized = True
+                self._mark_finalized(
+                    session, "repeated_unclear_answers", correlation_id
+                )
                 session.audit_trace.add_entry(
                     step="confused_caller_escalation",
                     agent="orchestrator",
@@ -692,6 +737,7 @@ class Orchestrator:
                     response=escalation_msg,
                     red_flags=[],
                     rules=[f"confused_caller:retry_{retry_count}_escalate"],
+                    finalization_reason="repeated_unclear_answers",
                 )
                 return {
                     "action": "escalate",
@@ -848,7 +894,8 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            failure_reason = _llm_failure_reason(exc)
+            self._mark_finalized(session, failure_reason, correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -858,6 +905,7 @@ class Orchestrator:
                 response=escalation_msg,
                 red_flags=[],
                 rules=[f"fail_closed:structured_call:{exc}"],
+                finalization_reason=failure_reason,
             )
             metrics.llm_timeouts_total.inc()
             metrics.triage_escalations_total.inc()
@@ -880,7 +928,7 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            self._mark_finalized(session, "llm_timeout", correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -890,6 +938,7 @@ class Orchestrator:
                 response=escalation_msg,
                 red_flags=[],
                 rules=[f"fail_closed:llm_timeout:{exc}"],
+                finalization_reason="llm_timeout",
             )
             metrics.llm_timeouts_total.inc()
             metrics.triage_escalations_total.inc()
@@ -928,7 +977,9 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            self._mark_finalized(
+                session, "post_check_safety_failure", correlation_id
+            )
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -938,6 +989,7 @@ class Orchestrator:
                 response=escalation_msg,
                 red_flags=[],
                 rules=[f"fail_closed:post_check:{pcv.reason}"],
+                finalization_reason="post_check_safety_failure",
             )
             metrics.post_check_violations_total.inc()
             metrics.triage_escalations_total.inc()
@@ -1031,7 +1083,12 @@ class Orchestrator:
                 session.conversation.append(
                     ConversationTurn(role="assistant", text=escalation_msg)
                 )
-                session.is_finalized = True
+                red_flag_reason = (
+                    "red_flag_score_threshold"
+                    if rf_score >= 8
+                    else "critical_red_flag"
+                )
+                self._mark_finalized(session, red_flag_reason, correlation_id)
                 self._append_trace(
                     session=session,
                     user_text=caller_utterance,
@@ -1042,6 +1099,7 @@ class Orchestrator:
                     red_flags=rf_triggered_ids + phase1_output.red_flags_triggered,
                     rules=phase1_output.rules_triggered,
                     confidence_breakdown=confidence_bd,
+                    finalization_reason=red_flag_reason,
                 )
                 return {
                     "action": "escalate",
@@ -1201,7 +1259,7 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            session.is_finalized = True
+            self._mark_finalized(session, "critical_red_flag", correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -1212,6 +1270,7 @@ class Orchestrator:
                 red_flags=post_rf_ids,
                 rules=["post_state_check:critical_flag"],
                 confidence_breakdown=confidence_bd,
+                finalization_reason="critical_red_flag",
             )
             return {
                 "action": "escalate",
@@ -1232,7 +1291,8 @@ class Orchestrator:
         )
 
         # Determine next action
-        should_finalize = self._should_finalize(session, intake_output)
+        finalization_reason = self._finalization_reason(session, intake_output)
+        should_finalize = finalization_reason is not None
 
         # Append decision trace entry
         self._append_trace(
@@ -1255,6 +1315,7 @@ class Orchestrator:
             },
             protocol_hits=protocol_hits,
             protocol_citations=[h.id for h in protocol_hits],
+            finalization_reason=finalization_reason,
         )
 
         if should_finalize:
@@ -1263,12 +1324,17 @@ class Orchestrator:
             # causing the call to be silently disconnected.  Instead, return a
             # deterministic safe summary now and let the route's background task
             # call finalize() for the SBAR report.
-            session.is_finalized = True
+            self._mark_finalized(
+                session,
+                finalization_reason or "sufficient_information",
+                correlation_id,
+            )
             return {
                 "action": "finalize",
                 "message": _FINALIZE_PATIENT_SUMMARY,
                 "intake_output": intake_output,
                 "phase1_output": phase1_output,
+                "finalization_reason": finalization_reason,
             }
 
         session.conversation.append(
@@ -1358,18 +1424,24 @@ class Orchestrator:
         except LLMCallError as e:
             logger.error(f"[ORCH:{cid}] Finalize LLM call failed: {e}")
             finalize_output = safe_finalize_default()
+            if not session.finalization_reason:
+                self._mark_finalized(session, _llm_failure_reason(e), cid)
         except _PydanticValidationError as e:
             logger.error(
                 f"[ORCH:{cid}] Finalize validation failed — "
                 f"falling back to HUMAN_REVIEW: {e}"
             )
             finalize_output = safe_finalize_default()
+            if not session.finalization_reason:
+                self._mark_finalized(session, "llm_validation_failure", cid)
         except Exception as e:
             logger.error(
                 f"[ORCH:{cid}] Unexpected error during finalize — "
                 f"falling back to HUMAN_REVIEW: {e}"
             )
             finalize_output = safe_finalize_default()
+            if not session.finalization_reason:
+                self._mark_finalized(session, "workflow_error", cid)
 
         # Tweak #3: detect if coercion happened during finalize
         if finalize_output.safety_flags_coerced:
@@ -1452,7 +1524,10 @@ class Orchestrator:
 
         assert_canonical(finalize_output.disposition.value)
 
-        session.is_finalized = True
+        if not session.finalization_reason:
+            self._mark_finalized(session, "sufficient_information", cid)
+        else:
+            session.is_finalized = True
         session.finalize_output = finalize_output
         session.audit_trace.final_disposition = finalize_output.disposition
 
@@ -1624,6 +1699,66 @@ class Orchestrator:
         if state.filled_field_count() < self._MIN_FILLED_FIELDS_BEFORE_FINALIZE:
             return False
         return True
+
+    def _finalization_reason(
+        self,
+        session: OrchestratorSession,
+        intake_output: IntakeTurnOutput,
+    ) -> str | None:
+        """Return the named non-emergency stop condition, if any."""
+
+        if session.turn_count >= session.max_turns:
+            logger.info(f"[ORCH] Finalizing: max turns ({session.max_turns}) reached")
+            return "max_turns"
+
+        completeness = evaluate_healthcare_intake_completeness(session)
+        completeness_payload = {
+            "is_complete": completeness.is_complete,
+            "missing_items": completeness.missing_items,
+            "reason": completeness.reason,
+            "minimum_dynamic_turns_met": completeness.minimum_dynamic_turns_met,
+            "dynamic_turn_count": completeness.dynamic_turn_count,
+        }
+        session.channel_metadata["healthcare_intake_completeness"] = (
+            completeness_payload
+        )
+
+        if not completeness.is_complete:
+            logger.info(
+                "[ORCH] Not finalizing: healthcare intake incomplete "
+                "(reason=%s, missing=%s, turns=%s)",
+                completeness.reason,
+                completeness.missing_items,
+                completeness.dynamic_turn_count,
+            )
+            if session.audit_trace is not None:
+                session.audit_trace.add_entry(
+                    step="healthcare_intake_completeness",
+                    agent="orchestrator",
+                    output_summary=(
+                        f"complete=false, reason={completeness.reason}, "
+                        f"missing={completeness.missing_items}, "
+                        f"turns={completeness.dynamic_turn_count}"
+                    ),
+                )
+            return None
+
+        if intake_output.confidence >= session.confidence_threshold:
+            logger.info(
+                f"[ORCH] Finalizing: confidence {intake_output.confidence:.2f} "
+                f">= threshold {session.confidence_threshold}"
+            )
+            return "sufficient_information"
+
+        if intake_output.finalize_ready:
+            logger.info("[ORCH] Finalizing: LLM set finalize_ready=True")
+            return "sufficient_information"
+
+        if not intake_output.missing_fields_prioritized:
+            logger.info("[ORCH] Finalizing: no missing fields reported by LLM")
+            return "sufficient_information"
+
+        return None
 
     def _should_finalize(
         self,
@@ -1860,6 +1995,7 @@ class Orchestrator:
         # Bug 2: low-confidence continue-intake fields
         low_confidence_reprompt: bool = False,
         override_reason: Optional[str] = None,
+        finalization_reason: Optional[str] = None,
     ) -> None:
         """Append one entry to the Phase 1 per-turn decision trace."""
         entry = DecisionTraceEntry(
@@ -1884,6 +2020,7 @@ class Orchestrator:
             # low-confidence continue-intake fields
             low_confidence_reprompt=low_confidence_reprompt,
             override_reason=override_reason,
+            finalization_reason=finalization_reason,
         )
         session.decision_trace.append(entry)
 
