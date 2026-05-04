@@ -227,17 +227,3 @@ The system is entering a **2–4 week clinical pilot** with real patient calls u
 4. Does not handle non-English callers
 5. Does not fine-tune or learn from patient data
 6. Does not store unencrypted PHI
-
----
-
-## Your Task
-
-I have been building a plan for the next stage of this project. I am about to share it with you. Please:
-
-1. Read the plan carefully and ask any clarifying questions before suggesting changes
-2. Identify any technical, clinical safety, or architectural conflicts with the current system as described above
-3. Propose a phased implementation approach that builds incrementally on the existing foundation without breaking the current safety architecture
-4. Flag any items that require clinical review or governance approval before implementation
-5. Be explicit about what changes touch the safety-critical path (red-flag engine, safety gate, disposition logic) — those require the highest scrutiny
-
-Ready for the plan.

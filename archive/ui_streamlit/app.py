@@ -167,12 +167,12 @@ def handle_user_input(user_input: str):
     
     # Guard against duplicate sends
     if st.session_state.is_sending:
-        print(f"[UI] Blocked duplicate send - already sending")
+        print("[UI] Blocked duplicate send - already sending")
         return
     
     # Guard against sending the same message twice
     if user_input.strip() == st.session_state.last_sent_message:
-        print(f"[UI] Blocked duplicate send - same message")
+        print("[UI] Blocked duplicate send - same message")
         return
     
     # Set sending state with request ID
@@ -194,7 +194,7 @@ def handle_user_input(user_input: str):
 def start_new_session():
     """Start a new triage session"""
     reset_session()
-    print(f"[UI] Starting new session...")
+    print("[UI] Starting new session...")
     response = api_client.start_session()
     if response:
         st.session_state.session_id = response["session_id"]
@@ -206,7 +206,7 @@ def start_new_session():
         })
         print(f"[UI] New session started: {response['session_id'][:8]}, Stage=GREETING")
         return True
-    print(f"[UI] Failed to start session")
+    print("[UI] Failed to start session")
     return False
 
 @st.cache_data(ttl=300)

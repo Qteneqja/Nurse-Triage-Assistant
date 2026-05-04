@@ -25,7 +25,10 @@ from src.platform.workflows.router import (
     get_workflow_route_resolver,
 )
 from src.platform.workflows.schemas import (
+    ScriptedIntakeDefinition,
+    ScriptedStageDefinition,
     WorkflowContext,
+    WorkflowFinalResult,
     WorkflowInput,
     WorkflowTurnResult,
 )
@@ -347,16 +350,16 @@ _SEX_NORMALISATION: dict[str, str] = {
     "woman": "female",
     "f": "female",
     # Prefer not to say
-    "prefer not to say": "prefer not to say",
-    "rather not say": "prefer not to say",
-    "prefer not": "prefer not to say",
-    "i'd rather not": "prefer not to say",
-    "none": "prefer not to say",
+    "prefer not to say": "unknown",
+    "rather not say": "unknown",
+    "prefer not": "unknown",
+    "i'd rather not": "unknown",
+    "none": "unknown",
 }
 
 
 def _normalise_sex(raw: str) -> str:
-    """Normalise STT sex response to 'male', 'female', or 'prefer not to say'.
+    """Normalise STT sex response to 'male', 'female', or 'unknown'.
 
     Handles prefix stripping ('I am male' → 'male'), common STT confusions
     ('mail' → 'male'), and single-letter answers ('m' → 'male').
@@ -376,6 +379,31 @@ def _normalise_sex(raw: str) -> str:
             cleaned = cleaned[len(prefix) :].strip()
             break
     return _SEX_NORMALISATION.get(cleaned, cleaned)
+
+
+def _normalise_yes_no(raw: str) -> str:
+    cleaned = raw.strip().lower().rstrip(".!?,;: ")
+    for prefix in ("yes ", "yeah ", "yep ", "no ", "nope "):
+        if cleaned.startswith(prefix):
+            cleaned = prefix.strip()
+            break
+    if cleaned in {"yes", "yeah", "yep", "sure", "ok", "okay", "permission granted"}:
+        return "yes"
+    if cleaned in {"no", "nope", "do not", "don't", "do not enter"}:
+        return "no"
+    return cleaned
+
+
+def _normalise_phone(raw: str) -> str:
+    cleaned = raw.strip()
+    digits = "".join(ch for ch in cleaned if ch.isdigit())
+    if cleaned.startswith("+") and digits:
+        return f"+{digits}"
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return cleaned
 
 
 # Voice used for all TwiML speech — Polly Ruth is calm and clear, ideal for healthcare
@@ -469,6 +497,48 @@ async def generate_twiml_say_and_hangup(text: str) -> str:
 </Response>"""
 
 
+async def _generate_initial_scripted_twiml(
+    intro_text: str | None,
+    first_stage: ScriptedStageDefinition,
+    action_url: str,
+) -> str:
+    """Generate first scripted-intake TwiML from workflow stage metadata."""
+
+    prompt = _stage_prompt(first_stage)
+    if not intro_text:
+        return await generate_twiml_gather(
+            prompt,
+            action_url,
+            timeout=first_stage.timeout_seconds,
+            hints=first_stage.hints,
+            speech_timeout=first_stage.speech_timeout,
+        )
+
+    intro_url, question_url = await asyncio.gather(
+        text_to_speech_url(intro_text, _get_azure_voice()),
+        text_to_speech_url(prompt, _get_azure_voice()),
+    )
+    intro_tag = (
+        f"<Play>{saxutils.escape(intro_url)}</Play>"
+        if intro_url
+        else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(intro_text)}</Say>'
+    )
+    question_tag = (
+        f"<Play>{saxutils.escape(question_url)}</Play>"
+        if question_url
+        else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(prompt)}</Say>'
+    )
+    hints_attr = f' hints="{saxutils.escape(first_stage.hints)}"' if first_stage.hints else ""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {intro_tag}
+    <Gather input="speech" speechTimeout="{first_stage.speech_timeout}" timeout="{first_stage.timeout_seconds}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
+        {question_tag}
+    </Gather>
+    <Redirect method="POST">{action_url}</Redirect>
+</Response>"""
+
+
 async def generate_twiml_handoff(text: str) -> str:
     """Speak a closing message then transfer or hang up.
 
@@ -495,6 +565,220 @@ async def generate_twiml_handoff(text: str) -> str:
             "</Response>"
         )
     return await generate_twiml_say_and_hangup(text)
+
+
+def _get_workflow_for_session(session: OrchestratorSession):
+    registry = ensure_default_workflows_registered()
+    return registry.get(session.workflow_id or "healthcare_triage_v1")
+
+
+def _get_scripted_intake_for_session(
+    session: OrchestratorSession,
+) -> ScriptedIntakeDefinition | None:
+    workflow = _get_workflow_for_session(session)
+    return workflow.get_scripted_intake_definition()
+
+
+def _initialize_scripted_intake(
+    session: OrchestratorSession,
+    intake: ScriptedIntakeDefinition,
+) -> ScriptedStageDefinition | None:
+    stages = list(intake.stages or [])
+    if not stages:
+        session.channel_metadata["stage"] = intake.completion_stage_id
+        session.channel_metadata["scripted_intake"] = {
+            "workflow_id": session.workflow_id,
+            "current_index": None,
+            "current_stage_id": intake.completion_stage_id,
+            "fields": {},
+            "attempts": {},
+            "completed": True,
+        }
+        return None
+
+    first_stage = stages[0]
+    session.channel_metadata["stage"] = first_stage.stage_id
+    session.channel_metadata["scripted_intake"] = {
+        "workflow_id": session.workflow_id,
+        "current_index": 0,
+        "current_stage_id": first_stage.stage_id,
+        "fields": {},
+        "attempts": {},
+        "completed": False,
+    }
+    return first_stage
+
+
+def _current_scripted_stage(
+    session: OrchestratorSession,
+    intake: ScriptedIntakeDefinition | None,
+) -> ScriptedStageDefinition | None:
+    if intake is None or not intake.stages:
+        return None
+    current_stage_id = session.channel_metadata.get("stage")
+    for stage in intake.stages:
+        if stage.stage_id == current_stage_id:
+            return stage
+    scripted = session.channel_metadata.get("scripted_intake") or {}
+    index = scripted.get("current_index")
+    if isinstance(index, int) and 0 <= index < len(intake.stages):
+        return intake.stages[index]
+    return None
+
+
+def _stage_prompt(stage: ScriptedStageDefinition) -> str:
+    return stage.prompt_text or stage.prompt
+
+
+def _stage_field_type(stage: ScriptedStageDefinition) -> str:
+    return (stage.field_type or stage.expected_answer_type or "free_text").lower()
+
+
+def _stage_store_key(stage: ScriptedStageDefinition) -> str:
+    return stage.store_as or stage.field_name
+
+
+def _record_scripted_field(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+    value,
+) -> None:
+    scripted = session.channel_metadata.setdefault("scripted_intake", {})
+    fields = scripted.setdefault("fields", {})
+    store_key = _stage_store_key(stage)
+    fields[store_key] = value
+
+    # Compatibility while sessions are still backed by OrchestratorSession:
+    # healthcare intake fields live on intake_state, while future verticals
+    # live in scripted_intake.fields.
+    if hasattr(session.intake_state, store_key):
+        setattr(session.intake_state, store_key, value)
+
+
+def _parse_scripted_answer(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+    speech_text: str,
+) -> tuple[bool, object, str | None]:
+    raw = speech_text.strip()
+    field_type = _stage_field_type(stage)
+    store_key = _stage_store_key(stage)
+
+    if store_key == "caller_name" or field_type == "name":
+        if _looks_like_name(raw):
+            return True, raw, None
+        return False, None, (
+            stage.reprompt_text
+            or "I'm sorry, I didn't quite catch your name. "
+            "Could you please say just your first and last name?"
+        )
+
+    if field_type in {"integer", "number"}:
+        try:
+            return True, int(raw), None
+        except (ValueError, TypeError):
+            session.channel_metadata[f"{store_key}_raw"] = raw
+            return True, None, None
+
+    if store_key == "caller_sex":
+        return True, _normalise_sex(raw), None
+
+    if field_type in {"enum", "choice"}:
+        normalized = _normalise_yes_no(raw)
+        allowed_values = stage.allowed_values or []
+        if allowed_values:
+            allowed_map = {value.lower(): value for value in allowed_values}
+            if normalized.lower() in allowed_map:
+                return True, allowed_map[normalized.lower()], None
+            for allowed in allowed_values:
+                if allowed.lower() in normalized.lower():
+                    return True, allowed, None
+        return True, normalized, None
+
+    if field_type == "phone":
+        return True, _normalise_phone(raw), None
+
+    return True, raw, None
+
+
+def _increment_scripted_attempt(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+) -> int:
+    scripted = session.channel_metadata.setdefault("scripted_intake", {})
+    attempts = scripted.setdefault("attempts", {})
+    stage_id = stage.stage_id
+    attempts[stage_id] = int(attempts.get(stage_id, 0)) + 1
+    return attempts[stage_id]
+
+
+def _advance_scripted_intake(
+    session: OrchestratorSession,
+    intake: ScriptedIntakeDefinition,
+    current_stage: ScriptedStageDefinition,
+) -> ScriptedStageDefinition | None:
+    scripted = session.channel_metadata.setdefault("scripted_intake", {})
+    stages = list(intake.stages or [])
+    current_index = stages.index(current_stage)
+    next_index = current_index + 1
+    if next_index >= len(stages):
+        scripted["current_index"] = None
+        scripted["current_stage_id"] = intake.completion_stage_id
+        scripted["completed"] = True
+        session.channel_metadata["stage"] = intake.completion_stage_id
+        return None
+
+    next_stage = stages[next_index]
+    scripted["current_index"] = next_index
+    scripted["current_stage_id"] = next_stage.stage_id
+    session.channel_metadata["stage"] = next_stage.stage_id
+    return next_stage
+
+
+async def _handle_scripted_stage_response(
+    session: OrchestratorSession,
+    intake: ScriptedIntakeDefinition,
+    stage: ScriptedStageDefinition,
+    speech_text: str,
+):
+    success, parsed_value, reprompt = _parse_scripted_answer(
+        session,
+        stage,
+        speech_text,
+    )
+    if not success:
+        attempts = _increment_scripted_attempt(session, stage)
+        max_attempts = stage.max_attempts or _MAX_NAME_RETRIES
+        if attempts < max_attempts:
+            logger.warning(
+                "[TWILIO] Scripted intake rejected stage %s attempt %s",
+                stage.stage_id,
+                attempts,
+            )
+            return stage, reprompt or _stage_prompt(stage)
+        logger.warning(
+            "[TWILIO] Scripted intake accepted stage %s after %s failed validations: %s",
+            stage.stage_id,
+            attempts,
+            mask_phi(speech_text[:80]),
+        )
+        _record_scripted_field(session, stage, speech_text.strip())
+    else:
+        if parsed_value is not None:
+            _record_scripted_field(session, stage, parsed_value)
+
+    next_stage = _advance_scripted_intake(session, intake, stage)
+    return next_stage, None
+
+
+async def _prompt_for_scripted_stage(stage: ScriptedStageDefinition) -> str:
+    return await generate_twiml_gather(
+        _stage_prompt(stage),
+        "/api/v1/voice/gather",
+        timeout=stage.timeout_seconds,
+        hints=stage.hints,
+        speech_timeout=stage.speech_timeout,
+    )
 
 
 @router.post("/incoming")
@@ -527,59 +811,53 @@ async def handle_incoming_call(
         session.channel_metadata["called_phone_number"] = To
 
         # Track scripted intake stage
-        session.channel_metadata["stage"] = STAGE_GREETING
+        workflow = ensure_default_workflows_registered().get(route.workflow_id)
+        intake = workflow.get_scripted_intake_definition()
+        first_stage = (
+            _initialize_scripted_intake(session, intake)
+            if intake is not None
+            else None
+        )
+        first_question = (
+            _stage_prompt(first_stage)
+            if first_stage is not None
+            else "How can I help you today?"
+        )
 
         # Generate greeting — split into non-interruptible preamble +
         # Gather for the name question.  This prevents barge-in from
         # cutting off the legal disclaimer and ensures Jenny is used
         # (long combined text was timing out TTS on cold start).
-        greeting = (
-            "Hello, this is Astra, a clinical triage assistant. "
-            "This is a decision-support tool, not a diagnostic service. "
-            "If you are experiencing a life-threatening emergency, "
-            "please hang up and call 9 1 1 immediately. "
-        )
+        greeting = intake.intro_text if intake and intake.intro_text else ""
 
         # Store greeting in conversation
-        session.conversation.append(ConversationTurn(role="assistant", text=greeting))
+        if greeting:
+            session.conversation.append(ConversationTurn(role="assistant", text=greeting))
 
         # Move to NAME stage
-        session.channel_metadata["stage"] = STAGE_NAME
-        first_question = "I will be asking you a series of questions to help assess your symptoms. Can I start with your full name?"
+        session.channel_metadata.setdefault(
+            "stage",
+            first_stage.stage_id if first_stage else STAGE_DYNAMIC,
+        )
         session.conversation.append(
             ConversationTurn(role="assistant", text=first_question)
         )
 
         repo.persist_session(session)
 
-        # TTS: generate both audio URLs concurrently
-        greeting_url, question_url = await asyncio.gather(
-            text_to_speech_url(greeting, _get_azure_voice()),
-            text_to_speech_url(first_question, _get_azure_voice()),
-        )
-
-        # Build TwiML: Play greeting (non-interruptible), then
-        # Gather with the name question (allows caller to respond).
-        greeting_tag = (
-            f"<Play>{saxutils.escape(greeting_url)}</Play>"
-            if greeting_url
-            else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(greeting)}</Say>'
-        )
-        if question_url:
-            question_tag = f"<Play>{saxutils.escape(question_url)}</Play>"
-        else:
-            question_tag = (
-                f'<Say voice="{_TTS_VOICE}">{saxutils.escape(first_question)}</Say>'
+        if first_stage is not None:
+            twiml = await _generate_initial_scripted_twiml(
+                greeting,
+                first_stage,
+                "/api/v1/voice/gather",
             )
-
-        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    {greeting_tag}
-    <Gather input="speech" speechTimeout="3" timeout="8" action="/api/v1/voice/gather" method="POST" speechModel="phone_call" enhanced="true">
-        {question_tag}
-    </Gather>
-    <Redirect method="POST">/api/v1/voice/gather</Redirect>
-</Response>"""
+        else:
+            twiml = await generate_twiml_gather(
+                first_question,
+                "/api/v1/voice/gather",
+                timeout=8,
+                speech_timeout="auto",
+            )
 
         logger.info(f"[TWILIO] Session {session.session_id} started for call {CallSid}")
         return Response(content=twiml, media_type="application/xml")
@@ -636,99 +914,43 @@ async def handle_gather(
             ConversationTurn(role="caller", text=SpeechResult.strip())
         )
 
-        # Get current stage
-        current_stage = session.channel_metadata.get("stage", STAGE_NAME)
+        intake = _get_scripted_intake_for_session(session)
+        current_stage = session.channel_metadata.get("stage")
+        if current_stage is None and intake and intake.stages:
+            current_stage = intake.stages[0].stage_id
+            session.channel_metadata["stage"] = current_stage
         logger.info(f"[TWILIO] Session {session_id} current stage: {current_stage}")
 
-        # Process scripted intake stages
-        if current_stage == STAGE_NAME:
-            name_input = SpeechResult.strip()
-            name_retries = session.channel_metadata.get("name_retries", 0)
-            if not _looks_like_name(name_input):
-                name_retries += 1
-                session.channel_metadata["name_retries"] = name_retries
-                if name_retries >= _MAX_NAME_RETRIES:
-                    # Accept whatever was given after max retries to avoid
-                    # caller frustration and call abandonment.
-                    logger.warning(
-                        f"[TWILIO] Name accepted after {name_retries} failed "
-                        f"validations: '{mask_phi(name_input[:80])}'"
-                    )
-                    session.intake_state.caller_name = name_input
-                    session.channel_metadata["stage"] = STAGE_AGE
-                    next_question = "Thank you. What is your age?"
-                    session.conversation.append(
-                        ConversationTurn(role="assistant", text=next_question)
-                    )
-                    repo.persist_session(session)
-                    twiml = await generate_twiml_gather(
-                        next_question, "/api/v1/voice/gather"
-                    )
-                    return Response(content=twiml, media_type="application/xml")
-                # STT produced garbage — re-prompt without advancing the stage
-                logger.warning(
-                    f"[TWILIO] Name rejected (attempt {name_retries}): "
-                    f"'{mask_phi(name_input[:80])}'"
-                )
+        scripted_stage = _current_scripted_stage(session, intake)
+        if intake is not None and scripted_stage is not None:
+            next_stage, reprompt = await _handle_scripted_stage_response(
+                session,
+                intake,
+                scripted_stage,
+                SpeechResult,
+            )
+            if reprompt:
                 repo.persist_session(session)
                 twiml = await generate_twiml_gather(
-                    "I'm sorry, I didn't quite catch your name. "
-                    "Could you please say just your first and last name?",
+                    reprompt,
                     "/api/v1/voice/gather",
+                    timeout=scripted_stage.timeout_seconds,
+                    hints=scripted_stage.hints,
+                    speech_timeout=scripted_stage.speech_timeout,
                 )
                 return Response(content=twiml, media_type="application/xml")
-            session.intake_state.caller_name = name_input
-            session.channel_metadata["stage"] = STAGE_AGE
-            next_question = "Thank you. What is your age?"
-            session.conversation.append(
-                ConversationTurn(role="assistant", text=next_question)
-            )
-            repo.persist_session(session)
-            twiml = await generate_twiml_gather(next_question, "/api/v1/voice/gather")
-            return Response(content=twiml, media_type="application/xml")
+            if next_stage is not None:
+                next_question = _stage_prompt(next_stage)
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=next_question)
+                )
+                repo.persist_session(session)
+                twiml = await _prompt_for_scripted_stage(next_stage)
+                return Response(content=twiml, media_type="application/xml")
 
-        elif current_stage == STAGE_AGE:
-            try:
-                session.intake_state.caller_age = int(SpeechResult.strip())
-            except (ValueError, TypeError):
-                session.channel_metadata["patient_age_raw"] = SpeechResult.strip()
-            session.channel_metadata["stage"] = STAGE_SEX
-            next_question = "And what is your biological sex? Please say male, female, or prefer not to say."
-            session.conversation.append(
-                ConversationTurn(role="assistant", text=next_question)
-            )
-            repo.persist_session(session)
-            twiml = await generate_twiml_gather(
-                next_question,
-                "/api/v1/voice/gather",
-                hints="male,female,prefer not to say",
-            )
-            return Response(content=twiml, media_type="application/xml")
-
-        elif current_stage == STAGE_SEX:
-            session.intake_state.caller_sex = _normalise_sex(SpeechResult)
-            session.channel_metadata["stage"] = STAGE_CHIEF_COMPLAINT
-            next_question = "Thank you. Now, what brings you in today? Please describe your main symptom or concern."
-            session.conversation.append(
-                ConversationTurn(role="assistant", text=next_question)
-            )
-            repo.persist_session(session)
-            twiml = await generate_twiml_gather(
-                next_question,
-                "/api/v1/voice/gather",
-                timeout=10,
-                speech_timeout="auto",
-            )
-            return Response(content=twiml, media_type="application/xml")
-
-        elif current_stage == STAGE_CHIEF_COMPLAINT:
-            chief_complaint = SpeechResult.strip()
-            session.intake_state.chief_complaint = chief_complaint
-            session.channel_metadata["stage"] = STAGE_DYNAMIC
             logger.info(f"[TWILIO] Session {session_id} entering DYNAMIC stage")
-            logger.info(f"[TWILIO] Chief complaint stored (len={len(chief_complaint)})")
             repo.persist_session(session)
-            # Fall through to dynamic processing
+            current_stage = session.channel_metadata.get("stage", STAGE_DYNAMIC)
 
         # DYNAMIC stage — multi-agent orchestrator
         if session.channel_metadata.get("stage") == STAGE_DYNAMIC:
@@ -890,13 +1112,25 @@ async def handle_thinking(
             logger.info(f"[TWILIO] Deterministic escalation for session {session_id}")
             if session:
                 session.is_finalized = True
-                repo.persist_session(session)
-                background_tasks.add_task(
-                    _generate_orchestrator_report_background,
-                    session_id=session_id,
-                    orch_session=session,
-                    session_metadata=_build_session_metadata(session),
+                _persist_finalization_reason_from_result(
+                    session,
+                    result,
+                    default_reason="workflow_error",
                 )
+                repo.persist_session(session)
+                if _is_healthcare_session(session):
+                    background_tasks.add_task(
+                        _generate_orchestrator_report_background,
+                        session_id=session_id,
+                        orch_session=session,
+                        session_metadata=_build_session_metadata(session),
+                    )
+                else:
+                    background_tasks.add_task(
+                        _generate_platform_report_background,
+                        session_id=session_id,
+                        session=session,
+                    )
             twiml = await generate_twiml_say_and_hangup(spoken_message)
             return Response(content=twiml, media_type="application/xml")
 
@@ -904,14 +1138,29 @@ async def handle_thinking(
             logger.info(f"[TWILIO] Finalizing session {session_id}")
             if session:
                 session.is_finalized = True
-                repo.persist_session(session)
-                background_tasks.add_task(
-                    _generate_orchestrator_report_background,
-                    session_id=session_id,
-                    orch_session=session,
-                    session_metadata=_build_session_metadata(session),
+                _persist_finalization_reason_from_result(
+                    session,
+                    result,
+                    default_reason="sufficient_information",
                 )
-            twiml = await generate_twiml_handoff(spoken_message)
+                repo.persist_session(session)
+                if _is_healthcare_session(session):
+                    background_tasks.add_task(
+                        _generate_orchestrator_report_background,
+                        session_id=session_id,
+                        orch_session=session,
+                        session_metadata=_build_session_metadata(session),
+                    )
+                else:
+                    background_tasks.add_task(
+                        _generate_platform_report_background,
+                        session_id=session_id,
+                        session=session,
+                    )
+            if _is_healthcare_session(session):
+                twiml = await generate_twiml_handoff(spoken_message)
+            else:
+                twiml = await generate_twiml_say_and_hangup(spoken_message)
             return Response(content=twiml, media_type="application/xml")
 
         else:
@@ -934,6 +1183,47 @@ async def handle_thinking(
             "Sorry, we encountered an error. Please try again later."
         )
         return Response(content=error_twiml, media_type="application/xml")
+
+
+def _is_healthcare_session(session: OrchestratorSession | None) -> bool:
+    if session is None:
+        return True
+    try:
+        from src.verticals.healthcare.constants import HEALTHCARE_TRIAGE_WORKFLOW_ID
+
+        return (session.workflow_id or HEALTHCARE_TRIAGE_WORKFLOW_ID) == (
+            HEALTHCARE_TRIAGE_WORKFLOW_ID
+        )
+    except Exception:
+        return (session.workflow_id or "healthcare_triage_v1") == "healthcare_triage_v1"
+
+
+async def _generate_platform_report_background(
+    session_id: str,
+    session: OrchestratorSession,
+) -> None:
+    """Run generic post-call extraction for non-healthcare workflows."""
+
+    try:
+        repo = get_session_repository()
+        context = _build_workflow_context(session)
+        final_result = _workflow_final_result_from_session(context, session)
+        session.channel_metadata["workflow_final_result"] = final_result.model_dump(
+            mode="json"
+        )
+        repo.persist_session(session)
+        _run_post_call_extraction(session, final_result=final_result)
+        logger.info(
+            "[BACKGROUND] Generic workflow report complete for session %s",
+            session_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "[BACKGROUND] Generic workflow report failed for session %s: %s",
+            session_id,
+            type(exc).__name__,
+            exc_info=True,
+        )
 
 
 def _build_session_metadata(session) -> dict:
@@ -990,15 +1280,74 @@ def _workflow_turn_to_legacy_result(turn_result: WorkflowTurnResult) -> dict:
     }
 
 
-def _run_post_call_extraction(session: OrchestratorSession) -> None:
+def _persist_finalization_reason_from_result(
+    session: OrchestratorSession,
+    result: dict,
+    default_reason: str,
+) -> None:
+    """Keep finalization reason persisted when Twilio closes a workflow turn."""
+
+    if session.finalization_reason:
+        session.channel_metadata["finalization_reason"] = session.finalization_reason
+        return
+
+    workflow_turn = result.get("workflow_turn") or {}
+    audit_metadata = workflow_turn.get("audit_metadata") or {}
+    reason = (
+        result.get("finalization_reason")
+        or audit_metadata.get("finalization_reason")
+        or _normalise_finalization_fail_reason(result.get("fail_reason"))
+        or default_reason
+    )
+    session.finalization_reason = reason
+    session.channel_metadata["finalization_reason"] = reason
+
+
+def _normalise_finalization_fail_reason(fail_reason: object) -> str | None:
+    if not isinstance(fail_reason, str) or not fail_reason:
+        return None
+    if fail_reason.startswith("confused_caller"):
+        return "repeated_unclear_answers"
+    if fail_reason.startswith("llm_timeout"):
+        return "llm_timeout"
+    if "validation" in fail_reason or "json" in fail_reason or "schema" in fail_reason:
+        return "llm_validation_failure"
+    if fail_reason.startswith("post_check_violation"):
+        return "post_check_safety_failure"
+    if fail_reason.startswith("low_confidence_with_red_flags"):
+        return "red_flag_score_threshold"
+    if fail_reason.startswith("red_flag_exception"):
+        return "workflow_error"
+    return None
+
+
+def _workflow_final_result_from_session(
+    context: WorkflowContext,
+    session: OrchestratorSession,
+) -> WorkflowFinalResult:
+    metadata_result = session.channel_metadata.get("workflow_final_result")
+    if metadata_result:
+        return WorkflowFinalResult.model_validate(metadata_result)
+
+    registry = ensure_default_workflows_registered()
+    workflow = registry.get(context.workflow_id)
+    if hasattr(workflow, "build_final_result_from_session"):
+        return workflow.build_final_result_from_session(context, session)
+    raise RuntimeError("Synchronous workflow final result builder is unavailable")
+
+
+def _run_post_call_extraction(
+    session: OrchestratorSession,
+    final_result: WorkflowFinalResult | None = None,
+) -> None:
     """Run read-only post-call extraction for workflows that support it."""
     from src.platform.extraction.service import get_extraction_service
     from src.platform.workflows.registry import ensure_default_workflows_registered
 
-    if not session.is_finalized or session.finalize_output is None:
+    if not session.is_finalized:
         logger.warning(
-            "[BACKGROUND] Skipping post-call extraction before finalized result is stored "
-            "for session %s",
+            "[BACKGROUND] Skipping post-call extraction before finalized result "
+            "is stored for session %s",
             session.session_id,
         )
         return
@@ -1010,10 +1359,8 @@ def _run_post_call_extraction(session: OrchestratorSession) -> None:
     if not definition.supports_post_call_extraction:
         return
 
-    if hasattr(workflow, "build_final_result_from_session"):
-        final_result = workflow.build_final_result_from_session(context, session)
-    else:
-        raise RuntimeError("Synchronous extraction final result builder is unavailable")
+    if final_result is None:
+        final_result = _workflow_final_result_from_session(context, session)
 
     transcript = [turn.model_dump(mode="json") for turn in session.conversation]
     get_extraction_service().extract_and_persist(
@@ -1022,15 +1369,3 @@ def _run_post_call_extraction(session: OrchestratorSession) -> None:
         workflow_context=context,
         extraction_schema=workflow.get_extraction_schema(),
     )
-
-
-def _get_stage_question(stage: str) -> str:
-    """Get the question for a given stage"""
-    questions = {
-        STAGE_NAME: "What is your full name?",
-        STAGE_AGE: "What is your age?",
-        STAGE_SEX: "What is your biological sex? Please say male, female, or prefer not to say.",
-        STAGE_CHIEF_COMPLAINT: "What brings you in today? Please describe your main symptom or concern.",
-        STAGE_DYNAMIC: "Can you tell me more about your symptoms?",
-    }
-    return questions.get(stage, "Can you tell me more?")

@@ -82,6 +82,10 @@ def _coerce_sex(v: object) -> object:
             "mail": "male",
             "f": "female",
             "female": "female",
+            "prefer not to say": "unknown",
+            "rather not say": "unknown",
+            "prefer not": "unknown",
+            "unknown": "unknown",
         }.get(normed, normed)
     return v
 
@@ -601,6 +605,10 @@ class OrchestratorSession(BaseModel):
     audit_trace: Optional[AuditTrace] = None
     is_finalized: bool = False
     finalize_output: Optional[FinalizeOutput] = None
+    finalization_reason: Optional[str] = Field(
+        default=None,
+        description="Machine-readable reason this session was finalized or escalated",
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     llm_coercions: List[str] = Field(default_factory=list)
     # Channel-specific metadata (e.g. Twilio stage tracking)
@@ -808,6 +816,10 @@ class DecisionTraceEntry(BaseModel):
     override_reason: Optional[str] = Field(
         default=None,
         description="Named policy override applied this turn, e.g. LOW_CONFIDENCE_CONTINUE_INTAKE",
+    )
+    finalization_reason: Optional[str] = Field(
+        default=None,
+        description="Machine-readable stop condition if this turn finalized/escalated",
     )
 
 
