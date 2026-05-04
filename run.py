@@ -19,12 +19,13 @@ print(f"Python: {sys.executable}")
 # Verify .env file exists
 env_path = os.path.join(project_dir, ".env")
 if os.path.exists(env_path):
-    print(f"[OK] Found .env file")
+    print("[OK] Found .env file")
 else:
     print(f"[WARNING] .env file not found at {env_path}")
 
 # Load config and display
-from src.llm.config import DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from src.llm.config import DEEPSEEK_BASE_URL, DEEPSEEK_MODEL  # noqa: E402
+
 print(f"[OK] DeepSeek URL: {DEEPSEEK_BASE_URL}")
 print(f"[OK] DeepSeek Model: {DEEPSEEK_MODEL}")
 print("=" * 60)

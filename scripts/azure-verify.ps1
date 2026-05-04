@@ -141,7 +141,7 @@ Write-Host ""
 
 Write-Host '2. Response Validation'
 Write-Host '   -----------------------------------------------'
-Test-JsonField -Label "Health status" -Url "$BaseUrl/health" -Field "status"  -Expected "healthy"
+Test-JsonField -Label "Health status" -Url "$BaseUrl/health" -Field "status"  -Expected "ok"
 Test-JsonField -Label "Ready status"  -Url "$BaseUrl/ready"  -Field "status"  -Expected "ready"
 Test-JsonField -Label "API version"   -Url "$BaseUrl/"       -Field "version" -Expected "5.0.0"
 Write-Host ""

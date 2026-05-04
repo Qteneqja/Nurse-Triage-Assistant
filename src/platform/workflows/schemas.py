@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class WorkflowDefinition(BaseModel):
@@ -31,17 +31,38 @@ class ScriptedStageDefinition(BaseModel):
     stage_id: str
     field_name: str
     prompt: str
+    prompt_text: str | None = None
+    reprompt_text: str | None = None
     expected_answer_type: str = "free_text"
+    field_type: str | None = None
     required: bool = True
+    allowed_values: list[str] | None = None
+    max_attempts: int | None = Field(default=None, ge=1)
+    store_as: str | None = None
+    sensitivity: str | None = None
+    validation_hint: str | None = None
     hints: str | None = None
     timeout_seconds: int = 8
     speech_timeout: str = "3"
+
+    @model_validator(mode="after")
+    def _sync_legacy_and_generic_fields(self) -> "ScriptedStageDefinition":
+        """Keep Phase 10 names and Phase 11 names interchangeable."""
+        if self.prompt_text is None:
+            self.prompt_text = self.prompt
+        if self.field_type is None:
+            self.field_type = self.expected_answer_type
+        if self.store_as is None:
+            self.store_as = self.field_name
+        return self
 
 
 class ScriptedIntakeDefinition(BaseModel):
     """Ordered scripted intake definition for voice channels."""
 
     stages: list[ScriptedStageDefinition] = Field(default_factory=list)
+    intro_text: str | None = None
+    completion_stage_id: str = "DYNAMIC"
 
 
 class WorkflowContext(BaseModel):

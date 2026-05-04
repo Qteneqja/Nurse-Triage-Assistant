@@ -91,6 +91,15 @@ class HealthcareTriageWorkflow(BaseWorkflow):
         confidence_score = (
             latest_trace.confidence_score if latest_trace is not None else None
         )
+        trace_escalation_required = bool(
+            latest_trace.escalation_required if latest_trace else False
+        )
+        workflow_escalation_required = action == "escalate"
+        finalization_reason = (
+            session.finalization_reason
+            or session.channel_metadata.get("finalization_reason")
+            or result.get("finalization_reason")
+        )
 
         rules_triggered = []
         if latest_trace is not None:
@@ -104,8 +113,7 @@ class HealthcareTriageWorkflow(BaseWorkflow):
             stage=session.channel_metadata.get("stage", "DYNAMIC"),
             should_continue=action == "ask",
             should_finalize=action == "finalize",
-            escalation_required=action == "escalate"
-            or bool(latest_trace.escalation_required if latest_trace else False),
+            escalation_required=workflow_escalation_required,
             recommended_disposition=recommended_disposition,
             confidence_score=confidence_score,
             rules_triggered=rules_triggered,
@@ -116,6 +124,14 @@ class HealthcareTriageWorkflow(BaseWorkflow):
                 "fail_reason": result.get("fail_reason"),
                 "low_confidence_reprompt": result.get("low_confidence_reprompt", False),
                 "override_applied": result.get("override_applied", False),
+                "trace_escalation_required": trace_escalation_required,
+                "trace_escalation_suppressed": (
+                    action == "ask" and trace_escalation_required
+                ),
+                "finalization_reason": finalization_reason,
+                "healthcare_intake_completeness": session.channel_metadata.get(
+                    "healthcare_intake_completeness"
+                ),
             },
         )
 
@@ -155,6 +171,9 @@ class HealthcareTriageWorkflow(BaseWorkflow):
                 audit_metadata={
                     "workflow_id": context.workflow_id,
                     "protocols_used": _protocols_from_session(session),
+                    "finalization_reason": (
+                        session.finalization_reason or "missing_session_state"
+                    ),
                 },
             )
 
@@ -164,6 +183,7 @@ class HealthcareTriageWorkflow(BaseWorkflow):
             summary=finalize_output.patient_summary,
             structured_output={
                 "output_type": "SBAR",
+                "finalization_reason": session.finalization_reason,
                 "disposition_reasoning": finalize_output.disposition_reasoning,
                 "safety_net_instructions": finalize_output.safety_net_instructions,
                 "sbar_report": finalize_output.sbar_report,
@@ -182,6 +202,7 @@ class HealthcareTriageWorkflow(BaseWorkflow):
                 if session.audit_trace
                 else 0,
                 "protocols_used": _protocols_from_session(session),
+                "finalization_reason": session.finalization_reason,
             },
         )
 
@@ -190,33 +211,62 @@ class HealthcareTriageWorkflow(BaseWorkflow):
 
     def get_scripted_intake_definition(self) -> ScriptedIntakeDefinition:
         return ScriptedIntakeDefinition(
+            intro_text=(
+                "Hello, this is Astra, a clinical triage assistant. "
+                "This is a decision-support tool, not a diagnostic service. "
+                "If you are experiencing a life-threatening emergency, "
+                "please hang up and call 9 1 1 immediately. "
+            ),
             stages=[
                 ScriptedStageDefinition(
                     stage_id="NAME",
                     field_name="caller_name",
-                    prompt="Can I start with your full name?",
-                    expected_answer_type="free_text",
+                    prompt=(
+                        "I will be asking you a series of questions to help assess "
+                        "your symptoms. Can I start with your full name?"
+                    ),
+                    expected_answer_type="text",
+                    field_type="text",
+                    max_attempts=3,
+                    sensitivity="phi",
+                    reprompt_text=(
+                        "I'm sorry, I didn't quite catch your name. "
+                        "Could you please say just your first and last name?"
+                    ),
                 ),
                 ScriptedStageDefinition(
                     stage_id="AGE",
                     field_name="caller_age",
-                    prompt="What is your age?",
+                    prompt="Thank you. What is your age?",
                     expected_answer_type="number",
+                    field_type="integer",
+                    sensitivity="phi",
                 ),
                 ScriptedStageDefinition(
                     stage_id="SEX",
                     field_name="caller_sex",
-                    prompt="What is your biological sex?",
+                    prompt=(
+                        "And what is your biological sex? Please say male, female, "
+                        "or prefer not to say."
+                    ),
                     expected_answer_type="choice",
+                    field_type="enum",
+                    allowed_values=["male", "female", "prefer not to say"],
                     hints="male,female,prefer not to say",
+                    sensitivity="phi",
                 ),
                 ScriptedStageDefinition(
                     stage_id="CHIEF_COMPLAINT",
                     field_name="chief_complaint",
-                    prompt="What brings you in today?",
+                    prompt=(
+                        "Thank you. Now, what brings you in today? Please describe "
+                        "your main symptom or concern."
+                    ),
                     expected_answer_type="free_text",
+                    field_type="free_text",
                     speech_timeout="auto",
                     timeout_seconds=10,
+                    sensitivity="phi",
                 ),
             ]
         )

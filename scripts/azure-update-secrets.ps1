@@ -35,22 +35,26 @@ Write-Host " App            : $APP"
 Write-Host ""
 
 $SecretsList = @()
+$SecretEnvVarsList = @()
 $Updated = $false
 
 if ($env:DEEPSEEK_API_KEY) {
     $SecretsList += "deepseek-api-key=$($env:DEEPSEEK_API_KEY)"
+    $SecretEnvVarsList += "DEEPSEEK_API_KEY=secretref:deepseek-api-key"
     Write-Host "  [UPDATE] deepseek-api-key"
     $Updated = $true
 }
 
 if ($env:TWILIO_AUTH_TOKEN) {
     $SecretsList += "twilio-auth-token=$($env:TWILIO_AUTH_TOKEN)"
+    $SecretEnvVarsList += "TWILIO_AUTH_TOKEN=secretref:twilio-auth-token"
     Write-Host "  [UPDATE] twilio-auth-token"
     $Updated = $true
 }
 
 if ($env:DATABASE_URL) {
     $SecretsList += "database-url=$($env:DATABASE_URL)"
+    $SecretEnvVarsList += "DATABASE_URL=secretref:database-url"
     Write-Host "  [UPDATE] database-url"
     $Updated = $true
 }
@@ -72,6 +76,14 @@ az containerapp secret set `
     --output none
 
 Write-Host "    Secrets updated."
+
+Write-Host ">>> Pointing app env vars at secret references ..." -ForegroundColor Green
+az containerapp update `
+    --resource-group $RG `
+    --name $APP `
+    --set-env-vars @SecretEnvVarsList `
+    --output none
+Write-Host "    Env vars now reference Container App secrets."
 
 # Update non-secret env vars if provided
 if ($env:CORS_ALLOWED_ORIGINS) {
