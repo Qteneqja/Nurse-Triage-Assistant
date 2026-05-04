@@ -98,7 +98,7 @@ echo ""
 
 echo "2. Response Validation"
 echo "   -----------------------------------------------"
-check_json "Health status"     "$BASE_URL/health"  "status"  "healthy"
+check_json "Health status"     "$BASE_URL/health"  "status"  "ok"
 check_json "Ready status"      "$BASE_URL/ready"   "status"  "ready"
 check_json "API version"       "$BASE_URL/"        "version" "5.0.0"
 echo ""

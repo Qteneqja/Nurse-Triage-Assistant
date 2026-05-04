@@ -133,6 +133,23 @@ class PostgresStorage(StorageInterface):
                     db_session.final_disposition = (
                         session.finalize_output.disposition.value
                     )
+                    db_session.confidence_score = getattr(
+                        session.finalize_output,
+                        "confidence_score",
+                        db_session.confidence_score,
+                    )
+                else:
+                    workflow_final = session.channel_metadata.get(
+                        "workflow_final_result",
+                        {},
+                    )
+                    if workflow_final:
+                        db_session.final_disposition = workflow_final.get(
+                            "final_disposition"
+                        )
+                        db_session.confidence_score = workflow_final.get(
+                            "confidence_score"
+                        )
 
             # Persist decision trace as turns
             self._sync_turns(db, session)
