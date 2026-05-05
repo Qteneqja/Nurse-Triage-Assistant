@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.orchestrator.orchestrator import Orchestrator
 from src.platform.workflows.registry import (
@@ -101,10 +101,16 @@ async def test_red_flag_escalation_works_through_workflow_interface():
 async def test_workflow_engine_initializes_default_registry_after_reset():
     reset_workflow_registry()
 
-    result = await WorkflowEngine().handle_turn(
-        _context("engine-session"),
-        WorkflowInput(user_text="I can't breathe at all", session_state={}),
-    )
+    mock_guarded = MagicMock()
+    mock_guarded.call = AsyncMock()
+
+    with patch(
+        "src.orchestrator.orchestrator.get_guarded_llm", return_value=mock_guarded
+    ), patch("src.orchestrator.orchestrator._orchestrator", None):
+        result = await WorkflowEngine().handle_turn(
+            _context("engine-session"),
+            WorkflowInput(user_text="I can't breathe at all", session_state={}),
+        )
 
     assert result.escalation_required is True
     assert result.recommended_disposition == "ER_NOW"
