@@ -16,12 +16,14 @@ from src.orchestrator.validators import (
     parse_and_validate,
     safe_intake_turn_default,
     safe_finalize_default,
+    safe_finalize_from_session,
 )
 from src.orchestrator.schemas import (
     IntakeTurnOutput,
     IntakeStatePatch,
     FinalizeOutput,
     DispositionCategory,
+    OrchestratorSession,
 )
 
 
@@ -217,3 +219,24 @@ class TestSafeDefaults:
             "nurse" in result.patient_summary.lower()
             or "review" in result.patient_summary.lower()
         )
+
+    def test_finalize_from_session_uses_collected_intake(self):
+        session = OrchestratorSession(session_id="fallback-sbar")
+        session.intake_state.caller_age = 26
+        session.intake_state.caller_sex = "male"
+        session.intake_state.chief_complaint = "diffuse sharp abdominal pain"
+        session.intake_state.onset_time = "this morning"
+        session.intake_state.symptom_severity = "mild"
+        session.intake_state.relevant_history = ["diarrhea"]
+        session.intake_state.meds = ["Gravol Ginger"]
+
+        result = safe_finalize_from_session(session)
+
+        assert result.disposition == DispositionCategory.HUMAN_REVIEW
+        sbar = result.sbar_report.lower()
+        assert "diffuse sharp abdominal pain" in sbar
+        assert "diffuse abdomen" in sbar
+        assert "this morning" in sbar
+        assert "mild" in sbar
+        assert "diarrhea" in sbar
+        assert "gravol ginger" in sbar

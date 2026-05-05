@@ -94,13 +94,15 @@ async def _generate_orchestrator_report_background(
         if orch_session.finalize_output is None:
             try:
                 if orch_session.turn_count <= 2:
-                    from src.orchestrator.validators import safe_finalize_default
+                    from src.orchestrator.validators import safe_finalize_from_session
 
                     logger.info(
                         f"[BACKGROUND] Skipping LLM finalize for early-turn escalation "
                         f"(turn_count={orch_session.turn_count}) — using safe default"
                     )
-                    orch_session.finalize_output = safe_finalize_default()
+                    orch_session.finalize_output = safe_finalize_from_session(
+                        orch_session
+                    )
                 else:
                     orchestrator = get_orchestrator()
                     await orchestrator.finalize(orch_session)
@@ -109,9 +111,9 @@ async def _generate_orchestrator_report_background(
                     f"[BACKGROUND] LLM finalize failed — using safe default: {fin_exc}",
                     exc_info=True,
                 )
-                from src.orchestrator.validators import safe_finalize_default
+                from src.orchestrator.validators import safe_finalize_from_session
 
-                orch_session.finalize_output = safe_finalize_default()
+                orch_session.finalize_output = safe_finalize_from_session(orch_session)
 
         finalize = orch_session.finalize_output
 
@@ -327,6 +329,25 @@ STAGE_DYNAMIC = "DYNAMIC"
 # Maximum name re-prompts before accepting whatever was given
 _MAX_NAME_RETRIES = 3
 
+_SYMPTOM_RECOVERY_KEYWORDS = (
+    "ache",
+    "allergy",
+    "bleeding",
+    "breath",
+    "cough",
+    "diarrhea",
+    "dizzy",
+    "fever",
+    "hurt",
+    "nausea",
+    "pain",
+    "rash",
+    "sick",
+    "stomach",
+    "symptom",
+    "vomit",
+)
+
 # Sex normalisation — maps common STT transcriptions to canonical values.
 # Twilio STT on phone audio frequently mishears "male" as "mail", "mel",
 # "men", etc.  This map + prefix stripping ("I'm male" → "male") ensures
@@ -404,6 +425,13 @@ def _normalise_phone(raw: str) -> str:
     if len(digits) == 11 and digits.startswith("1"):
         return f"+{digits}"
     return cleaned
+
+
+def _looks_like_symptom_text(text: str | None) -> bool:
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in _SYMPTOM_RECOVERY_KEYWORDS)
 
 
 # Voice used for all TwiML speech — Polly Ruth is calm and clear, ideal for healthcare
@@ -727,6 +755,11 @@ def _advance_scripted_intake(
     stages = list(intake.stages or [])
     current_index = stages.index(current_stage)
     next_index = current_index + 1
+    while next_index < len(stages) and _scripted_stage_already_filled(
+        session,
+        stages[next_index],
+    ):
+        next_index += 1
     if next_index >= len(stages):
         scripted["current_index"] = None
         scripted["current_stage_id"] = intake.completion_stage_id
@@ -739,6 +772,20 @@ def _advance_scripted_intake(
     scripted["current_stage_id"] = next_stage.stage_id
     session.channel_metadata["stage"] = next_stage.stage_id
     return next_stage
+
+
+def _scripted_stage_already_filled(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+) -> bool:
+    store_key = _stage_store_key(stage)
+    scripted = session.channel_metadata.get("scripted_intake") or {}
+    fields = scripted.get("fields") or {}
+    if fields.get(store_key) not in (None, "", []):
+        return True
+    if hasattr(session.intake_state, store_key):
+        return getattr(session.intake_state, store_key) not in (None, "", [])
+    return False
 
 
 async def _handle_scripted_stage_response(
@@ -881,7 +928,8 @@ async def _recover_missing_twilio_session(
     repo,
     call_sid: str,
     called_phone_number: str | None,
-) -> OrchestratorSession | None:
+    speech_result: str | None,
+) -> str | None:
     """Create a safe continuation session when Twilio state lookup misses.
 
     This is a last-resort path for production drift: the caller has already
@@ -904,18 +952,48 @@ async def _recover_missing_twilio_session(
 
         session = repo.create_session(call_sid=call_sid, workflow_route=route)
         session.channel_metadata["called_phone_number"] = called_phone_number
-        session.channel_metadata["stage"] = STAGE_DYNAMIC
+
+        workflow = ensure_default_workflows_registered().get(route.workflow_id)
+        intake = workflow.get_scripted_intake_definition()
+        first_stage = (
+            _initialize_scripted_intake(session, intake) if intake is not None else None
+        )
+        if speech_result and _looks_like_symptom_text(speech_result):
+            symptom = speech_result.strip()
+            session.intake_state.chief_complaint = symptom
+            scripted = session.channel_metadata.setdefault("scripted_intake", {})
+            scripted.setdefault("fields", {})["chief_complaint"] = symptom
+
         session.channel_metadata["session_recovery"] = {
             "reason": "missing_session_during_gather",
             "recovered_at": datetime.now(UTC).isoformat(),
         }
         repo.persist_session(session)
         logger.warning(
-            "[TWILIO] Recovered missing session %s for call %s in dynamic intake",
+            "[TWILIO] Recovered missing session %s for call %s",
             session.session_id,
             call_sid,
         )
-        return session
+        if first_stage is not None:
+            prompt = (
+                "I'm sorry, I lost part of the call state, but I can keep helping. "
+                f"{_stage_prompt(first_stage)}"
+            )
+            return await generate_twiml_gather(
+                prompt,
+                "/api/v1/voice/gather",
+                timeout=first_stage.timeout_seconds,
+                hints=first_stage.hints,
+                speech_timeout=first_stage.speech_timeout,
+            )
+
+        return await generate_twiml_gather(
+            "I'm sorry, I lost part of the call state, but I can keep helping. "
+            "Can you briefly repeat your main concern?",
+            "/api/v1/voice/gather",
+            timeout=8,
+            speech_timeout="auto",
+        )
     except Exception as exc:
         logger.error(
             "[TWILIO] Missing-session recovery failed for call %s: %s",
@@ -947,16 +1025,18 @@ async def handle_gather(
 
         if not session:
             logger.error(f"[TWILIO] No session found for call {CallSid}")
-            session = await _recover_missing_twilio_session(
+            recovery_twiml = await _recover_missing_twilio_session(
                 repo=repo,
                 call_sid=CallSid,
                 called_phone_number=To,
+                speech_result=SpeechResult,
             )
-            if session is None:
+            if recovery_twiml is None:
                 twiml = await generate_twiml_say_and_hangup(
                     "Sorry, we encountered a technical error. Please try again later."
                 )
                 return Response(content=twiml, media_type="application/xml")
+            return Response(content=recovery_twiml, media_type="application/xml")
 
         if session.is_finalized:
             logger.warning(
@@ -1026,6 +1106,22 @@ async def handle_gather(
             logger.info(f"[TWILIO] Session {session_id} entering DYNAMIC stage")
             repo.persist_session(session)
             current_stage = session.channel_metadata.get("stage", STAGE_DYNAMIC)
+            if (
+                _is_healthcare_session(session)
+                and scripted_stage.stage_id != STAGE_CHIEF_COMPLAINT
+            ):
+                first_dynamic_question = "Thank you. When did this symptom first start?"
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=first_dynamic_question)
+                )
+                repo.persist_session(session)
+                twiml = await generate_twiml_gather(
+                    first_dynamic_question,
+                    "/api/v1/voice/gather",
+                    timeout=8,
+                    speech_timeout="auto",
+                )
+                return Response(content=twiml, media_type="application/xml")
 
         # DYNAMIC stage — multi-agent orchestrator
         if session.channel_metadata.get("stage") == STAGE_DYNAMIC:

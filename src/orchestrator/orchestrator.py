@@ -57,7 +57,7 @@ from src.orchestrator.schemas import (
     StructuredIntakeState,
 )
 from src.orchestrator.validators import (
-    safe_finalize_default,
+    safe_finalize_from_session,
     safe_intake_turn_default,
     safe_phase1_escalation,
     post_check_safety_gate,
@@ -75,6 +75,7 @@ from src.observability.metrics import get_metrics
 from src.observability.logging import set_log_context, clear_log_context
 from src.verticals.healthcare.completeness import (
     evaluate_healthcare_intake_completeness,
+    infer_healthcare_location,
 )
 
 logger = logging.getLogger(__name__)
@@ -282,6 +283,21 @@ _LOW_CONFIDENCE_FALLBACK_QUESTION = (
     "For example, where exactly do you feel it, and does it spread anywhere?"
 )
 
+_HEALTHCARE_MISSING_ITEM_QUESTIONS: dict[str, str] = {
+    "chief_complaint": "What symptom or concern are you calling about today?",
+    "onset_duration": "When did your symptoms first start?",
+    "severity": "On a scale of 0 to 10, how severe is your discomfort right now?",
+    "location": (
+        "Where exactly do you feel it? For example, is it upper, lower, "
+        "left, right, or all over?"
+    ),
+    "associated_symptoms_or_relevant_history": (
+        "Do you have any other symptoms or relevant medical history, such as "
+        "fever, vomiting, diarrhea, pregnancy, or chronic conditions? If none, "
+        "just say none."
+    ),
+}
+
 
 def _get_low_confidence_followup(state: "StructuredIntakeState") -> str:
     """Return the next deterministic follow-up question for missing SBAR fields.
@@ -325,6 +341,17 @@ def _get_loop_breaker_question(slot: str | None, original_question: str) -> str:
     if slot and slot in _LOOP_BREAKER_QUESTIONS:
         return _LOOP_BREAKER_QUESTIONS[slot]
     return original_question
+
+
+def _get_healthcare_missing_item_followup(session: OrchestratorSession) -> str | None:
+    payload = session.channel_metadata.get("healthcare_intake_completeness") or {}
+    if not payload.get("minimum_dynamic_turns_met"):
+        return None
+    missing_items = payload.get("missing_items") or []
+    if not missing_items:
+        return None
+    first_missing = missing_items[0]
+    return _HEALTHCARE_MISSING_ITEM_QUESTIONS.get(first_missing)
 
 
 def _llm_failure_reason(exc: BaseException) -> str:
@@ -1288,6 +1315,12 @@ class Orchestrator:
         # Determine next action
         finalization_reason = self._finalization_reason(session, intake_output)
         should_finalize = finalization_reason is not None
+        next_question = intake_output.next_question
+        if not should_finalize:
+            next_question = (
+                _get_healthcare_missing_item_followup(session)
+                or intake_output.next_question
+            )
 
         # Append decision trace entry
         self._append_trace(
@@ -1296,9 +1329,7 @@ class Orchestrator:
             confidence=final_confidence,
             disposition=phase1_output.disposition.value,
             escalation_required=phase1_output.escalation_required,
-            response=intake_output.next_question
-            if not should_finalize
-            else "[finalize]",
+            response=next_question if not should_finalize else "[finalize]",
             red_flags=rf_triggered_ids + phase1_output.red_flags_triggered,
             rules=phase1_output.rules_triggered,
             confidence_breakdown=confidence_bd,
@@ -1332,10 +1363,19 @@ class Orchestrator:
                 "finalization_reason": finalization_reason,
             }
 
+        if next_question != intake_output.next_question:
+            logger.info("[ORCH] Overriding next question to fill healthcare gap")
+            session.audit_trace.add_entry(
+                step="healthcare_missing_item_followup",
+                agent="orchestrator",
+                output_summary=f"question={next_question[:80]}",
+                correlation_id=correlation_id,
+            )
+
         session.conversation.append(
             ConversationTurn(
                 role="assistant",
-                text=intake_output.next_question,
+                text=next_question,
             )
         )
 
@@ -1346,7 +1386,7 @@ class Orchestrator:
 
         return {
             "action": "ask",
-            "message": intake_output.next_question,
+            "message": next_question,
             "intake_output": intake_output,
             "phase1_output": phase1_output,
         }
@@ -1418,7 +1458,7 @@ class Orchestrator:
             )
         except LLMCallError as e:
             logger.error(f"[ORCH:{cid}] Finalize LLM call failed: {e}")
-            finalize_output = safe_finalize_default()
+            finalize_output = safe_finalize_from_session(session)
             if not session.finalization_reason:
                 self._mark_finalized(session, _llm_failure_reason(e), cid)
         except _PydanticValidationError as e:
@@ -1426,7 +1466,7 @@ class Orchestrator:
                 f"[ORCH:{cid}] Finalize validation failed — "
                 f"falling back to HUMAN_REVIEW: {e}"
             )
-            finalize_output = safe_finalize_default()
+            finalize_output = safe_finalize_from_session(session)
             if not session.finalization_reason:
                 self._mark_finalized(session, "llm_validation_failure", cid)
         except Exception as e:
@@ -1434,7 +1474,7 @@ class Orchestrator:
                 f"[ORCH:{cid}] Unexpected error during finalize — "
                 f"falling back to HUMAN_REVIEW: {e}"
             )
-            finalize_output = safe_finalize_default()
+            finalize_output = safe_finalize_from_session(session)
             if not session.finalization_reason:
                 self._mark_finalized(session, "workflow_error", cid)
 
@@ -1855,8 +1895,6 @@ class Orchestrator:
         """
         patch = intake_output.extracted_fields_update
         patch_data = patch.model_dump(exclude_none=True)
-        if not patch_data:
-            return
 
         state = session.intake_state
         for key, value in patch_data.items():
@@ -1872,6 +1910,11 @@ class Orchestrator:
                     setattr(state, key, value)
             except (ValueError, TypeError) as e:
                 logger.warning(f"[ORCH] Failed to set field {key}={value}: {e}")
+
+        if not state.location:
+            inferred_location = infer_healthcare_location(state)
+            if inferred_location:
+                state.location = inferred_location
 
     # ------------------------------------------------------------------ #
     # Phase 1 Helpers

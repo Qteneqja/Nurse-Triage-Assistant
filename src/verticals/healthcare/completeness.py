@@ -22,23 +22,36 @@ _GENERIC_LOCATION_REQUIRED_KEYWORDS = (
     "swelling",
 )
 
-_BODY_AREA_KEYWORDS = (
-    "ankle",
-    "arm",
-    "back",
-    "belly",
-    "chest",
-    "ear",
-    "foot",
-    "head",
-    "hip",
-    "knee",
-    "leg",
-    "neck",
-    "shoulder",
-    "stomach",
-    "throat",
-    "wrist",
+_BODY_AREA_KEYWORDS = {
+    "abdomen": "abdomen",
+    "abdominal": "abdomen",
+    "ankle": "ankle",
+    "arm": "arm",
+    "back": "back",
+    "belly": "abdomen",
+    "chest": "chest",
+    "ear": "ear",
+    "foot": "foot",
+    "head": "head",
+    "hip": "hip",
+    "knee": "knee",
+    "leg": "leg",
+    "neck": "neck",
+    "shoulder": "shoulder",
+    "stomach": "abdomen",
+    "throat": "throat",
+    "wrist": "wrist",
+}
+
+_DIFFUSE_LOCATION_PHRASES = (
+    "all around",
+    "all over",
+    "diffuse",
+    "entire stomach",
+    "generalized",
+    "whole abdomen",
+    "whole belly",
+    "whole stomach",
 )
 
 
@@ -96,7 +109,7 @@ def _missing_clinical_items(state: StructuredIntakeState) -> list[str]:
         missing.append("onset_duration")
     if not state.symptom_severity or state.symptom_severity == "unknown":
         missing.append("severity")
-    if _location_relevant(state.chief_complaint) and not state.location:
+    if _location_relevant(state.chief_complaint) and not _location_satisfied(state):
         missing.append("location")
     if not _has_associated_symptoms_or_background(state):
         missing.append("associated_symptoms_or_relevant_history")
@@ -108,9 +121,48 @@ def _location_relevant(chief_complaint: str | None) -> bool:
     if not chief_complaint:
         return False
     text = chief_complaint.lower()
-    if any(keyword in text for keyword in _BODY_AREA_KEYWORDS):
+    if infer_healthcare_location_from_text(text):
         return False
     return any(keyword in text for keyword in _GENERIC_LOCATION_REQUIRED_KEYWORDS)
+
+
+def _location_satisfied(state: StructuredIntakeState) -> bool:
+    return bool(state.location or infer_healthcare_location(state))
+
+
+def infer_healthcare_location(state: StructuredIntakeState) -> str | None:
+    """Infer a location when the caller stated it in the complaint/notes."""
+
+    return infer_healthcare_location_from_text(
+        " ".join(
+            part
+            for part in (
+                state.location,
+                state.chief_complaint,
+                state.notes,
+            )
+            if part
+        )
+    )
+
+
+def infer_healthcare_location_from_text(text: str | None) -> str | None:
+    if not text:
+        return None
+
+    lowered = text.lower()
+    if any(phrase in lowered for phrase in _DIFFUSE_LOCATION_PHRASES):
+        if any(
+            term in lowered for term in ("abdomen", "abdominal", "belly", "stomach")
+        ):
+            return "diffuse abdomen"
+        return "diffuse/generalized"
+
+    for keyword, label in _BODY_AREA_KEYWORDS.items():
+        if keyword in lowered:
+            return label
+
+    return None
 
 
 def _has_associated_symptoms_or_background(state: StructuredIntakeState) -> bool:

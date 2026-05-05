@@ -178,6 +178,80 @@ def safe_finalize_default() -> FinalizeOutput:
     )
 
 
+def safe_finalize_from_session(session) -> FinalizeOutput:
+    """Return a conservative final output populated from collected intake data."""
+
+    from src.orchestrator.schemas import DispositionCategory
+    from src.verticals.healthcare.completeness import infer_healthcare_location
+
+    state = session.intake_state
+    patient_bits = []
+    if state.caller_age is not None:
+        patient_bits.append(f"{state.caller_age}-year-old")
+    if state.caller_sex:
+        patient_bits.append(state.caller_sex)
+    patient_desc = " ".join(patient_bits) or "Patient"
+    complaint = state.chief_complaint or "reported symptoms"
+    onset = state.onset_time or "onset not documented"
+    severity = state.symptom_severity or "severity not documented"
+    location = (
+        state.location or infer_healthcare_location(state) or "location not documented"
+    )
+
+    background_items: list[str] = []
+    if state.relevant_history:
+        background_items.append(
+            "associated/history: " + ", ".join(state.relevant_history)
+        )
+    if state.meds:
+        background_items.append("medications/supplements: " + ", ".join(state.meds))
+    if state.allergies:
+        background_items.append("allergies: " + ", ".join(state.allergies))
+    if state.pregnancy_status:
+        background_items.append(f"pregnancy status: {state.pregnancy_status}")
+    if state.red_flags_reported:
+        background_items.append(
+            "reported red flags: " + ", ".join(state.red_flags_reported)
+        )
+    background = "; ".join(background_items) or "No additional background documented."
+
+    sbar_report = (
+        f"S: {patient_desc} calling about {complaint}. "
+        f"Location: {location}. Onset: {onset}. Severity: {severity}.\n"
+        f"B: {background}\n"
+        "A: Automated final clinical reasoning was unavailable, so this case "
+        "requires human clinical review using the collected intake information.\n"
+        "R: Nurse/clinician review recommended. If symptoms worsen, new red flags "
+        "develop, or the caller feels unsafe, they should seek emergency care."
+    )
+
+    return FinalizeOutput(
+        disposition=DispositionCategory.HUMAN_REVIEW,
+        disposition_reasoning=(
+            "Automated clinical reasoning was unavailable. Human review is "
+            "recommended based on the collected intake information."
+        ),
+        safety_net_instructions=[
+            "If your symptoms worsen or you feel unsafe at any time, "
+            "please call 9 1 1 or go to the nearest emergency room.",
+        ],
+        sbar_report=sbar_report,
+        patient_summary=(
+            "Thank you for providing that information. A nurse will review your "
+            "case and contact you soon. If your symptoms worsen, please go to "
+            "the emergency room or call 9 1 1."
+        ),
+        llm_safety_flags=[
+            SafetyFlag(
+                source="llm",
+                level=SafetyLevel.ADVISORY,
+                flag="Automated reasoning failed - manual review required",
+                reason_for_audit="LLM-detected: Automated reasoning failed",
+            )
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — Two-attempt JSON validation with repair
 # ---------------------------------------------------------------------------
