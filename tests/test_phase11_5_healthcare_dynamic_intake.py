@@ -472,3 +472,97 @@ async def test_twilio_keeps_gathering_after_two_usable_dynamic_responses():
     ).lower()
     assert "mild cough" in prior_text
     assert "yesterday" in prior_text
+
+
+@pytest.mark.asyncio
+async def test_twilio_recovers_missing_session_instead_of_expiring_after_symptom():
+    from src.storage.factory import reset_storage_backend
+    from src.storage.session_repository import (
+        get_session_repository,
+        reset_session_repository,
+    )
+    from src.twilio import routes as twilio_routes
+
+    with (
+        patch("src.config.STORAGE_BACKEND", "memory"),
+        patch("src.config.ENVIRONMENT", "development"),
+        patch("src.config.DATABASE_URL", None),
+        patch("src.twilio.routes.text_to_speech_url", new=AsyncMock(return_value=None)),
+    ):
+        reset_session_repository()
+        reset_storage_backend()
+        twilio_routes._pending_turns.clear()
+        repo = get_session_repository()
+
+        route_resolver = MagicMock()
+        route_resolver.resolve.return_value = ResolvedWorkflowRoute(
+            vertical_key=HEALTHCARE_VERTICAL,
+            workflow_id=HEALTHCARE_TRIAGE_WORKFLOW_ID,
+            workflow_version=HEALTHCARE_TRIAGE_VERSION,
+        )
+
+        engine = MagicMock()
+
+        async def _handle_turn(context, workflow_input):
+            updated = OrchestratorSession.model_validate(workflow_input.session_state)
+            updated.turn_count += 1
+            updated.channel_metadata["stage"] = twilio_routes.STAGE_DYNAMIC
+            updated.intake_state.chief_complaint = "stomach pain"
+            assistant_text = "When did the stomach pain start?"
+            updated.conversation.append(
+                ConversationTurn(role="assistant", text=assistant_text)
+            )
+            return WorkflowTurnResult(
+                assistant_text=assistant_text,
+                stage=twilio_routes.STAGE_DYNAMIC,
+                should_continue=True,
+                should_finalize=False,
+                escalation_required=False,
+                recommended_disposition="UNDECIDED",
+                confidence_score=0.7,
+                updated_state=updated.model_dump(mode="json"),
+                audit_metadata={"finalization_reason": None},
+            )
+
+        engine.handle_turn = AsyncMock(side_effect=_handle_turn)
+
+        with (
+            patch(
+                "src.twilio.routes.get_workflow_route_resolver",
+                return_value=route_resolver,
+            ),
+            patch("src.twilio.routes.get_workflow_engine", return_value=engine),
+        ):
+            response = await twilio_routes.handle_gather(
+                SimpleNamespace(headers={}),
+                BackgroundTasks(),
+                CallSid="CA-HC-MISSING-SESSION",
+                To="+15551234567",
+                SpeechResult="my stomach hurts",
+            )
+            body = response.body.decode().lower()
+            assert "session has expired" not in body
+            assert "technical error" not in body
+            assert "/api/v1/voice/thinking" in body
+
+            recovered = repo.load_session_by_call("CA-HC-MISSING-SESSION")
+            assert recovered is not None
+            assert recovered.channel_metadata["stage"] == twilio_routes.STAGE_DYNAMIC
+            assert recovered.channel_metadata["session_recovery"]["reason"] == (
+                "missing_session_during_gather"
+            )
+
+            task, _ = twilio_routes._pending_turns["CA-HC-MISSING-SESSION"]
+            await task
+            thinking_response = await twilio_routes.handle_thinking(
+                SimpleNamespace(headers={}),
+                BackgroundTasks(),
+                CallSid="CA-HC-MISSING-SESSION",
+            )
+
+    thinking_body = thinking_response.body.decode().lower()
+    assert "<gather" in thinking_body
+    assert "when did the stomach pain start" in thinking_body
+    assert "nurse" not in thinking_body
+    route_resolver.resolve.assert_called_once_with(called_phone_number="+15551234567")
+    assert engine.handle_turn.await_count == 1

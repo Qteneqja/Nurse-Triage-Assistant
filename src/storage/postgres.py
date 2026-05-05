@@ -211,8 +211,19 @@ class PostgresStorage(StorageInterface):
                     db_session.status,
                 )
             session = self._deserialize_session(db_session)
+            if session is None:
+                fallback = self._load_session_record_by_metadata_call(
+                    db,
+                    call_sid,
+                    exclude_session_id=db_session.session_id,
+                )
+                if fallback is not None:
+                    db_session = fallback
+                    session = self._deserialize_session(db_session)
             if session and not session.call_sid:
                 session.call_sid = call_sid
+            if session is not None:
+                self._repair_twilio_call_index(db, db_session, call_sid, session)
             return session
 
     def _load_session_record_by_call(
@@ -234,23 +245,29 @@ class PostgresStorage(StorageInterface):
         self,
         db: SASession,
         call_sid: str,
+        exclude_session_id: str | None = None,
     ) -> TriageSessionModel | None:
         """Fallback for rare caller_id drift while preserving Twilio continuity."""
         records = db.execute(
             select(TriageSessionModel)
             .where(
-                TriageSessionModel.channel == "twilio",
                 TriageSessionModel.deleted_at.is_(None),
             )
             .order_by(TriageSessionModel.created_at.desc())
-            .limit(50)
+            .limit(500)
         ).scalars()
         for record in records:
+            if exclude_session_id and record.session_id == exclude_session_id:
+                continue
             metadata = record.metadata_json or {}
             state = (
                 metadata.get("session_state") if isinstance(metadata, dict) else None
             )
-            if isinstance(state, dict) and state.get("call_sid") == call_sid:
+            metadata_call_sid = (
+                metadata.get("call_sid") if isinstance(metadata, dict) else None
+            )
+            state_call_sid = state.get("call_sid") if isinstance(state, dict) else None
+            if state_call_sid == call_sid or metadata_call_sid == call_sid:
                 logger.warning(
                     "[PostgresStorage] Recovered session %s for call %s via "
                     "serialized call_sid fallback",
@@ -259,6 +276,31 @@ class PostgresStorage(StorageInterface):
                 )
                 return record
         return None
+
+    def _repair_twilio_call_index(
+        self,
+        db: SASession,
+        db_session: TriageSessionModel,
+        call_sid: str,
+        session: OrchestratorSession,
+    ) -> None:
+        """Repair caller_id/channel drift found while loading a Twilio session."""
+        changed = False
+        if db_session.caller_id != call_sid:
+            db_session.caller_id = call_sid
+            changed = True
+        if db_session.channel != "twilio":
+            db_session.channel = "twilio"
+            changed = True
+        if session.call_sid != call_sid:
+            session.call_sid = call_sid
+            changed = True
+        if changed:
+            db_session.metadata_json = {
+                "session_state": session.model_dump(mode="json")
+            }
+            db_session.updated_at = datetime.now(timezone.utc)
+            db.commit()
 
     def _deserialize_session(
         self, db_session: TriageSessionModel

@@ -9,7 +9,7 @@ Twilio signature validation enforced via router-level dependency.
 import asyncio
 import logging
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.sax import saxutils
 from fastapi import APIRouter, Depends, Request, Form, BackgroundTasks
@@ -876,11 +876,62 @@ async def handle_incoming_call(
         return Response(content=error_twiml, media_type="application/xml")
 
 
+async def _recover_missing_twilio_session(
+    *,
+    repo,
+    call_sid: str,
+    called_phone_number: str | None,
+) -> OrchestratorSession | None:
+    """Create a safe continuation session when Twilio state lookup misses.
+
+    This is a last-resort path for production drift: the caller has already
+    answered a Gather, so hanging up loses care continuity. Recovery resumes in
+    dynamic intake and lets the healthcare workflow ask for any missing SBAR
+    details before finalization.
+    """
+
+    try:
+        ensure_default_workflows_registered()
+        route = get_workflow_route_resolver().resolve(
+            called_phone_number=called_phone_number
+        )
+        if route.safe_response_required:
+            logger.error(
+                "[TWILIO] Missing-session recovery could not safely route call %s",
+                call_sid,
+            )
+            return None
+
+        session = repo.create_session(call_sid=call_sid, workflow_route=route)
+        session.channel_metadata["called_phone_number"] = called_phone_number
+        session.channel_metadata["stage"] = STAGE_DYNAMIC
+        session.channel_metadata["session_recovery"] = {
+            "reason": "missing_session_during_gather",
+            "recovered_at": datetime.now(UTC).isoformat(),
+        }
+        repo.persist_session(session)
+        logger.warning(
+            "[TWILIO] Recovered missing session %s for call %s in dynamic intake",
+            session.session_id,
+            call_sid,
+        )
+        return session
+    except Exception as exc:
+        logger.error(
+            "[TWILIO] Missing-session recovery failed for call %s: %s",
+            call_sid,
+            type(exc).__name__,
+            exc_info=True,
+        )
+        return None
+
+
 @router.post("/gather")
 async def handle_gather(
     request: Request,
     background_tasks: BackgroundTasks,
     CallSid: str = Form(...),
+    To: Optional[str] = Form(None),
     SpeechResult: Optional[str] = Form(None),
 ):
     """
@@ -896,10 +947,16 @@ async def handle_gather(
 
         if not session:
             logger.error(f"[TWILIO] No session found for call {CallSid}")
-            twiml = await generate_twiml_say_and_hangup(
-                "Sorry, your session has expired. Please call back."
+            session = await _recover_missing_twilio_session(
+                repo=repo,
+                call_sid=CallSid,
+                called_phone_number=To,
             )
-            return Response(content=twiml, media_type="application/xml")
+            if session is None:
+                twiml = await generate_twiml_say_and_hangup(
+                    "Sorry, we encountered a technical error. Please try again later."
+                )
+                return Response(content=twiml, media_type="application/xml")
 
         if session.is_finalized:
             logger.warning(
