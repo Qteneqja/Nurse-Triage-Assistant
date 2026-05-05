@@ -44,7 +44,7 @@ jobs:
           az extension add --name containerapp --upgrade --yes
           az containerapp update \
             --name nurse-triage-api \
-            --resource-group nurse-triage-eastus-rg \
+            --resource-group nurse-triage-rg \
             --image nursetriageacr7351.azurecr.io/nurse-triage-api:${{ github.sha }}
 
 
