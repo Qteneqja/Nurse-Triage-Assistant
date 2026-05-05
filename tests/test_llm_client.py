@@ -3,24 +3,21 @@ Test DeepSeek API Connection
 """
 
 import os
+
+import pytest
 from openai import OpenAI
 
-# Load API key from environment — never hardcode
-api_key = os.getenv("DEEPSEEK_API_KEY", "")
-if not api_key:
-    print("ERROR: DEEPSEEK_API_KEY environment variable is not set.")
-    print("Set it via .env file or export it before running this test.")
-    exit(1)
+api_key = os.getenv("DEEPSEEK_API_KEY")
 
-print("Testing DeepSeek API...")
-print(f"API Key: {api_key[:10]}...{api_key[-4:]}")
-print("Base URL: https://api.deepseek.com")
-print()
+pytestmark = pytest.mark.skipif(
+    not api_key,
+    reason="DEEPSEEK_API_KEY not set; skipping external DeepSeek connectivity test",
+)
 
-try:
+
+def test_deepseek_api_connection():
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
-    print("Sending test request...")
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
@@ -33,18 +30,5 @@ try:
         stream=False,
     )
 
-    print("✅ SUCCESS!")
-    print(f"Response: {response.choices[0].message.content}")
-    print()
-    print("DeepSeek API is working correctly!")
-
-except Exception as e:
-    print("❌ ERROR!")
-    print(f"Error type: {type(e).__name__}")
-    print(f"Error message: {str(e)}")
-    print()
-    print("Possible issues:")
-    print("1. Invalid API key")
-    print("2. Insufficient balance")
-    print("3. API endpoint incorrect")
-    print("4. Network/firewall blocking connection")
+    assert response.choices[0].message.content is not None
+    assert "Connection successful!" in response.choices[0].message.content
