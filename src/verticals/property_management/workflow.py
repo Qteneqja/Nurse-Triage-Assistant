@@ -271,7 +271,9 @@ class PropertyManagementMaintenanceWorkflow(BaseWorkflow):
         session.phone_number_id = context.phone_number_id
         session.channel_metadata.setdefault("workflow_id", context.workflow_id)
         session.channel_metadata.setdefault("vertical_key", context.vertical)
-        session.channel_metadata.setdefault("workflow_version", context.workflow_version)
+        session.channel_metadata.setdefault(
+            "workflow_version", context.workflow_version
+        )
 
 
 def _intake_from_session(session: OrchestratorSession) -> MaintenanceIntake:
@@ -297,9 +299,7 @@ def _clean(value: Any) -> str | None:
 
 def _summary(work_order: MaintenanceWorkOrder) -> str:
     location = " ".join(
-        part
-        for part in [work_order.property_address, work_order.unit_number]
-        if part
+        part for part in [work_order.property_address, work_order.unit_number] if part
     )
     issue = work_order.issue_description or work_order.issue_type or "maintenance issue"
     return (
@@ -323,13 +323,11 @@ def _spoken_final_message(
         )
     if disposition == "SAME_DAY":
         return (
-            "Thank you. I have marked this as a same-day maintenance request. "
-            f"{action}"
+            f"Thank you. I have marked this as a same-day maintenance request. {action}"
         )
     if disposition == "SCHEDULED_REPAIR":
         return (
-            "Thank you. I have created a standard maintenance repair request. "
-            f"{action}"
+            f"Thank you. I have created a standard maintenance repair request. {action}"
         )
     if disposition == "INFORMATION_ONLY":
         return "Thank you. I have recorded your request for property office follow-up."

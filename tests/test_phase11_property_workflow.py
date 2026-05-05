@@ -40,7 +40,9 @@ def test_property_workflow_registers_without_changing_healthcare_default():
     assert isinstance(property_workflow, PropertyManagementMaintenanceWorkflow)
     assert property_workflow.get_definition().vertical == "property_management"
     assert property_workflow.get_definition().version == "v1"
-    assert default_healthcare.get_definition().workflow_id == HEALTHCARE_TRIAGE_WORKFLOW_ID
+    assert (
+        default_healthcare.get_definition().workflow_id == HEALTHCARE_TRIAGE_WORKFLOW_ID
+    )
 
 
 def test_property_scripted_stages_are_exposed_in_order():
@@ -135,7 +137,9 @@ def test_property_extraction_is_structured_and_read_only():
     original_disposition = final_result.final_disposition
 
     service = ExtractionService()
-    service.register(PROPERTY_MAINTENANCE_WORKFLOW_ID, PropertyMaintenanceExtractionAgent())
+    service.register(
+        PROPERTY_MAINTENANCE_WORKFLOW_ID, PropertyMaintenanceExtractionAgent()
+    )
     extraction = service.extract(
         transcript=[{"role": "caller", "text": "I am frustrated about a leak"}],
         final_result=final_result,

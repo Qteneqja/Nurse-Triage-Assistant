@@ -88,7 +88,10 @@ async def test_twilio_scripted_intake_preserved_and_dynamic_uses_workflow_engine
             SpeechResult="Jane Doe",
         )
         assert "What is your age" in response.body.decode()
-        assert repo.load_session_by_call("CA-SCRIPT").intake_state.caller_name == "Jane Doe"
+        assert (
+            repo.load_session_by_call("CA-SCRIPT").intake_state.caller_name
+            == "Jane Doe"
+        )
 
         response = await twilio_routes.handle_gather(
             request,

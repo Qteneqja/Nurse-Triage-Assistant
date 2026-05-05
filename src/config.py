@@ -299,9 +299,13 @@ def validate_config() -> list[str]:
 
     if ENABLE_DEFAULT_WORKFLOW_ROUTE:
         if not DEFAULT_WORKFLOW_ID:
-            errors.append("DEFAULT_WORKFLOW_ID is required when default routing is enabled")
+            errors.append(
+                "DEFAULT_WORKFLOW_ID is required when default routing is enabled"
+            )
         if not DEFAULT_VERTICAL_KEY:
-            errors.append("DEFAULT_VERTICAL_KEY is required when default routing is enabled")
+            errors.append(
+                "DEFAULT_VERTICAL_KEY is required when default routing is enabled"
+            )
         if not DEFAULT_WORKFLOW_VERSION:
             errors.append(
                 "DEFAULT_WORKFLOW_VERSION is required when default routing is enabled"

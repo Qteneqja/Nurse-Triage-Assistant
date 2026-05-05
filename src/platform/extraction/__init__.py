@@ -13,4 +13,3 @@ __all__ = [
     "ExtractionService",
     "get_extraction_service",
 ]
-

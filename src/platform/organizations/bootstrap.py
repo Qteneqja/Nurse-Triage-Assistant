@@ -133,7 +133,9 @@ def _get_or_create_organization(
     updated: list[str],
 ) -> OrganizationModel:
     organization = db.execute(
-        select(OrganizationModel).where(OrganizationModel.slug == settings.organization_slug)
+        select(OrganizationModel).where(
+            OrganizationModel.slug == settings.organization_slug
+        )
     ).scalar_one_or_none()
     if organization is None:
         organization = OrganizationModel(
@@ -283,5 +285,6 @@ def _normalize_phone(value: str | None) -> str | None:
 
 
 def _is_production() -> bool:
-    return os.getenv("APP_ENV") == "production" or os.getenv("ENVIRONMENT") == "production"
-
+    return (
+        os.getenv("APP_ENV") == "production" or os.getenv("ENVIRONMENT") == "production"
+    )

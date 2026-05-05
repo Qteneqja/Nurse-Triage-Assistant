@@ -158,7 +158,9 @@ class PostgresStorage(StorageInterface):
     def save_extraction(self, extraction: Any) -> None:
         """Persist a post-call structured extraction."""
         raw_output = getattr(extraction, "raw_model_output", None)
-        raw_output_json = {"raw": raw_output} if isinstance(raw_output, str) else raw_output
+        raw_output_json = (
+            {"raw": raw_output} if isinstance(raw_output, str) else raw_output
+        )
 
         with self._SessionFactory() as db:
             record = ConversationExtractionModel(

@@ -1,2 +1,1 @@
 """Vertical workflow modules."""
-
