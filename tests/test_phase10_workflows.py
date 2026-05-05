@@ -104,9 +104,12 @@ async def test_workflow_engine_initializes_default_registry_after_reset():
     mock_guarded = MagicMock()
     mock_guarded.call = AsyncMock()
 
-    with patch(
-        "src.orchestrator.orchestrator.get_guarded_llm", return_value=mock_guarded
-    ), patch("src.orchestrator.orchestrator._orchestrator", None):
+    with (
+        patch(
+            "src.orchestrator.orchestrator.get_guarded_llm", return_value=mock_guarded
+        ),
+        patch("src.orchestrator.orchestrator._orchestrator", None),
+    ):
         result = await WorkflowEngine().handle_turn(
             _context("engine-session"),
             WorkflowInput(user_text="I can't breathe at all", session_state={}),
