@@ -134,6 +134,11 @@ class HealthcareTriageWorkflow(BaseWorkflow):
                 "healthcare_intake_completeness": session.channel_metadata.get(
                     "healthcare_intake_completeness"
                 ),
+                "healthcare_finalization_blocked_reason": (
+                    session.channel_metadata.get(
+                        "healthcare_finalization_blocked_reason"
+                    )
+                ),
             },
         )
 

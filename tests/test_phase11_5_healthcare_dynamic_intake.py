@@ -22,6 +22,7 @@ from src.platform.workflows.schemas import (
     WorkflowTurnResult,
 )
 from src.verticals.healthcare.completeness import (
+    MIN_DYNAMIC_TURNS_BEFORE_ROUTINE_FINALIZE,
     evaluate_healthcare_intake_completeness,
 )
 from src.verticals.healthcare.constants import (
@@ -58,6 +59,20 @@ def _scripted_session(session_id: str = "hc-phase-11-5") -> OrchestratorSession:
     return session
 
 
+def _complete_healthcare_session(
+    session_id: str = "hc-complete",
+    *,
+    turn_count: int = 0,
+) -> OrchestratorSession:
+    session = _scripted_session(session_id)
+    session.turn_count = turn_count
+    session.intake_state.chief_complaint = "mild cough"
+    session.intake_state.onset_time = "two days ago"
+    session.intake_state.symptom_severity = "mild"
+    session.intake_state.relevant_history = ["no asthma or chronic lung disease"]
+    return session
+
+
 def _phase1(
     *,
     escalation_required: bool = False,
@@ -86,7 +101,7 @@ def _intake(
 ) -> IntakeTurnOutput:
     return IntakeTurnOutput(
         extracted_fields_update=patch or IntakeStatePatch(),
-        missing_fields_prioritized=missing or ["onset_time"],
+        missing_fields_prioritized=["onset_time"] if missing is None else missing,
         next_question=next_question,
         confidence=confidence,
         finalize_ready=finalize_ready,
@@ -137,6 +152,16 @@ async def test_noncritical_healthcare_call_continues_after_two_symptom_answers()
     assert second.should_continue is True
     assert second.should_finalize is False
     assert second.escalation_required is False
+    completeness = second.audit_metadata["healthcare_intake_completeness"]
+    assert completeness["is_complete"] is False
+    assert completeness["missing_items"] == ["associated_symptoms_or_relevant_history"]
+    assert completeness["minimum_dynamic_turns_met"] is False
+    assert completeness["dynamic_turn_count"] == 2
+    assert completeness["finalization_blocked_reason"] == "missing_clinical_items"
+    assert (
+        second.audit_metadata["healthcare_finalization_blocked_reason"]
+        == "missing_clinical_items"
+    )
     assert "nurse" not in second.assistant_text.lower()
     assert "connect" not in second.assistant_text.lower()
 
@@ -229,15 +254,68 @@ async def test_minimum_dynamic_turns_and_completeness_gate_blocks_finalize():
         session.channel_metadata["healthcare_intake_completeness"]["is_complete"]
         is False
     )
+    assert session.channel_metadata["healthcare_intake_completeness"][
+        "finalization_blocked_reason"
+    ] == "missing_clinical_items"
+    assert (
+        session.channel_metadata["healthcare_finalization_blocked_reason"]
+        == "missing_clinical_items"
+    )
 
 
 @pytest.mark.asyncio
-async def test_sufficient_information_finalizes_with_reason():
-    session = _scripted_session("hc-complete")
-    session.turn_count = 3
-    session.intake_state.onset_time = "two days ago"
-    session.intake_state.symptom_severity = "mild"
-    session.intake_state.relevant_history = ["no asthma or chronic lung disease"]
+@pytest.mark.parametrize(
+    ("confidence", "finalize_ready", "missing"),
+    [
+        (0.99, False, ["medications"]),
+        (0.60, True, ["medications"]),
+        (0.60, False, []),
+    ],
+)
+async def test_llm_soft_finalize_signals_do_not_override_minimum_dynamic_turns(
+    confidence,
+    finalize_ready,
+    missing,
+):
+    session = _complete_healthcare_session("hc-soft-signal-blocked", turn_count=1)
+
+    completeness = evaluate_healthcare_intake_completeness(session)
+    assert completeness.is_complete is False
+    assert completeness.minimum_dynamic_turns_met is False
+    assert completeness.missing_items == []
+    assert completeness.reason == "minimum_dynamic_turns_not_met"
+
+    mock_llm = MagicMock()
+    mock_llm.call = AsyncMock(
+        side_effect=[
+            _phase1(disposition=Phase1Disposition.SELF_CARE),
+            _intake(
+                patch=IntakeStatePatch(notes="No fever or breathing trouble reported."),
+                next_question="Do you have any other symptoms or medical history?",
+                missing=missing,
+                confidence=confidence,
+                finalize_ready=finalize_ready,
+            ),
+        ]
+    )
+    orch = Orchestrator(llm_client=mock_llm)
+    result = await orch.process_turn(session, "No fever or breathing trouble.")
+
+    assert result["action"] == "ask"
+    assert session.is_finalized is False
+    completeness_payload = session.channel_metadata["healthcare_intake_completeness"]
+    assert completeness_payload["is_complete"] is False
+    assert completeness_payload["missing_items"] == []
+    assert completeness_payload["minimum_dynamic_turns_met"] is False
+    assert (
+        completeness_payload["finalization_blocked_reason"]
+        == "minimum_dynamic_turns_not_met"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sufficient_information_finalizes_with_reason_after_hard_gates():
+    session = _complete_healthcare_session("hc-complete", turn_count=6)
 
     mock_llm = MagicMock()
     mock_llm.call = AsyncMock(
@@ -258,6 +336,14 @@ async def test_sufficient_information_finalizes_with_reason():
     assert result["action"] == "finalize"
     assert session.finalization_reason == "sufficient_information"
     assert session.decision_trace[-1].finalization_reason == "sufficient_information"
+    completeness_payload = session.channel_metadata["healthcare_intake_completeness"]
+    assert completeness_payload["is_complete"] is True
+    assert completeness_payload["missing_items"] == []
+    assert completeness_payload["minimum_dynamic_turns_met"] is True
+    assert completeness_payload["dynamic_turn_count"] >= (
+        MIN_DYNAMIC_TURNS_BEFORE_ROUTINE_FINALIZE
+    )
+    assert completeness_payload["finalization_blocked_reason"] is None
 
 
 @pytest.mark.asyncio
@@ -359,8 +445,13 @@ async def test_twilio_keeps_gathering_after_two_usable_dynamic_responses():
 
         with patch("src.twilio.routes.get_workflow_engine", return_value=engine):
             await _dynamic_turn("I have a mild cough.")
-            await _dynamic_turn("It started yesterday.")
+            second_body = await _dynamic_turn("It started yesterday.")
             body = await _dynamic_turn("It is mild, about two out of ten.")
+
+    second_lower_body = second_body.lower()
+    assert "<gather" in second_lower_body
+    assert "nurse" not in second_lower_body
+    assert "connecting" not in second_lower_body
 
     lower_body = body.lower()
     assert "<gather" in lower_body
