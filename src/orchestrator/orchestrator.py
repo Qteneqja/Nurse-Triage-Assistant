@@ -110,6 +110,7 @@ _HUMAN_REQUEST_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
         r"\b(?:talk|speak|connect)\s+(?:to|with)\s+a?\s*(?:nurse|human|agent|representative|person|someone)\b",
+        r"\b(?:connect)\s+me\s+(?:to|with)\s+a?\s*(?:nurse|human|agent|representative|person|someone)\b",
         r"\b(?:real|actual|live)\s+(?:person|human|nurse|agent)\b",
         r"\btransfer\s+(?:me|call)?\s*(?:to)?\b",
         r"\bstop\s+the\s+ai\b",
@@ -1694,6 +1695,65 @@ class Orchestrator:
             return False
         return True
 
+    def _record_healthcare_completeness(
+        self,
+        session: OrchestratorSession,
+        completeness,
+        finalization_blocked_reason: str | None = None,
+    ) -> None:
+        """Persist healthcare completeness audit metadata for downstream routes."""
+        completeness_payload = {
+            "is_complete": completeness.is_complete,
+            "missing_items": completeness.missing_items,
+            "reason": completeness.reason,
+            "minimum_dynamic_turns_met": completeness.minimum_dynamic_turns_met,
+            "dynamic_turn_count": completeness.dynamic_turn_count,
+            "finalization_blocked_reason": finalization_blocked_reason,
+        }
+        session.channel_metadata["healthcare_intake_completeness"] = (
+            completeness_payload
+        )
+        if finalization_blocked_reason:
+            session.channel_metadata["healthcare_finalization_blocked_reason"] = (
+                finalization_blocked_reason
+            )
+        else:
+            session.channel_metadata.pop("healthcare_finalization_blocked_reason", None)
+
+    def _block_routine_finalization(
+        self,
+        session: OrchestratorSession,
+        completeness,
+        reason: str,
+    ) -> None:
+        self._record_healthcare_completeness(
+            session,
+            completeness,
+            finalization_blocked_reason=reason,
+        )
+        logger.info(
+            "[ORCH] Not finalizing: %s "
+            "(completeness_reason=%s, missing=%s, turns=%s, minimum_met=%s)",
+            reason,
+            completeness.reason,
+            completeness.missing_items,
+            completeness.dynamic_turn_count,
+            completeness.minimum_dynamic_turns_met,
+        )
+        if session.audit_trace is not None:
+            session.audit_trace.add_entry(
+                step="healthcare_intake_completeness",
+                agent="orchestrator",
+                output_summary=(
+                    f"complete={completeness.is_complete}, "
+                    f"reason={completeness.reason}, "
+                    f"blocked={reason}, "
+                    f"missing={completeness.missing_items}, "
+                    f"minimum_met={completeness.minimum_dynamic_turns_met}, "
+                    f"turns={completeness.dynamic_turn_count}"
+                ),
+            )
+
     def _finalization_reason(
         self,
         session: OrchestratorSession,
@@ -1706,36 +1766,31 @@ class Orchestrator:
             return "max_turns"
 
         completeness = evaluate_healthcare_intake_completeness(session)
-        completeness_payload = {
-            "is_complete": completeness.is_complete,
-            "missing_items": completeness.missing_items,
-            "reason": completeness.reason,
-            "minimum_dynamic_turns_met": completeness.minimum_dynamic_turns_met,
-            "dynamic_turn_count": completeness.dynamic_turn_count,
-        }
-        session.channel_metadata["healthcare_intake_completeness"] = (
-            completeness_payload
-        )
-
         if not completeness.is_complete:
-            logger.info(
-                "[ORCH] Not finalizing: healthcare intake incomplete "
-                "(reason=%s, missing=%s, turns=%s)",
+            self._block_routine_finalization(
+                session,
+                completeness,
                 completeness.reason,
-                completeness.missing_items,
-                completeness.dynamic_turn_count,
             )
-            if session.audit_trace is not None:
-                session.audit_trace.add_entry(
-                    step="healthcare_intake_completeness",
-                    agent="orchestrator",
-                    output_summary=(
-                        f"complete=false, reason={completeness.reason}, "
-                        f"missing={completeness.missing_items}, "
-                        f"turns={completeness.dynamic_turn_count}"
-                    ),
-                )
             return None
+
+        if session.turn_count < self._MIN_TURNS_BEFORE_FINALIZE:
+            self._block_routine_finalization(
+                session,
+                completeness,
+                "minimum_dynamic_turns_not_met",
+            )
+            return None
+
+        if not self._sbar_fields_complete(session):
+            self._block_routine_finalization(
+                session,
+                completeness,
+                "sbar_fields_incomplete",
+            )
+            return None
+
+        self._record_healthcare_completeness(session, completeness)
 
         if intake_output.confidence >= session.confidence_threshold:
             logger.info(
@@ -1759,71 +1814,8 @@ class Orchestrator:
         session: OrchestratorSession,
         intake_output: IntakeTurnOutput,
     ) -> bool:
-        """Determine whether to stop questioning and finalize.
-
-        Hard gates (must pass before any finalization):
-        1. Minimum turn count (prevents premature cut-off)
-        2. Required SBAR fields populated
-
-        Then finalize if any of:
-        - LLM confidence >= threshold
-        - LLM explicitly signals readiness (finalize_ready)
-        - Max turns reached (always finalizes — safety net)
-        - No missing fields reported by LLM
-
-        Args:
-            session: Current session.
-            intake_output: Latest intake turn output.
-
-        Returns:
-            True if should finalize.
-        """
-        # ── Hard gate: max turns always forces finalize (safety net) ──
-        if session.turn_count >= session.max_turns:
-            logger.info(f"[ORCH] Finalizing: max turns ({session.max_turns}) reached")
-            return True
-
-        # ── Hard gate: minimum turn count ─────────────────────────────
-        if session.turn_count < self._MIN_TURNS_BEFORE_FINALIZE:
-            logger.debug(
-                f"[ORCH] Not finalizing: turn {session.turn_count} "
-                f"< minimum {self._MIN_TURNS_BEFORE_FINALIZE}"
-            )
-            return False
-
-        # ── Hard gate: required SBAR fields ───────────────────────────
-        if not self._sbar_fields_complete(session):
-            logger.debug(
-                "[ORCH] Not finalizing: required SBAR fields still missing "
-                f"(chief={bool(session.intake_state.chief_complaint)}, "
-                f"onset={bool(session.intake_state.onset_time)}, "
-                f"severity={session.intake_state.symptom_severity}, "
-                f"history={session.intake_state.relevant_history is not None}, "
-                f"meds={session.intake_state.meds is not None}, "
-                f"allergies={session.intake_state.allergies is not None})"
-            )
-            return False
-
-        # ── Soft signals (only after hard gates pass) ─────────────────
-        # Confidence threshold
-        if intake_output.confidence >= session.confidence_threshold:
-            logger.info(
-                f"[ORCH] Finalizing: confidence {intake_output.confidence:.2f} "
-                f">= threshold {session.confidence_threshold}"
-            )
-            return True
-
-        # LLM explicitly signals readiness
-        if intake_output.finalize_ready:
-            logger.info("[ORCH] Finalizing: LLM set finalize_ready=True")
-            return True
-
-        # No missing fields
-        if not intake_output.missing_fields_prioritized:
-            logger.info("[ORCH] Finalizing: no missing fields reported by LLM")
-            return True
-
-        return False
+        """Compatibility wrapper for the single finalization decision path."""
+        return self._finalization_reason(session, intake_output) is not None
 
     # ------------------------------------------------------------------ #
     # Fallback helpers

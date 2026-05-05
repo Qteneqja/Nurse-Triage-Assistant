@@ -58,21 +58,22 @@ def evaluate_healthcare_intake_completeness(
 ) -> HealthcareIntakeCompleteness:
     """Evaluate whether a healthcare session has enough intake data to finalize.
 
-    The minimum turn threshold is advisory when all clinical core fields are
-    clearly collected: a caller who gives a concise, complete history should
-    not be forced through artificial extra turns. If fields are still missing,
-    the threshold keeps the system gathering instead of handing off early.
+    The minimum turn threshold is a hard routine-finalization gate. Emergency
+    and red-flag escalation is handled before this check by the orchestrator;
+    non-emergency calls must keep gathering until both the minimum turn count
+    and clinical core fields are satisfied.
     """
 
     state = session.intake_state
     missing = _missing_clinical_items(state)
     dynamic_turn_count = session.turn_count
     minimum_met = dynamic_turn_count >= MIN_DYNAMIC_TURNS_BEFORE_ROUTINE_FINALIZE
-    is_complete = not missing
+    fields_complete = not missing
+    is_complete = minimum_met and fields_complete
 
     if is_complete:
         reason = "complete"
-    elif not minimum_met:
+    elif fields_complete and not minimum_met:
         reason = "minimum_dynamic_turns_not_met"
     else:
         reason = "missing_clinical_items"
