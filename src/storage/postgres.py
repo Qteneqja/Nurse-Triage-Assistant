@@ -192,14 +192,24 @@ class PostgresStorage(StorageInterface):
     def load_session_by_call(self, call_sid: str) -> Optional[OrchestratorSession]:
         with self._SessionFactory() as db:
             db_session = db.execute(
-                select(TriageSessionModel).where(
+                select(TriageSessionModel)
+                .where(
                     TriageSessionModel.caller_id == call_sid,
                     TriageSessionModel.deleted_at.is_(None),
-                    TriageSessionModel.status == "active",
                 )
+                .order_by(TriageSessionModel.created_at.desc())
+                .limit(1)
             ).scalar_one_or_none()
             if db_session is None:
                 return None
+            if db_session.status != "active":
+                logger.warning(
+                    "[PostgresStorage] Loading non-active session %s for call %s "
+                    "(status=%s)",
+                    db_session.session_id,
+                    call_sid,
+                    db_session.status,
+                )
             return self._deserialize_session(db_session)
 
     def _deserialize_session(
