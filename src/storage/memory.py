@@ -80,6 +80,8 @@ class InMemoryOrchestratorStorage(StorageInterface):
     def save_session(self, session: OrchestratorSession) -> None:
         """Persist session (in-memory = just update dict)."""
         self._sessions[session.session_id] = session
+        if session.call_sid:
+            self._call_index[session.call_sid] = session.session_id
         # refresh TTL
         self._expiry[session.session_id] = datetime.now(UTC) + timedelta(
             minutes=SESSION_TTL_MINUTES

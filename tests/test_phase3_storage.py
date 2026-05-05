@@ -253,6 +253,42 @@ class TestPostgresStorageCRUD:
         assert loaded.session_id == session.session_id
         assert loaded.call_sid == "CALL-ID-DRIFT"
 
+    def test_load_session_by_call_repairs_channel_and_caller_id_drift(
+        self, postgres_storage
+    ):
+        """Fallback recovery should repair DB fields used by later Twilio gathers."""
+        session = postgres_storage.create_session(call_sid="CALL-CHANNEL-DRIFT")
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            record.caller_id = None
+            record.channel = None
+            db.commit()
+
+        loaded = postgres_storage.load_session_by_call("CALL-CHANNEL-DRIFT")
+
+        assert loaded is not None
+        assert loaded.session_id == session.session_id
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            assert record.caller_id == "CALL-CHANNEL-DRIFT"
+            assert record.channel == "twilio"
+
+    def test_load_session_by_call_scans_past_recent_records(self, postgres_storage):
+        """A busy app should still recover an older active call from metadata."""
+        session = postgres_storage.create_session(call_sid="CALL-DEEP-FALLBACK")
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            record.caller_id = None
+            db.commit()
+
+        for idx in range(75):
+            postgres_storage.create_session(call_sid=f"CALL-FILLER-{idx}")
+
+        loaded = postgres_storage.load_session_by_call("CALL-DEEP-FALLBACK")
+
+        assert loaded is not None
+        assert loaded.session_id == session.session_id
+
     def test_save_session_restores_caller_id(self, postgres_storage):
         """Persisting a Twilio session should keep caller_id queryable."""
         session = postgres_storage.create_session(call_sid="CALL-RESTORE-ID")
