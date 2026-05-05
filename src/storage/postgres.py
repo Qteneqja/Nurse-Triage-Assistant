@@ -247,7 +247,9 @@ class PostgresStorage(StorageInterface):
         ).scalars()
         for record in records:
             metadata = record.metadata_json or {}
-            state = metadata.get("session_state") if isinstance(metadata, dict) else None
+            state = (
+                metadata.get("session_state") if isinstance(metadata, dict) else None
+            )
             if isinstance(state, dict) and state.get("call_sid") == call_sid:
                 logger.warning(
                     "[PostgresStorage] Recovered session %s for call %s via "

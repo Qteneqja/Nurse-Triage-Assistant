@@ -254,9 +254,12 @@ async def test_minimum_dynamic_turns_and_completeness_gate_blocks_finalize():
         session.channel_metadata["healthcare_intake_completeness"]["is_complete"]
         is False
     )
-    assert session.channel_metadata["healthcare_intake_completeness"][
-        "finalization_blocked_reason"
-    ] == "missing_clinical_items"
+    assert (
+        session.channel_metadata["healthcare_intake_completeness"][
+            "finalization_blocked_reason"
+        ]
+        == "missing_clinical_items"
+    )
     assert (
         session.channel_metadata["healthcare_finalization_blocked_reason"]
         == "missing_clinical_items"
