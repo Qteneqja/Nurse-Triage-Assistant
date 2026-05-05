@@ -240,9 +240,7 @@ class TestPostgresStorageCRUD:
         assert loaded.session_id == session.session_id
         assert loaded.is_finalized is False
 
-    def test_load_session_by_call_recovers_from_caller_id_drift(
-        self, postgres_storage
-    ):
+    def test_load_session_by_call_recovers_from_caller_id_drift(self, postgres_storage):
         """Serialized call_sid fallback keeps Twilio calls alive if caller_id drifts."""
         session = postgres_storage.create_session(call_sid="CALL-ID-DRIFT")
         with postgres_storage._SessionFactory() as db:
