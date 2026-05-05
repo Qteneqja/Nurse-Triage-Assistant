@@ -266,6 +266,52 @@ async def test_minimum_dynamic_turns_and_completeness_gate_blocks_finalize():
     )
 
 
+def test_healthcare_completeness_accepts_diffuse_abdominal_location():
+    session = _complete_healthcare_session(
+        "hc-diffuse-abdominal",
+        turn_count=MIN_DYNAMIC_TURNS_BEFORE_ROUTINE_FINALIZE,
+    )
+    session.intake_state.chief_complaint = "diffuse sharp abdominal pain"
+    session.intake_state.location = None
+    session.intake_state.relevant_history = ["diarrhea"]
+    session.intake_state.meds = ["Gravol Ginger"]
+
+    completeness = evaluate_healthcare_intake_completeness(session)
+
+    assert completeness.is_complete is True
+    assert "location" not in completeness.missing_items
+
+
+@pytest.mark.asyncio
+async def test_healthcare_missing_location_forces_location_followup():
+    session = _complete_healthcare_session(
+        "hc-location-followup",
+        turn_count=MIN_DYNAMIC_TURNS_BEFORE_ROUTINE_FINALIZE,
+    )
+    session.intake_state.chief_complaint = "sharp pain"
+    session.intake_state.location = None
+    session.intake_state.relevant_history = ["diarrhea"]
+
+    mock_llm = MagicMock()
+    mock_llm.call = AsyncMock(
+        side_effect=[
+            _phase1(disposition=Phase1Disposition.HUMAN_REVIEW),
+            _intake(
+                next_question="Are you taking any medications?",
+                missing=["location"],
+                confidence=0.85,
+            ),
+        ]
+    )
+    orch = Orchestrator(llm_client=mock_llm)
+
+    result = await orch.process_turn(session, "Just diarrhea.")
+
+    assert result["action"] == "ask"
+    assert "where exactly" in result["message"].lower()
+    assert session.decision_trace[-1].system_response == result["message"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("confidence", "finalize_ready", "missing"),
@@ -501,37 +547,9 @@ async def test_twilio_recovers_missing_session_instead_of_expiring_after_symptom
             workflow_version=HEALTHCARE_TRIAGE_VERSION,
         )
 
-        engine = MagicMock()
-
-        async def _handle_turn(context, workflow_input):
-            updated = OrchestratorSession.model_validate(workflow_input.session_state)
-            updated.turn_count += 1
-            updated.channel_metadata["stage"] = twilio_routes.STAGE_DYNAMIC
-            updated.intake_state.chief_complaint = "stomach pain"
-            assistant_text = "When did the stomach pain start?"
-            updated.conversation.append(
-                ConversationTurn(role="assistant", text=assistant_text)
-            )
-            return WorkflowTurnResult(
-                assistant_text=assistant_text,
-                stage=twilio_routes.STAGE_DYNAMIC,
-                should_continue=True,
-                should_finalize=False,
-                escalation_required=False,
-                recommended_disposition="UNDECIDED",
-                confidence_score=0.7,
-                updated_state=updated.model_dump(mode="json"),
-                audit_metadata={"finalization_reason": None},
-            )
-
-        engine.handle_turn = AsyncMock(side_effect=_handle_turn)
-
-        with (
-            patch(
-                "src.twilio.routes.get_workflow_route_resolver",
-                return_value=route_resolver,
-            ),
-            patch("src.twilio.routes.get_workflow_engine", return_value=engine),
+        with patch(
+            "src.twilio.routes.get_workflow_route_resolver",
+            return_value=route_resolver,
         ):
             response = await twilio_routes.handle_gather(
                 SimpleNamespace(headers={}),
@@ -543,26 +561,47 @@ async def test_twilio_recovers_missing_session_instead_of_expiring_after_symptom
             body = response.body.decode().lower()
             assert "session has expired" not in body
             assert "technical error" not in body
-            assert "/api/v1/voice/thinking" in body
+            assert "<gather" in body
+            assert "full name" in body
 
             recovered = repo.load_session_by_call("CA-HC-MISSING-SESSION")
             assert recovered is not None
-            assert recovered.channel_metadata["stage"] == twilio_routes.STAGE_DYNAMIC
+            assert recovered.channel_metadata["stage"] == twilio_routes.STAGE_NAME
+            assert recovered.intake_state.chief_complaint == "my stomach hurts"
             assert recovered.channel_metadata["session_recovery"]["reason"] == (
                 "missing_session_during_gather"
             )
+            assert (
+                "chief_complaint"
+                in recovered.channel_metadata["scripted_intake"]["fields"]
+            )
 
-            task, _ = twilio_routes._pending_turns["CA-HC-MISSING-SESSION"]
-            await task
-            thinking_response = await twilio_routes.handle_thinking(
+            await twilio_routes.handle_gather(
                 SimpleNamespace(headers={}),
                 BackgroundTasks(),
                 CallSid="CA-HC-MISSING-SESSION",
+                SpeechResult="Jane Doe",
             )
+            await twilio_routes.handle_gather(
+                SimpleNamespace(headers={}),
+                BackgroundTasks(),
+                CallSid="CA-HC-MISSING-SESSION",
+                SpeechResult="26",
+            )
+            sex_response = await twilio_routes.handle_gather(
+                SimpleNamespace(headers={}),
+                BackgroundTasks(),
+                CallSid="CA-HC-MISSING-SESSION",
+                SpeechResult="male",
+            )
+            sex_body = sex_response.body.decode().lower()
+            assert "when did this symptom first start" in sex_body
 
-    thinking_body = thinking_response.body.decode().lower()
-    assert "<gather" in thinking_body
-    assert "when did the stomach pain start" in thinking_body
-    assert "nurse" not in thinking_body
+            recovered = repo.load_session_by_call("CA-HC-MISSING-SESSION")
+            assert recovered.intake_state.caller_name == "Jane Doe"
+            assert recovered.intake_state.caller_age == 26
+            assert recovered.intake_state.caller_sex == "male"
+            assert recovered.intake_state.chief_complaint == "my stomach hurts"
+            assert recovered.channel_metadata["stage"] == twilio_routes.STAGE_DYNAMIC
+
     route_resolver.resolve.assert_called_once_with(called_phone_number="+15551234567")
-    assert engine.handle_turn.await_count == 1
