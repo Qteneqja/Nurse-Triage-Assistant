@@ -240,6 +240,35 @@ class TestPostgresStorageCRUD:
         assert loaded.session_id == session.session_id
         assert loaded.is_finalized is False
 
+    def test_load_session_by_call_recovers_from_caller_id_drift(
+        self, postgres_storage
+    ):
+        """Serialized call_sid fallback keeps Twilio calls alive if caller_id drifts."""
+        session = postgres_storage.create_session(call_sid="CALL-ID-DRIFT")
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            record.caller_id = None
+            db.commit()
+
+        loaded = postgres_storage.load_session_by_call("CALL-ID-DRIFT")
+        assert loaded is not None
+        assert loaded.session_id == session.session_id
+        assert loaded.call_sid == "CALL-ID-DRIFT"
+
+    def test_save_session_restores_caller_id(self, postgres_storage):
+        """Persisting a Twilio session should keep caller_id queryable."""
+        session = postgres_storage.create_session(call_sid="CALL-RESTORE-ID")
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            record.caller_id = None
+            db.commit()
+
+        postgres_storage.save_session(session)
+
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            assert record.caller_id == "CALL-RESTORE-ID"
+
     def test_load_nonexistent(self, postgres_storage):
         """load_session returns None for unknown ID."""
         assert postgres_storage.load_session("nonexistent") is None
