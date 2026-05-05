@@ -113,10 +113,16 @@ class PostgresStorage(StorageInterface):
         with self._SessionFactory() as db:
             db_session = db.get(TriageSessionModel, session.session_id)
             if db_session is None:
-                db_session = TriageSessionModel(session_id=session.session_id)
+                db_session = TriageSessionModel(
+                    session_id=session.session_id,
+                    caller_id=session.call_sid,
+                    channel="twilio" if session.call_sid else "api",
+                )
                 db.add(db_session)
 
             db_session.updated_at = datetime.now(timezone.utc)
+            if session.call_sid:
+                db_session.caller_id = session.call_sid
             db_session.status = self._compute_status(session)
             db_session.organization_id = session.organization_id
             db_session.vertical_key = session.vertical_key
@@ -191,15 +197,9 @@ class PostgresStorage(StorageInterface):
 
     def load_session_by_call(self, call_sid: str) -> Optional[OrchestratorSession]:
         with self._SessionFactory() as db:
-            db_session = db.execute(
-                select(TriageSessionModel)
-                .where(
-                    TriageSessionModel.caller_id == call_sid,
-                    TriageSessionModel.deleted_at.is_(None),
-                )
-                .order_by(TriageSessionModel.created_at.desc())
-                .limit(1)
-            ).scalar_one_or_none()
+            db_session = self._load_session_record_by_call(db, call_sid)
+            if db_session is None:
+                db_session = self._load_session_record_by_metadata_call(db, call_sid)
             if db_session is None:
                 return None
             if db_session.status != "active":
@@ -210,7 +210,53 @@ class PostgresStorage(StorageInterface):
                     call_sid,
                     db_session.status,
                 )
-            return self._deserialize_session(db_session)
+            session = self._deserialize_session(db_session)
+            if session and not session.call_sid:
+                session.call_sid = call_sid
+            return session
+
+    def _load_session_record_by_call(
+        self,
+        db: SASession,
+        call_sid: str,
+    ) -> TriageSessionModel | None:
+        return db.execute(
+            select(TriageSessionModel)
+            .where(
+                TriageSessionModel.caller_id == call_sid,
+                TriageSessionModel.deleted_at.is_(None),
+            )
+            .order_by(TriageSessionModel.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+    def _load_session_record_by_metadata_call(
+        self,
+        db: SASession,
+        call_sid: str,
+    ) -> TriageSessionModel | None:
+        """Fallback for rare caller_id drift while preserving Twilio continuity."""
+        records = db.execute(
+            select(TriageSessionModel)
+            .where(
+                TriageSessionModel.channel == "twilio",
+                TriageSessionModel.deleted_at.is_(None),
+            )
+            .order_by(TriageSessionModel.created_at.desc())
+            .limit(50)
+        ).scalars()
+        for record in records:
+            metadata = record.metadata_json or {}
+            state = metadata.get("session_state") if isinstance(metadata, dict) else None
+            if isinstance(state, dict) and state.get("call_sid") == call_sid:
+                logger.warning(
+                    "[PostgresStorage] Recovered session %s for call %s via "
+                    "serialized call_sid fallback",
+                    record.session_id,
+                    call_sid,
+                )
+                return record
+        return None
 
     def _deserialize_session(
         self, db_session: TriageSessionModel
