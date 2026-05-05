@@ -27,4 +27,3 @@ class HealthcareExtractionSchema(BaseModel):
         ]
     )
     dispositions: list[str] = Field(default_factory=lambda: HEALTHCARE_DISPOSITIONS)
-

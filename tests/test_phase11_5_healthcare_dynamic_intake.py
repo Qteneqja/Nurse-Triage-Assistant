@@ -225,9 +225,10 @@ async def test_minimum_dynamic_turns_and_completeness_gate_blocks_finalize():
 
     assert result["action"] == "ask"
     assert session.is_finalized is False
-    assert session.channel_metadata["healthcare_intake_completeness"][
-        "is_complete"
-    ] is False
+    assert (
+        session.channel_metadata["healthcare_intake_completeness"]["is_complete"]
+        is False
+    )
 
 
 @pytest.mark.asyncio

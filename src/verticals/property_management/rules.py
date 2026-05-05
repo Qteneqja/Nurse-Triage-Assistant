@@ -130,20 +130,33 @@ def _normalize_text(value: str) -> str:
 
 
 def _has_minimum_issue_detail(intake: MaintenanceIntake) -> bool:
-    return bool((intake.issue_type or "").strip() or (intake.issue_description or "").strip())
+    return bool(
+        (intake.issue_type or "").strip() or (intake.issue_description or "").strip()
+    )
 
 
 def _emergency_match(text: str) -> tuple[str, str, str] | None:
     rules = [
         (
             "active_flooding",
-            ["active flooding", "flooding", "major leak", "water pouring", "burst pipe"],
+            [
+                "active flooding",
+                "flooding",
+                "major leak",
+                "water pouring",
+                "burst pipe",
+            ],
             "Active flooding or uncontrolled water intrusion.",
             "plumbing",
         ),
         (
             "no_heat_cold_weather",
-            ["no heat in winter", "no heat and cold", "no heat freezing", "no heat below freezing"],
+            [
+                "no heat in winter",
+                "no heat and cold",
+                "no heat freezing",
+                "no heat below freezing",
+            ],
             "No heat reported in winter or cold conditions.",
             "hvac",
         ),
@@ -191,7 +204,12 @@ def _emergency_match(text: str) -> tuple[str, str, str] | None:
         ),
         (
             "structural_collapse",
-            ["structural collapse", "ceiling collapse", "wall collapsed", "roof collapse"],
+            [
+                "structural collapse",
+                "ceiling collapse",
+                "wall collapsed",
+                "roof collapse",
+            ],
             "Possible structural collapse reported.",
             "emergency_services",
         ),
@@ -242,7 +260,12 @@ def _same_day_match(text: str) -> tuple[str, str, str] | None:
         ),
         (
             "exterior_security",
-            ["broken exterior door", "broken window", "window won't lock", "door won't lock"],
+            [
+                "broken exterior door",
+                "broken window",
+                "window won't lock",
+                "door won't lock",
+            ],
             "Exterior door or window security concern.",
             "general_maintenance",
         ),

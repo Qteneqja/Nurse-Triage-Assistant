@@ -117,7 +117,9 @@ class HealthcareTriageWorkflow(BaseWorkflow):
             recommended_disposition=recommended_disposition,
             confidence_score=confidence_score,
             rules_triggered=rules_triggered,
-            safety_events=[flag.model_dump(mode="json") for flag in session.safety_flags],
+            safety_events=[
+                flag.model_dump(mode="json") for flag in session.safety_flags
+            ],
             updated_state=session.model_dump(mode="json"),
             audit_metadata={
                 "legacy_action": action,
@@ -268,7 +270,7 @@ class HealthcareTriageWorkflow(BaseWorkflow):
                     timeout_seconds=10,
                     sensitivity="phi",
                 ),
-            ]
+            ],
         )
 
     def _load_session(
@@ -299,7 +301,9 @@ class HealthcareTriageWorkflow(BaseWorkflow):
                 "organization_id", context.organization_id
             )
         if context.phone_number_id:
-            session.channel_metadata.setdefault("phone_number_id", context.phone_number_id)
+            session.channel_metadata.setdefault(
+                "phone_number_id", context.phone_number_id
+            )
         return session
 
     def _get_orchestrator(self) -> Orchestrator:

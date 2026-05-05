@@ -528,7 +528,9 @@ async def _generate_initial_scripted_twiml(
         if question_url
         else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(prompt)}</Say>'
     )
-    hints_attr = f' hints="{saxutils.escape(first_stage.hints)}"' if first_stage.hints else ""
+    hints_attr = (
+        f' hints="{saxutils.escape(first_stage.hints)}"' if first_stage.hints else ""
+    )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     {intro_tag}
@@ -667,10 +669,14 @@ def _parse_scripted_answer(
     if store_key == "caller_name" or field_type == "name":
         if _looks_like_name(raw):
             return True, raw, None
-        return False, None, (
-            stage.reprompt_text
-            or "I'm sorry, I didn't quite catch your name. "
-            "Could you please say just your first and last name?"
+        return (
+            False,
+            None,
+            (
+                stage.reprompt_text
+                or "I'm sorry, I didn't quite catch your name. "
+                "Could you please say just your first and last name?"
+            ),
         )
 
     if field_type in {"integer", "number"}:
@@ -814,9 +820,7 @@ async def handle_incoming_call(
         workflow = ensure_default_workflows_registered().get(route.workflow_id)
         intake = workflow.get_scripted_intake_definition()
         first_stage = (
-            _initialize_scripted_intake(session, intake)
-            if intake is not None
-            else None
+            _initialize_scripted_intake(session, intake) if intake is not None else None
         )
         first_question = (
             _stage_prompt(first_stage)
@@ -832,7 +836,9 @@ async def handle_incoming_call(
 
         # Store greeting in conversation
         if greeting:
-            session.conversation.append(ConversationTurn(role="assistant", text=greeting))
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=greeting)
+            )
 
         # Move to NAME stage
         session.channel_metadata.setdefault(
@@ -1249,7 +1255,8 @@ def _build_workflow_context(
         session_id=session.session_id,
         organization_id=session.organization_id
         or route_metadata.get("organization_id"),
-        phone_number_id=session.phone_number_id or route_metadata.get("phone_number_id"),
+        phone_number_id=session.phone_number_id
+        or route_metadata.get("phone_number_id"),
         call_sid=session.call_sid,
         vertical=session.vertical_key or "healthcare",
         workflow_id=session.workflow_id or "healthcare_triage_v1",

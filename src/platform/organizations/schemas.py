@@ -30,4 +30,3 @@ class PhoneNumberRoute(BaseModel):
     workflow_version: str
     e164_number: str
     config_json: dict[str, Any] = Field(default_factory=dict)
-

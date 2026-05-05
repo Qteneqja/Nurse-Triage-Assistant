@@ -673,9 +673,7 @@ class Orchestrator:
                     transfer_reason=gate_decision.transfer_reason,
                     override_applied=gate_decision.override_applied,
                     finalization_reason=(
-                        gate_decision.transfer_reason
-                        if is_escalating
-                        else None
+                        gate_decision.transfer_reason if is_escalating else None
                     ),
                 )
 
@@ -977,9 +975,7 @@ class Orchestrator:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=escalation_msg)
             )
-            self._mark_finalized(
-                session, "post_check_safety_failure", correlation_id
-            )
+            self._mark_finalized(session, "post_check_safety_failure", correlation_id)
             self._append_trace(
                 session=session,
                 user_text=caller_utterance,
@@ -1084,9 +1080,7 @@ class Orchestrator:
                     ConversationTurn(role="assistant", text=escalation_msg)
                 )
                 red_flag_reason = (
-                    "red_flag_score_threshold"
-                    if rf_score >= 8
-                    else "critical_red_flag"
+                    "red_flag_score_threshold" if rf_score >= 8 else "critical_red_flag"
                 )
                 self._mark_finalized(session, red_flag_reason, correlation_id)
                 self._append_trace(

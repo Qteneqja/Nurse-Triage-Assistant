@@ -26,4 +26,3 @@ class ExtractionResult(BaseModel):
     confidence_score: float = Field(default=0.0, ge=0.0, le=1.0)
     raw_model_output: dict[str, Any] | str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-

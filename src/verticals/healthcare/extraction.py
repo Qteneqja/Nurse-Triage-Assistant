@@ -40,7 +40,9 @@ class HealthcareExtractionAgent(BaseExtractionAgent):
             "confidence_score": final_result.confidence_score,
             "escalation_required": final_result.final_disposition
             in {"ER_NOW", "URGENT", "HUMAN_REVIEW"},
-            "sbar_available": bool(structured.get("sbar_report") or structured.get("sbar")),
+            "sbar_available": bool(
+                structured.get("sbar_report") or structured.get("sbar")
+            ),
             "call_duration": _call_duration(workflow_context.metadata),
             "transcript_turn_count": _transcript_turn_count(transcript),
         }
@@ -115,4 +117,3 @@ def _dedupe(values: list[str]) -> list[str]:
             seen.add(value)
             out.append(value)
     return out
-

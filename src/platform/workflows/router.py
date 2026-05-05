@@ -25,8 +25,7 @@ class RoutingRepository(Protocol):
 
     def resolve_active_phone_number(
         self, e164_number: str
-    ) -> ResolvedWorkflowRoute | None:
-        ...
+    ) -> ResolvedWorkflowRoute | None: ...
 
 
 class WorkflowRouteResolver:

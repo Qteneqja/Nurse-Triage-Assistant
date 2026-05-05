@@ -21,4 +21,3 @@ HEALTHCARE_REQUIRED_FIELDS = [
     "caller_sex",
     "chief_complaint",
 ]
-
