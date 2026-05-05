@@ -901,6 +901,18 @@ async def handle_gather(
             )
             return Response(content=twiml, media_type="application/xml")
 
+        if session.is_finalized:
+            logger.warning(
+                "[TWILIO] Gather received after finalized session %s for call %s",
+                session.session_id,
+                CallSid,
+            )
+            twiml = await generate_twiml_say_and_hangup(
+                "This call has already been completed. "
+                "If you need more help, please call back."
+            )
+            return Response(content=twiml, media_type="application/xml")
+
         session_id = session.session_id
 
         # Handle empty speech result

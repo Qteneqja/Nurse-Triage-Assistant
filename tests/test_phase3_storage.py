@@ -225,6 +225,21 @@ class TestPostgresStorageCRUD:
         assert loaded is not None
         assert loaded.session_id == session.session_id
 
+    def test_load_session_by_call_tolerates_non_active_db_status(
+        self, postgres_storage
+    ):
+        """Twilio gathers should recover from DB status/session-state drift."""
+        session = postgres_storage.create_session(call_sid="CALL-STATUS-DRIFT")
+        with postgres_storage._SessionFactory() as db:
+            record = db.get(TriageSessionModel, session.session_id)
+            record.status = "ended"
+            db.commit()
+
+        loaded = postgres_storage.load_session_by_call("CALL-STATUS-DRIFT")
+        assert loaded is not None
+        assert loaded.session_id == session.session_id
+        assert loaded.is_finalized is False
+
     def test_load_nonexistent(self, postgres_storage):
         """load_session returns None for unknown ID."""
         assert postgres_storage.load_session("nonexistent") is None
