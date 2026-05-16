@@ -260,9 +260,11 @@ class PostgresStorage(StorageInterface):
     def list_organizations(self) -> list[Any]:
         """Return organization rows for admin/dashboard read models."""
         with self._SessionFactory() as db:
-            organizations = db.execute(
-                select(OrganizationModel).order_by(OrganizationModel.name)
-            ).scalars().all()
+            organizations = (
+                db.execute(select(OrganizationModel).order_by(OrganizationModel.name))
+                .scalars()
+                .all()
+            )
             rows: list[dict[str, Any]] = []
             for organization in organizations:
                 verticals: set[str] = set()

@@ -395,9 +395,7 @@ def test_admin_dashboard_shell_and_routes_load(monkeypatch):
         "org-1",
         "org-2",
     }
-    assert {
-        workflow["workflow_id"] for workflow in workflows.json()
-    } >= {
+    assert {workflow["workflow_id"] for workflow in workflows.json()} >= {
         "healthcare_triage_v1",
         "property_management_maintenance_v1",
     }

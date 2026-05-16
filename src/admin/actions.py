@@ -167,7 +167,9 @@ def reset_proposed_action_service() -> None:
 def _is_finalized_enough_for_actions(session: OrchestratorSession) -> bool:
     if session.is_finalized:
         return True
-    return bool(session.finalize_output or session.channel_metadata.get("workflow_final_result"))
+    return bool(
+        session.finalize_output or session.channel_metadata.get("workflow_final_result")
+    )
 
 
 def _vertical_key(session: OrchestratorSession) -> str | None:
