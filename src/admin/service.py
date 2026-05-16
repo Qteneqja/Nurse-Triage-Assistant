@@ -279,10 +279,9 @@ class AdminDashboardService:
         final_output: dict[str, Any] | None,
     ) -> AuditMetadata:
         workflow_audit = _workflow_audit_metadata(final_output)
-        healthcare_completeness = (
-            session.channel_metadata.get("healthcare_intake_completeness")
-            or workflow_audit.get("healthcare_intake_completeness")
-        )
+        healthcare_completeness = session.channel_metadata.get(
+            "healthcare_intake_completeness"
+        ) or workflow_audit.get("healthcare_intake_completeness")
         blocked_reason = (
             session.channel_metadata.get("healthcare_finalization_blocked_reason")
             or workflow_audit.get("healthcare_finalization_blocked_reason")
@@ -322,7 +321,9 @@ class AdminDashboardService:
             (final_output or {}).get("sbar")
             or structured.get("sbar")
             or structured.get("sbar_report")
-            or (session.finalize_output.sbar_report if session.finalize_output else None)
+            or (
+                session.finalize_output.sbar_report if session.finalize_output else None
+            )
         )
         audit = self._audit_metadata(session, final_output)
         return {
@@ -456,7 +457,9 @@ def _required_field_completeness(
 def _final_result(session: OrchestratorSession) -> dict[str, Any] | None:
     if session.finalize_output is not None:
         payload = session.finalize_output.model_dump(mode="json")
-        payload.setdefault("final_disposition", session.finalize_output.disposition.value)
+        payload.setdefault(
+            "final_disposition", session.finalize_output.disposition.value
+        )
         payload.setdefault("confidence_score", _confidence(session, payload) or 0.0)
         return payload
     result = session.channel_metadata.get("workflow_final_result")
@@ -642,7 +645,10 @@ def _serialize_turn(turn: Any) -> dict[str, Any]:
 
 
 def _model_dump_list(items: list[Any]) -> list[Any]:
-    return [item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in items]
+    return [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+        for item in items
+    ]
 
 
 def _dedupe(items: list[Any]) -> list[Any]:
