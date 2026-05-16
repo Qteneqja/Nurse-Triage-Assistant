@@ -388,6 +388,78 @@ ruff check src tests scripts
 ruff format --check src tests scripts
 ```
 
-## CI note
+## Phase 12.7: Blocking CI Safety Gate
 
-The healthcare eval CI job remains `continue-on-error` for now. Once the reporting workflow has proven stable, Phase 12.7 can make healthcare evals a blocking CI safety gate by changing that setting to `false`.
+Healthcare evals are now blocking in CI.
+
+The GitHub Actions job `Healthcare Evals (DeepEval)` no longer runs with `continue-on-error`. A failed deterministic healthcare eval now blocks merge until the failure is fixed or explicitly reviewed by a human.
+
+This changed after a 100x local burn-in passed with stable deterministic behavior:
+
+- `tests/evals` repeated 100 times.
+- 2800 total eval test executions.
+- 2800 passed.
+- 0 failed.
+- Runtime about 200 seconds on the validating local environment.
+
+That burn-in demonstrated that the offline healthcare eval layer is reliable enough to serve as a real CI safety gate rather than an advisory job.
+
+### What CI failures mean
+
+A failing healthcare eval means the product behavior no longer matches a committed deterministic safety expectation. Treat this as a safety stop, not a flaky suggestion.
+
+Common meanings include:
+
+- Premature healthcare finalization.
+- Missed deterministic red-flag escalation.
+- Missing SBAR handoff fields.
+- Unsafe diagnosis-like language.
+- Invalid structured output not failing closed.
+- Healthcare completeness gates being bypassed.
+
+Do not weaken red-flag rules, completeness gates, minimum-turn gates, or fail-closed behavior just to make CI pass.
+
+### How to reproduce locally
+
+Run the standard deterministic suites from the repository root:
+
+```bash
+python -m pytest tests/evals
+
+deepeval test run tests/evals
+```
+
+For explicit offline mode in local shells or CI:
+
+```bash
+RUN_LIVE_LLM_EVALS=false deepeval test run tests/evals
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:RUN_LIVE_LLM_EVALS = "false"
+deepeval test run tests/evals
+```
+
+### How to generate failure reports
+
+If the eval suite fails, generate the operator artifacts and follow-up Codex prompt with:
+
+```bash
+python scripts/generate_eval_failure_report.py --sample-failure
+```
+
+For a real failure, run the generator without sample mode after the failing eval run. It will read the latest eval results JSON from `eval_reports/` when available and write the Markdown failure report, JSON failure report, and Codex fix prompt there.
+
+### How to run burn-in manually
+
+Use the same deterministic pytest suite with repetition:
+
+```bash
+python -m pytest tests/evals --count 100
+```
+
+This requires `pytest-repeat`, which is already included in the validated environment used for the 100x burn-in.
+
+No dedicated PowerShell burn-in script is currently committed in this repository. For PowerShell sessions, use the same command directly after activating the virtual environment.
