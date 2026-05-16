@@ -67,6 +67,35 @@ class SessionRepository:
         """Persist a post-call extraction if the backend supports it."""
         self._backend.save_extraction(extraction)
 
+    def list_recent_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        vertical_key: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
+    ) -> list[OrchestratorSession]:
+        """List recent sessions for read-only dashboard views."""
+        return self._backend.list_recent_sessions(
+            limit=limit,
+            offset=offset,
+            vertical_key=vertical_key,
+            workflow_id=workflow_id,
+            status=status,
+        )
+
+    def get_session_turns(self, session_id: str) -> list[Any]:
+        """Return persisted turns/transcript records for a session."""
+        return self._backend.get_session_turns(session_id)
+
+    def get_session_extractions(self, session_id: str) -> list[Any]:
+        """Return post-call extraction records for a session."""
+        return self._backend.get_session_extractions(session_id)
+
+    def list_organizations(self) -> list[Any]:
+        """Return organization records for read-only admin views."""
+        return self._backend.list_organizations()
+
 
 # Singleton
 _session_repo: SessionRepository | None = None

@@ -116,6 +116,79 @@ class InMemoryOrchestratorStorage(StorageInterface):
         """Return saved extraction results for a session."""
         return list(self._extractions.get(session_id, []))
 
+    def list_recent_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        vertical_key: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
+    ) -> list[OrchestratorSession]:
+        """Return recent sessions for dashboard/admin read models."""
+        now = datetime.now(UTC)
+        sessions = [
+            session
+            for session_id, session in self._sessions.items()
+            if self._expiry.get(session_id, now) >= now
+        ]
+
+        if vertical_key:
+            sessions = [s for s in sessions if s.vertical_key == vertical_key]
+        if workflow_id:
+            sessions = [s for s in sessions if s.workflow_id == workflow_id]
+        if status:
+            sessions = [
+                s
+                for s in sessions
+                if ("ended" if s.is_finalized else "active") == status
+            ]
+
+        sessions.sort(key=lambda s: s.created_at, reverse=True)
+        return sessions[offset : offset + limit]
+
+    def get_session_turns(self, session_id: str) -> list[Any]:
+        """Return a best-effort turn history for dashboard/admin views."""
+        session = self.load_session(session_id)
+        if session is None:
+            return []
+        if session.decision_trace:
+            return list(session.decision_trace)
+        return list(session.conversation)
+
+    def get_session_extractions(self, session_id: str) -> list[Any]:
+        """Return saved extraction results for a session."""
+        return self.get_extractions(session_id)
+
+    def list_organizations(self) -> list[Any]:
+        """Return organization-like rows inferred from in-memory sessions."""
+        rows: dict[str, dict[str, Any]] = {}
+        for session in self.list_recent_sessions(limit=1000):
+            if not session.organization_id:
+                continue
+            row = rows.setdefault(
+                session.organization_id,
+                {
+                    "organization_id": session.organization_id,
+                    "name": session.organization_id,
+                    "slug": None,
+                    "status": "active",
+                    "verticals": set(),
+                    "workflows": set(),
+                },
+            )
+            if session.vertical_key:
+                row["verticals"].add(session.vertical_key)
+            if session.workflow_id:
+                row["workflows"].add(session.workflow_id)
+        return [
+            {
+                **row,
+                "verticals": sorted(row["verticals"]),
+                "workflows": sorted(row["workflows"]),
+            }
+            for row in rows.values()
+        ]
+
     # ---- Internals ----
 
     def _remove(self, session_id: str) -> None:

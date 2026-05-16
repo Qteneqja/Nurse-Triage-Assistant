@@ -201,6 +201,13 @@ TRUST_PROXY_HEADERS: bool = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in
     "yes",
 )
 
+# Dashboard/admin shell. Local development is allowed without a token, while
+# staging/production API access requires DASHBOARD_ADMIN_TOKEN.
+DASHBOARD_ENABLED: bool = _env_flag("DASHBOARD_ENABLED", "true")
+DASHBOARD_ADMIN_TOKEN: str = os.getenv("DASHBOARD_ADMIN_TOKEN") or os.getenv(
+    "ADMIN_API_KEY", ""
+)
+
 # CORS — restrict in production; allow all in development
 CORS_ALLOWED_ORIGINS: list[str] = [
     o.strip()

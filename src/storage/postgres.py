@@ -23,6 +23,7 @@ from src.storage.interface import StorageInterface
 from src.storage.models import (
     Base,
     ConversationExtractionModel,
+    OrganizationModel,
     TriageSessionModel,
     TriageTurnModel,
 )
@@ -187,6 +188,100 @@ class PostgresStorage(StorageInterface):
             )
             db.add(record)
             db.commit()
+
+    def list_recent_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        vertical_key: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
+    ) -> list[OrchestratorSession]:
+        """List recent non-deleted sessions for dashboard/admin read models."""
+        with self._SessionFactory() as db:
+            query = select(TriageSessionModel).where(
+                TriageSessionModel.deleted_at.is_(None)
+            )
+            if vertical_key:
+                query = query.where(TriageSessionModel.vertical_key == vertical_key)
+            if workflow_id:
+                query = query.where(TriageSessionModel.workflow_id == workflow_id)
+            if status:
+                query = query.where(TriageSessionModel.status == status)
+            query = (
+                query.order_by(TriageSessionModel.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            records = db.execute(query).scalars().all()
+
+        sessions: list[OrchestratorSession] = []
+        for record in records:
+            session = self._deserialize_session(record)
+            if session is None:
+                continue
+            session.channel_metadata.setdefault("_dashboard_record", {})
+            session.channel_metadata["_dashboard_record"].update(
+                {
+                    "status": record.status,
+                    "created_at": record.created_at.isoformat()
+                    if record.created_at
+                    else None,
+                    "updated_at": record.updated_at.isoformat()
+                    if record.updated_at
+                    else None,
+                    "ended_at": record.ended_at.isoformat()
+                    if record.ended_at
+                    else None,
+                    "finalized_at": record.finalized_at.isoformat()
+                    if record.finalized_at
+                    else None,
+                    "final_disposition": record.final_disposition,
+                    "confidence_score": record.confidence_score,
+                }
+            )
+            sessions.append(session)
+        return sessions
+
+    def get_session_turns(self, session_id: str) -> list[Any]:
+        """Return persisted turn records for a session."""
+        return self.get_turn_records(session_id)
+
+    def get_session_extractions(self, session_id: str) -> list[Any]:
+        """Return post-call extraction records for a session."""
+        with self._SessionFactory() as db:
+            result = db.execute(
+                select(ConversationExtractionModel)
+                .where(ConversationExtractionModel.session_id == session_id)
+                .order_by(ConversationExtractionModel.created_at.desc())
+            )
+            return list(result.scalars().all())
+
+    def list_organizations(self) -> list[Any]:
+        """Return organization rows for admin/dashboard read models."""
+        with self._SessionFactory() as db:
+            organizations = db.execute(
+                select(OrganizationModel).order_by(OrganizationModel.name)
+            ).scalars().all()
+            rows: list[dict[str, Any]] = []
+            for organization in organizations:
+                verticals: set[str] = set()
+                workflows: set[str] = set()
+                for workflow in organization.workflows:
+                    workflows.add(workflow.workflow_id)
+                    if workflow.vertical is not None:
+                        verticals.add(workflow.vertical.key)
+                rows.append(
+                    {
+                        "organization_id": organization.id,
+                        "name": organization.name,
+                        "slug": organization.slug,
+                        "status": organization.status,
+                        "verticals": sorted(verticals),
+                        "workflows": sorted(workflows),
+                    }
+                )
+            return rows
 
     def load_session(self, session_id: str) -> Optional[OrchestratorSession]:
         with self._SessionFactory() as db:
