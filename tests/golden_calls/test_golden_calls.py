@@ -277,7 +277,7 @@ def test_llm_blocked_in_deterministic_mode():
         with pytest.raises(RuntimeError, match="External LLM call attempted"):
             import asyncio
 
-            asyncio.get_event_loop().run_until_complete(client._raw_call([]))
+            asyncio.run(client._raw_call([]))
     finally:
         for p in patches:
             try:
