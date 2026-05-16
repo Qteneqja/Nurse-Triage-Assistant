@@ -49,6 +49,29 @@ class StorageInterface(abc.ABC):
         """Persist a post-call extraction result when supported."""
         return None
 
+    def list_recent_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        vertical_key: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
+    ) -> list[OrchestratorSession]:
+        """Return recent sessions for read-only dashboards."""
+        return []
+
+    def get_session_turns(self, session_id: str) -> list[Any]:
+        """Return stored turn records for read-only dashboards."""
+        return []
+
+    def get_session_extractions(self, session_id: str) -> list[Any]:
+        """Return persisted extraction records for a session."""
+        return []
+
+    def list_organizations(self) -> list[Any]:
+        """Return tenant organization records for read-only admin views."""
+        return []
+
     def check_connectivity(self) -> bool:
         """Check if the storage backend is reachable.
 

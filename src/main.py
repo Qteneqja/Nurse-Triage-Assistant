@@ -7,8 +7,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from src.api.admin import router as admin_router
+from src.api.dashboard import api_router as dashboard_api_router
+from src.api.dashboard import page_router as dashboard_page_router
 from src.api.routes import router as intake_router
 from src.api.reports import router as reports_router
 from src.twilio.routes import router as twilio_router
@@ -183,6 +187,18 @@ else:
 app.include_router(intake_router, prefix="/api/v1/intake", tags=["Intake"])
 app.include_router(reports_router, prefix="/api/v1", tags=["Reports"])
 app.include_router(twilio_router, prefix="/api/v1/voice", tags=["Twilio Voice"])
+app.include_router(admin_router, prefix="/admin", tags=["Admin Dashboard"])
+app.include_router(
+    dashboard_api_router,
+    prefix="/api/v1/dashboard",
+    tags=["Dashboard"],
+)
+app.include_router(dashboard_page_router, tags=["Dashboard"])
+app.mount(
+    "/dashboard/static",
+    StaticFiles(directory=Path(__file__).resolve().parent / "dashboard_static"),
+    name="dashboard_static",
+)
 
 
 @app.get("/")
