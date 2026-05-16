@@ -12,6 +12,7 @@ Usage:
 
 Requires DEEPSEEK_API_KEY in environment (unless --mock is used).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,6 +51,7 @@ DEFAULT_SCENARIOS_PATH = Path(__file__).parent / "scenarios.json"
 # Mock LLM client for offline simulation
 # -----------------------------------------------------------------------
 
+
 class MockLLMClient:
     """Mock LLM that returns plausible responses without API calls.
 
@@ -67,12 +69,16 @@ class MockLLMClient:
             # Simulate progressive confidence
             confidence = min(0.2 + self._turn_count * 0.15, 0.85)
             missing = ["onset_time", "symptom_severity", "meds", "allergies"]
-            remaining = missing[min(self._turn_count, len(missing)):]
+            remaining = missing[min(self._turn_count, len(missing)) :]
 
             return IntakeTurnOutput(
-                extracted_fields_update=IntakeStatePatch(notes=f"Turn {self._turn_count} processed"),
+                extracted_fields_update=IntakeStatePatch(
+                    notes=f"Turn {self._turn_count} processed"
+                ),
                 missing_fields_prioritized=remaining,
-                next_question="Can you tell me more about when this started?" if remaining else "Is there anything else?",
+                next_question="Can you tell me more about when this started?"
+                if remaining
+                else "Is there anything else?",
                 llm_safety_flags=[],
                 confidence=confidence,
             )
@@ -81,7 +87,9 @@ class MockLLMClient:
             return FinalizeOutput(
                 disposition=DispositionCategory.HUMAN_REVIEW,
                 disposition_reasoning="Mock disposition — human review recommended for simulated scenario",
-                safety_net_instructions=["If symptoms worsen, please call 911 or go to the nearest emergency room."],
+                safety_net_instructions=[
+                    "If symptoms worsen, please call 911 or go to the nearest emergency room."
+                ],
                 sbar_report=(
                     "S: Patient completed simulated triage intake.\n"
                     "B: See conversation history.\n"
@@ -102,6 +110,7 @@ class MockLLMClient:
 # -----------------------------------------------------------------------
 # Simulation engine
 # -----------------------------------------------------------------------
+
 
 async def run_scenario(
     scenario: dict,
@@ -148,9 +157,12 @@ async def run_scenario(
     if demographics.get("sex"):
         _sex = str(demographics["sex"]).strip().lower()
         _SEX_MAP: dict[str, Literal["male", "female", "unknown"]] = {
-            "m": "male", "male": "male",
-            "f": "female", "female": "female",
-            "u": "unknown", "unknown": "unknown",
+            "m": "male",
+            "male": "male",
+            "f": "female",
+            "female": "female",
+            "u": "unknown",
+            "unknown": "unknown",
         }
         session.intake_state.caller_sex = _SEX_MAP.get(_sex, "unknown")
 
@@ -164,7 +176,9 @@ async def run_scenario(
             break
 
         if verbose:
-            print(f"\n  Turn {i}: Caller says: \"{utterance[:80]}{'...' if len(utterance) > 80 else ''}\"")
+            print(
+                f'\n  Turn {i}: Caller says: "{utterance[:80]}{"..." if len(utterance) > 80 else ""}"'
+            )
 
         result = await orchestrator.process_turn(session, utterance)
         final_action = result["action"]
@@ -177,11 +191,15 @@ async def run_scenario(
                 "finalize": "FINALIZE",
                 "ask": "ASK",
             }.get(final_action, final_action.upper())
-            print(f"  [{action_label}] \"{final_message[:80]}{'...' if len(final_message) > 80 else ''}\"")
+            print(
+                f'  [{action_label}] "{final_message[:80]}{"..." if len(final_message) > 80 else ""}"'
+            )
 
             if result.get("intake_output"):
                 io = result["intake_output"]
-                print(f"    confidence={io.confidence:.2f}, fields_updated={list(io.extracted_fields_update.model_dump(exclude_none=True).keys())}")
+                print(
+                    f"    confidence={io.confidence:.2f}, fields_updated={list(io.extracted_fields_update.model_dump(exclude_none=True).keys())}"
+                )
 
     elapsed = (time.monotonic() - t0) * 1000
 
@@ -201,7 +219,9 @@ async def run_scenario(
         print(f"  Reasoning: {fo.disposition_reasoning[:100]}")
         print(f"  Patient summary: {fo.patient_summary[:100]}")
     elif session.audit_trace.deterministic_rules_triggered:
-        print(f"  Deterministic escalation: {session.audit_trace.deterministic_rules_triggered}")
+        print(
+            f"  Deterministic escalation: {session.audit_trace.deterministic_rules_triggered}"
+        )
 
     if session.safety_flags:
         print(f"  Safety flags: {[f.flag for f in session.safety_flags]}")
@@ -218,7 +238,9 @@ async def run_scenario(
 
     # Coercion summary
     if session.llm_coercions:
-        print(f"\n  LLM coercions ({len(session.llm_coercions)}): {session.llm_coercions}")
+        print(
+            f"\n  LLM coercions ({len(session.llm_coercions)}): {session.llm_coercions}"
+        )
 
     expected_min = scenario.get("expected_min_disposition")
     expected_max = scenario.get("expected_max_disposition")
@@ -248,9 +270,9 @@ async def run_scenario(
         "scenario_id": scenario_id,
         "turns_processed": turns_processed,
         "final_action": final_action,
-        "disposition": session.finalize_output.disposition.value if session.finalize_output else (
-            "ER_NOW" if session.audit_trace.deterministic_rules_triggered else None
-        ),
+        "disposition": session.finalize_output.disposition.value
+        if session.finalize_output
+        else ("ER_NOW" if session.audit_trace.deterministic_rules_triggered else None),
         "deterministic_rules": session.audit_trace.deterministic_rules_triggered,
         "coercions": len(session.llm_coercions),
         "elapsed_ms": elapsed,
@@ -296,16 +318,27 @@ def _disposition_over_triaged(actual: str, expected_max: str) -> bool:
 # Main
 # -----------------------------------------------------------------------
 
+
 async def main():
-    parser = argparse.ArgumentParser(description="Simulate triage calls through orchestrator")
-    parser.add_argument("--file", type=str, default=str(DEFAULT_SCENARIOS_PATH),
-                        help="Path to scenarios JSON file")
-    parser.add_argument("--scenario", type=str, default=None,
-                        help="Run only this scenario (by scenario_id)")
-    parser.add_argument("--mock", action="store_true",
-                        help="Use mock LLM (no API calls needed)")
-    parser.add_argument("--quiet", action="store_true",
-                        help="Only print final summary")
+    parser = argparse.ArgumentParser(
+        description="Simulate triage calls through orchestrator"
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=str(DEFAULT_SCENARIOS_PATH),
+        help="Path to scenarios JSON file",
+    )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        default=None,
+        help="Run only this scenario (by scenario_id)",
+    )
+    parser.add_argument(
+        "--mock", action="store_true", help="Use mock LLM (no API calls needed)"
+    )
+    parser.add_argument("--quiet", action="store_true", help="Only print final summary")
     args = parser.parse_args()
 
     # Load scenarios
@@ -345,10 +378,12 @@ async def main():
             results.append(result)
         except Exception as e:
             print(f"\nERROR in scenario {scenario['scenario_id']}: {e}")
-            results.append({
-                "scenario_id": scenario["scenario_id"],
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "scenario_id": scenario["scenario_id"],
+                    "error": str(e),
+                }
+            )
 
     # Final summary
     print(f"\n{'=' * 70}")
@@ -363,7 +398,9 @@ async def main():
             rules_str = f" [rules: {', '.join(rules)}]" if rules else ""
             coercion_count = r.get("coercions", 0)
             coercion_str = f" [coercions: {coercion_count}]" if coercion_count else ""
-            print(f"  {r['scenario_id']}: {disp} ({r['turns_processed']} turns, {r['elapsed_ms']:.0f}ms){rules_str}{coercion_str}")
+            print(
+                f"  {r['scenario_id']}: {disp} ({r['turns_processed']} turns, {r['elapsed_ms']:.0f}ms){rules_str}{coercion_str}"
+            )
 
 
 if __name__ == "__main__":

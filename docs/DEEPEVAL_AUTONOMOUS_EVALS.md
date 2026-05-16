@@ -246,3 +246,148 @@ Planned extensions can include:
 - Codex-generated fix prompts for human review.
 - Client-specific eval suites.
 - Non-healthcare vertical eval suites, including property management.
+
+# Phase 12.6: Failure Reports and Codex Fix Prompts
+
+Phase 12.6 turns failed deterministic healthcare evals into practical operator artifacts:
+
+- A human-readable Markdown failure report.
+- A machine-readable JSON failure report.
+- A ready-to-paste Codex fix prompt.
+
+This is still autonomous QA tooling, not autonomous clinical self-training. The generated prompt can help a developer investigate and propose a fix, but it must not silently change clinical behavior. Human review remains required for any red-flag, disposition, completeness, SBAR, or healthcare language change.
+
+## What the failure report does
+
+The failure report summarizes failed healthcare eval cases and classifies each failure deterministically. It includes:
+
+- Case ID and suite.
+- Failed scorer.
+- Severity.
+- Expected behavior.
+- Observed behavior.
+- Scorer reason and details.
+- Likely files to inspect.
+- Safety constraints that must not be violated.
+- Commands to rerun after a fix.
+- A complete Codex prompt for a follow-up fix session.
+
+Classification is implemented in `src/evals/failure_classifier.py`. It does not call an LLM. It maps scorer names, suite names, reasons, and details into these categories:
+
+- `premature_finalization`
+- `red_flag_escalation`
+- `sbar_completeness`
+- `safety_language`
+- `invalid_output_fallback`
+- `healthcare_completeness`
+- `unknown`
+
+## When to use it
+
+Use the failure report when `python -m pytest tests/evals` or `deepeval test run tests/evals` fails. The report is meant to shorten the loop:
+
+1. Eval fails.
+2. Failure report is generated.
+3. Likely root-cause area is identified.
+4. Codex fix prompt is generated.
+5. A human-approved fix is made.
+6. Evals and regression tests are rerun.
+
+## Generate a sample report
+
+Use sample mode to preview the output without breaking tests:
+
+```bash
+python scripts/generate_eval_failure_report.py --sample-failure
+```
+
+Sample reports are clearly labeled:
+
+```text
+SAMPLE ONLY - NOT A REAL EVAL FAILURE
+```
+
+The sample uses a safe mock failure and must not be treated as production evidence.
+
+## Generate a report from eval results JSON
+
+If you have an eval summary JSON, run:
+
+```bash
+python scripts/generate_eval_failure_report.py --input eval_reports/latest-healthcare-eval-results.json
+```
+
+If no `--input` is supplied, the script looks for:
+
+```text
+eval_reports/latest-healthcare-eval-results.json
+```
+
+## Output files
+
+The generator writes:
+
+```text
+eval_reports/latest-healthcare-eval-failure-report.md
+eval_reports/latest-healthcare-eval-failure-report.json
+eval_reports/latest-codex-fix-prompt.md
+```
+
+These generated files are ignored by git because `eval_reports/*` is ignored and `eval_reports/.gitkeep` is the only tracked file in that directory. Do not commit generated reports that contain transcripts, PHI, customer data, or sensitive debugging details.
+
+## How to copy the Codex fix prompt
+
+Open:
+
+```text
+eval_reports/latest-codex-fix-prompt.md
+```
+
+Paste the full prompt into a new Codex session. The prompt includes the repo URL, branch or commit if available, failed cases, likely files, safety constraints, and validation commands.
+
+The prompt is intentionally strict. It tells Codex to fix the root cause without weakening healthcare safety gates, to avoid clinical logic changes unless directly necessary, and to report files changed plus test results.
+
+## BLOCK_MERGE vs SAFE_TO_MERGE
+
+`BLOCK_MERGE` means one or more healthcare eval failures were present in the input report. Treat this as a safety stop until a human reviews the failure.
+
+`SAFE_TO_MERGE` means the input report had no failed cases. This does not replace code review or normal CI; it only means the failure-reporting layer did not receive failed eval cases.
+
+Critical categories such as premature finalization, red-flag escalation, invalid output fallback, and healthcare completeness should block merge until fixed or explicitly reviewed.
+
+## Safety rules for generated prompts
+
+Generated prompts must preserve these constraints:
+
+- Do not weaken deterministic red-flag escalation.
+- Do not allow LLM confidence to bypass healthcare completeness gates.
+- Do not allow normal low-acuity finalization after malformed model output.
+- Do not allow diagnosis language.
+- Do not finalize healthcare calls early unless emergency escalation requires it.
+- Preserve Rules > Protocol > LLM hierarchy.
+
+The report and prompt generator can identify likely files and suggest a safe investigation path. They must not autonomously alter clinical thresholds, disposition logic, red-flag rules, or finalization gates.
+
+## Rerun commands after a fix
+
+At minimum, run:
+
+```bash
+python -m pytest tests/evals
+deepeval test run tests/evals
+python -m pytest tests/test_phase11_5_healthcare_dynamic_intake.py
+python -m pytest tests/test_red_flags.py
+python -m pytest
+```
+
+For report tooling changes specifically, also run:
+
+```bash
+python scripts/generate_eval_failure_report.py --sample-failure
+ruff check src tests scripts
+ruff format --check src tests scripts
+```
+
+## CI note
+
+The healthcare eval CI job remains `continue-on-error` for now. Once the reporting workflow has proven stable, Phase 12.7 can make healthcare evals a blocking CI safety gate by changing that setting to `false`.

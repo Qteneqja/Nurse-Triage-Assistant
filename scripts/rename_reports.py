@@ -12,6 +12,7 @@ Usage:
     python -m scripts.rename_reports              # preview changes (dry run)
     python -m scripts.rename_reports --apply      # actually move files
 """
+
 from __future__ import annotations
 
 import argparse
@@ -95,7 +96,11 @@ def migrate_reports(apply: bool = False) -> list[tuple[str, str]]:
             assert m is not None
             year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
             time_str = m.group(4)
-            hour, minute, second = int(time_str[:2]), int(time_str[2:4]), int(time_str[4:6])
+            hour, minute, second = (
+                int(time_str[:2]),
+                int(time_str[2:4]),
+                int(time_str[4:6]),
+            )
             mtime = datetime(year, month, day, hour, minute, second)
             session_id = _extract_session_id_from_stem(stem)
             _, patient_name, disposition = _extract_info(json_path)
@@ -132,7 +137,9 @@ def migrate_reports(apply: bool = False) -> list[tuple[str, str]]:
 
 def main():
     parser = argparse.ArgumentParser(description="Move reports into year/month folders")
-    parser.add_argument("--apply", action="store_true", help="Actually move files (default is dry run)")
+    parser.add_argument(
+        "--apply", action="store_true", help="Actually move files (default is dry run)"
+    )
     args = parser.parse_args()
 
     if not REPORTS_DIR.exists():
