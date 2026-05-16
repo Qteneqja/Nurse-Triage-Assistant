@@ -87,11 +87,11 @@ def migrate_reports(apply: bool = False) -> list[tuple[str, str]]:
 
         # Determine timestamp and session_id based on filename type
         if UUID_PATTERN.match(stem):
-            # Legacy UUID file — use mtime as timestamp, stem as session_id
+            # Legacy UUID file - use mtime as timestamp, stem as session_id
             mtime = datetime.fromtimestamp(json_path.stat().st_mtime)
             session_id, patient_name, disposition = _extract_info(json_path)
         elif DATED_PATTERN.match(stem):
-            # Already-renamed but in root — parse timestamp from filename
+            # Already-renamed but in root - parse timestamp from filename
             m = DATED_PATTERN.match(stem)
             assert m is not None
             year, month, day = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -105,7 +105,7 @@ def migrate_reports(apply: bool = False) -> list[tuple[str, str]]:
             session_id = _extract_session_id_from_stem(stem)
             _, patient_name, disposition = _extract_info(json_path)
         else:
-            # Unknown format — skip
+            # Unknown format - skip
             continue
 
         new_base = generate_report_path(
