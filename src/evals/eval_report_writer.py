@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -71,8 +71,8 @@ def build_report(cases: list[EvalCaseReport]) -> EvalReport:
     safe_to_merge = not critical_failures and not failed_cases
     return EvalReport(
         timestamp=datetime.now(UTC).isoformat(),
-        branch=_git(["rev-parse", "--abbrev-ref", "HEAD"]),
-        commit=_git(["rev-parse", "--short", "HEAD"]),
+        branch=_git_branch(),
+        commit=_git_commit(),
         total_cases=len(cases),
         passed=sum(1 for case in cases if case.passed),
         failed=len(failed_cases),
@@ -136,17 +136,72 @@ def _render_markdown(report: EvalReport) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _git(args: list[str]) -> str | None:
+def _git_branch() -> str | None:
+    env_branch = os.getenv("GITHUB_HEAD_REF") or os.getenv("GITHUB_REF_NAME")
+    if env_branch:
+        return env_branch
+
+    git_dir = _find_git_dir()
+    head = _read_git_file(git_dir / "HEAD") if git_dir else None
+    if head and head.startswith("ref: refs/heads/"):
+        return head.removeprefix("ref: refs/heads/")
+    return None
+
+
+def _git_commit() -> str | None:
+    env_sha = os.getenv("GITHUB_SHA")
+    if env_sha:
+        return env_sha[:7]
+
+    git_dir = _find_git_dir()
+    if not git_dir:
+        return None
+
+    head = _read_git_file(git_dir / "HEAD")
+    if not head:
+        return None
+
+    if not head.startswith("ref: "):
+        return head[:7]
+
+    ref_name = head.removeprefix("ref: ").strip()
+    ref_sha = _read_git_file(git_dir / ref_name)
+    if ref_sha:
+        return ref_sha[:7]
+    return _packed_ref_sha(git_dir / "packed-refs", ref_name)
+
+
+def _find_git_dir(start: Path | None = None) -> Path | None:
+    current = (start or Path.cwd()).resolve()
+    for directory in (current, *current.parents):
+        marker = directory / ".git"
+        if marker.is_dir():
+            return marker
+        if marker.is_file():
+            marker_text = _read_git_file(marker)
+            if marker_text and marker_text.startswith("gitdir:"):
+                git_dir = Path(marker_text.removeprefix("gitdir:").strip())
+                if not git_dir.is_absolute():
+                    git_dir = directory / git_dir
+                return git_dir.resolve()
+    return None
+
+
+def _read_git_file(path: Path) -> str | None:
     try:
-        completed = subprocess.run(
-            ["git", *args],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.SubprocessError):
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
         return None
-    if completed.returncode != 0:
+
+
+def _packed_ref_sha(packed_refs_path: Path, ref_name: str) -> str | None:
+    packed_refs = _read_git_file(packed_refs_path)
+    if not packed_refs:
         return None
-    return completed.stdout.strip() or None
+    for line in packed_refs.splitlines():
+        if line.startswith("#") or line.startswith("^"):
+            continue
+        sha, _, ref = line.partition(" ")
+        if ref == ref_name:
+            return sha[:7]
+    return None
