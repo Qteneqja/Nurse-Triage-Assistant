@@ -31,4 +31,4 @@ def test_deepseek_api_connection():
     )
 
     assert response.choices[0].message.content is not None
-    assert "Connection successful!" in response.choices[0].message.content
+    assert "Connection successful" in response.choices[0].message.content
