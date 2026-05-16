@@ -40,6 +40,12 @@ CREDENTIALS.md
 # Runtime-generated reports (keep folder, ignore contents)
 reports/*
 !reports/.gitkeep
+eval_reports/*
+!eval_reports/.gitkeep
+
+# DeepEval local caches and telemetry artifacts
+.deepeval/
+.deepeval-cache/
 
 # Archive: ignore heavy generated/data artifacts
 archive/ml_experiments/artifacts/*
