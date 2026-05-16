@@ -86,14 +86,14 @@ class MockLLMClient:
         elif output_schema == FinalizeOutput:
             return FinalizeOutput(
                 disposition=DispositionCategory.HUMAN_REVIEW,
-                disposition_reasoning="Mock disposition — human review recommended for simulated scenario",
+                disposition_reasoning="Mock disposition - human review recommended for simulated scenario",
                 safety_net_instructions=[
                     "If symptoms worsen, please call 911 or go to the nearest emergency room."
                 ],
                 sbar_report=(
                     "S: Patient completed simulated triage intake.\n"
                     "B: See conversation history.\n"
-                    "A: Mock assessment — requires human review.\n"
+                    "A: Mock assessment - requires human review.\n"
                     "R: Recommend human clinician review."
                 ),
                 patient_summary=(
@@ -279,7 +279,7 @@ async def run_scenario(
     }
 
 
-# HUMAN_REVIEW is intentionally excluded — it's an uncertainty escalation,
+# HUMAN_REVIEW is intentionally excluded - it's an uncertainty escalation,
 # not a position on the clinical urgency ladder.
 _URGENCY_ORDER = ["SELF_CARE", "ROUTINE", "SAME_DAY", "URGENT_CARE", "ER_NOW"]
 
@@ -307,7 +307,7 @@ def _disposition_over_triaged(actual: str, expected_max: str) -> bool:
     if actual == "HUMAN_REVIEW":
         return False
     if expected_max == "HUMAN_REVIEW":
-        # HUMAN_REVIEW max means "anything goes" — can't over-triage
+        # HUMAN_REVIEW max means "anything goes" - can't over-triage
         return False
     if actual not in _URGENCY_ORDER or expected_max not in _URGENCY_ORDER:
         return actual != expected_max
