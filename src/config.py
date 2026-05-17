@@ -171,6 +171,13 @@ DEFAULT_ORGANIZATION_SLUG: str = os.getenv(
 )
 DEFAULT_TWILIO_PHONE_NUMBER: str = os.getenv("DEFAULT_TWILIO_PHONE_NUMBER", "")
 
+# Phase 13 insurance FNOL placeholder route. This is a safe local/dev default
+# only; production should seed real phone_number rows instead of relying on it.
+INSURANCE_FNOL_PHONE_NUMBER: str = os.getenv(
+    "INSURANCE_FNOL_PHONE_NUMBER",
+    "+15555550130",
+)
+
 # ---------------------------------------------------------------------------
 # Twilio
 # ---------------------------------------------------------------------------

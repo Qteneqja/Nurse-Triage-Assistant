@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml)
 
-An AI-powered automated triage system that conducts patient intake through phone calls (Twilio Voice) or API integrations. The system guides patients through a structured medical intake conversation, captures symptoms and key information, and produces clinician-ready summaries with triage recommendations.
+An AI-powered multi-vertical voice decision-support platform that conducts structured intake through phone calls (Twilio Voice) or API integrations. Healthcare triage remains the primary safety-critical workflow, while property management maintenance and insurance first notice of loss (FNOL) intake are emerging non-clinical verticals.
 
 ## Secrets & Security
 
@@ -28,6 +28,10 @@ Designed for hospitals, nurse triage lines (like Health Links in Winnipeg), and 
 - Automate initial intake before clinician review  
 - Provide structured, consistent patient assessments
 - Generate SBAR-formatted handoff summaries for healthcare professionals
+
+The platform workflow layer also supports non-clinical verticals. Phase 13 adds
+the insurance FNOL foundation with workflow ID `insurance_claims_fnol_v1` and
+placeholder local route `INSURANCE_FNOL_PHONE_NUMBER=+15555550130`.
 
 ## Architecture
 
@@ -62,6 +66,8 @@ FastAPI Backend (src/twilio/routes.py)
 - **Deterministic Safety Engine:** Regex-based red-flag detection (`src/safety/red_flags.py`) — always runs before LLM, cannot be overridden
 - **Structured LLM Client:** DeepSeek wrapper with Pydantic validation plus automatic repair (`src/llm/client.py`)
 - **Storage Abstraction:** Swappable session storage via `StorageInterface` — in-memory MVP, Redis-ready
+- **Workflow Platform:** Registered vertical workflows for healthcare,
+  property management, and insurance FNOL intake
 
 ## Features
 
