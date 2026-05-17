@@ -83,10 +83,15 @@ def ensure_default_workflows_registered() -> WorkflowRegistry:
             from src.verticals.property_management.workflow import (
                 PropertyManagementMaintenanceWorkflow,
             )
+            from src.verticals.insurance.workflow import InsuranceClaimsFnolWorkflow
 
             registry.register(HealthcareTriageWorkflow(), make_default=True)
             registry.register(
                 PropertyManagementMaintenanceWorkflow(),
+                make_default=False,
+            )
+            registry.register(
+                InsuranceClaimsFnolWorkflow(),
                 make_default=False,
             )
             _defaults_registered = True

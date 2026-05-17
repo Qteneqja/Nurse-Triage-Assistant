@@ -1,9 +1,9 @@
-# ──────────────────────────────────────────────────────────────
-# CI Pipeline — Nurse Triage Assistant
+# --------------------------------------------------------------
+# CI Pipeline - Nurse Triage Assistant
 # Purpose: Lint, type-check, and run the full test suite on every push/PR.
 # Date Created: 2026-03-02
-# Step: Production Hardening — Step 5
-# ──────────────────────────────────────────────────────────────
+# Step: Production Hardening - Step 5
+# --------------------------------------------------------------
 name: CI
 
 on:
@@ -32,7 +32,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for private repos — optional for public
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Required for private repos - optional for public
 
   lint:
     name: Lint & Formatting
@@ -109,7 +109,6 @@ jobs:
     name: Healthcare Evals (DeepEval)
     runs-on: ubuntu-latest
     needs: lint
-    continue-on-error: true
     env:
       APP_ENV: test
       RUN_LIVE_LLM_EVALS: "false"
