@@ -138,6 +138,7 @@ class SessionDetail(BaseModel):
     safety_events: list[Any] = Field(default_factory=list)
     healthcare_metadata: dict[str, Any] | None = None
     property_management_metadata: dict[str, Any] | None = None
+    insurance_metadata: dict[str, Any] | None = None
     proposed_actions: list[ProposedAction] = Field(default_factory=list)
 
 

@@ -151,6 +151,7 @@ class AdminDashboardService:
             safety_events=mask_dashboard_payload(_safety_events(session, final_output)),
             healthcare_metadata=None,
             property_management_metadata=None,
+            insurance_metadata=None,
             proposed_actions=proposed_actions,
         )
 
@@ -161,6 +162,10 @@ class AdminDashboardService:
         elif _vertical_key(session) == "property_management":
             detail.property_management_metadata = mask_dashboard_payload(
                 self._property_metadata(session, final_output)
+            )
+        elif _vertical_key(session) == "insurance":
+            detail.insurance_metadata = mask_dashboard_payload(
+                self._insurance_metadata(session, final_output)
             )
 
         return detail
@@ -376,6 +381,47 @@ class AdminDashboardService:
             "vendor_type": work_order.get("vendor_type"),
         }
 
+    def _insurance_metadata(
+        self,
+        session: OrchestratorSession,
+        final_output: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        structured = (final_output or {}).get("structured_output") or {}
+        claim = structured.get("claim_record") or {}
+        intake = structured.get("intake") or {}
+        scripted_fields = session.channel_metadata.get("scripted_intake", {}).get(
+            "fields",
+            {},
+        )
+        field_source = {**intake, **claim, **scripted_fields}
+        completeness = _required_field_completeness(
+            workflow_id=session.workflow_id,
+            fields=field_source,
+        )
+        return {
+            "claim_output": claim,
+            "claim_type": claim.get("claim_type")
+            or intake.get("claim_type")
+            or scripted_fields.get("claim_type"),
+            "policy_number": claim.get("policy_number")
+            or intake.get("policy_number")
+            or scripted_fields.get("policy_number"),
+            "loss_datetime": claim.get("loss_datetime")
+            or intake.get("loss_datetime")
+            or scripted_fields.get("loss_datetime"),
+            "loss_location": claim.get("loss_location")
+            or intake.get("loss_location")
+            or scripted_fields.get("loss_location"),
+            "incident_summary": claim.get("incident_summary")
+            or intake.get("incident_summary")
+            or scripted_fields.get("incident_summary"),
+            "recommended_routing": claim.get("recommended_routing")
+            or (final_output or {}).get("final_disposition"),
+            "required_fields_completeness": completeness,
+            "missing_information": claim.get("missing_information") or [],
+            "disclaimers_given": claim.get("disclaimers_given") or [],
+        }
+
     def _list_repository_organizations(self) -> list[Any]:
         try:
             return list(self._sessions.list_organizations())
@@ -474,6 +520,8 @@ def _vertical_key(session: OrchestratorSession) -> str | None:
     workflow_id = session.workflow_id or ""
     if workflow_id.startswith("property_management"):
         return "property_management"
+    if workflow_id.startswith("insurance"):
+        return "insurance"
     if workflow_id.startswith("healthcare"):
         return "healthcare"
     return None

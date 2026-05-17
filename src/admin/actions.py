@@ -68,6 +68,27 @@ class ProposedActionService:
                     "Internal placeholder for scheduling vendor or repair follow-up.",
                 ),
             ]
+        elif vertical == "insurance":
+            templates = [
+                (
+                    "review_claim_intake",
+                    "claim_review",
+                    "Review claim intake",
+                    "Internal reminder to review the FNOL claim intake details.",
+                ),
+                (
+                    "assign_adjuster_queue",
+                    "queue_routing",
+                    "Assign adjuster queue",
+                    "Internal placeholder for adjuster queue routing review.",
+                ),
+                (
+                    "request_documents",
+                    "document_followup",
+                    "Request documents",
+                    "Internal reminder to request missing claim documents.",
+                ),
+            ]
         else:
             templates = [
                 (
@@ -178,6 +199,8 @@ def _vertical_key(session: OrchestratorSession) -> str | None:
     workflow_id = session.workflow_id or ""
     if workflow_id.startswith("property_management"):
         return "property_management"
+    if workflow_id.startswith("insurance"):
+        return "insurance"
     if workflow_id.startswith("healthcare"):
         return "healthcare"
     return None

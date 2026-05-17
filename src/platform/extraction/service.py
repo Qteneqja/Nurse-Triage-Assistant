@@ -148,9 +148,15 @@ def _register_default_agents(service: ExtractionService) -> None:
     from src.verticals.property_management.extraction import (
         PropertyMaintenanceExtractionAgent,
     )
+    from src.verticals.insurance.constants import INSURANCE_CLAIMS_FNOL_WORKFLOW_ID
+    from src.verticals.insurance.extraction import InsuranceClaimsExtractionAgent
 
     service.register(HEALTHCARE_TRIAGE_WORKFLOW_ID, HealthcareExtractionAgent())
     service.register(
         PROPERTY_MAINTENANCE_WORKFLOW_ID,
         PropertyMaintenanceExtractionAgent(),
+    )
+    service.register(
+        INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
+        InsuranceClaimsExtractionAgent(),
     )

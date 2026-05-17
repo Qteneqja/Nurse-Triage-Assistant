@@ -188,7 +188,7 @@ python -m pytest
 deepeval test run tests/evals
 ```
 
-This repo includes an optional CI job named `Healthcare Evals (DeepEval)`. It runs only offline deterministic evals and sets `RUN_LIVE_LLM_EVALS=false`. The job is `continue-on-error` to avoid blocking unrelated CI while DeepEval environment behavior is being hardened.
+This repo includes a blocking CI job named `Healthcare Evals (DeepEval)`. It runs only offline deterministic evals and sets `RUN_LIVE_LLM_EVALS=false`. A failed deterministic healthcare eval blocks merge until the failure is fixed or explicitly reviewed.
 
 The normal test job also discovers `tests/evals` because they are standard pytest tests.
 
@@ -245,7 +245,7 @@ Planned extensions can include:
 - GitHub issue creation for critical eval failures.
 - Codex-generated fix prompts for human review.
 - Client-specific eval suites.
-- Non-healthcare vertical eval suites, including property management.
+- Additional non-healthcare vertical eval suites, including property management.
 
 # Phase 12.6: Failure Reports and Codex Fix Prompts
 
@@ -463,3 +463,22 @@ python -m pytest tests/evals --count 100
 This requires `pytest-repeat`, which is already included in the validated environment used for the 100x burn-in.
 
 No dedicated PowerShell burn-in script is currently committed in this repository. For PowerShell sessions, use the same command directly after activating the virtual environment.
+
+## Phase 13: Insurance FNOL Deterministic Evals
+
+Phase 13 adds non-clinical insurance FNOL eval coverage under `tests/evals`.
+These cases are deterministic, offline, and use the same DeepEval runner path:
+
+```bash
+python -m pytest tests/evals/test_insurance_fnol_eval.py
+deepeval test run tests/evals/test_insurance_fnol_eval.py
+```
+
+The insurance evals cover active-fire emergency routing, standard property
+damage intake, missing theft/loss information, and information-only callers.
+They do not require live LLMs, Twilio, OpenAI, DeepSeek, or production
+environment variables.
+
+Healthcare safety evals remain blocking and unchanged. Insurance evals must not
+modify healthcare red flags, SBAR output, completeness gates, or clinical
+disposition logic.

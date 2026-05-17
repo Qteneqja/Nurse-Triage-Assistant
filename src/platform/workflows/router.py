@@ -55,6 +55,10 @@ class WorkflowRouteResolver:
                     type(exc).__name__,
                 )
 
+        configured_route = _configured_phone_number_route(normalized)
+        if configured_route is not None:
+            return configured_route
+
         if workflow_hint and _workflow_hint_route_enabled():
             return _default_route(
                 workflow_id=workflow_hint,
@@ -197,6 +201,34 @@ def _workflow_hint_route_enabled() -> bool:
     if getattr(config, "ENVIRONMENT", "development") == "production":
         return bool(getattr(config, "ENABLE_WORKFLOW_HINT_ROUTE", False))
     return getattr(config, "ENABLE_WORKFLOW_HINT_ROUTE", True)
+
+
+def _configured_phone_number_route(
+    called_phone_number: str | None,
+) -> ResolvedWorkflowRoute | None:
+    configured = _normalize_phone(getattr(config, "INSURANCE_FNOL_PHONE_NUMBER", ""))
+    if not called_phone_number or not configured or called_phone_number != configured:
+        return None
+
+    from src.verticals.insurance.constants import (
+        INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
+        INSURANCE_CLAIMS_FNOL_WORKFLOW_VERSION,
+        INSURANCE_VERTICAL,
+    )
+
+    return ResolvedWorkflowRoute(
+        vertical_key=INSURANCE_VERTICAL,
+        workflow_id=INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
+        workflow_version=INSURANCE_CLAIMS_FNOL_WORKFLOW_VERSION,
+        config_json={"route_type": "insurance_fnol_placeholder"},
+        fallback_used=False,
+        audit_metadata={
+            "routing_source": "configured_phone_number",
+            "configured_key": "INSURANCE_FNOL_PHONE_NUMBER",
+            "called_phone_number_masked": _mask_phone(called_phone_number),
+            "environment": getattr(config, "ENVIRONMENT", "development"),
+        },
+    )
 
 
 def _normalize_phone(value: str | None) -> str | None:
