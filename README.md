@@ -33,6 +33,9 @@ The platform workflow layer also supports non-clinical verticals. Phase 13 adds
 the insurance FNOL foundation with workflow ID `insurance_claims_fnol_v1` and
 placeholder local route `INSURANCE_FNOL_PHONE_NUMBER=+15555550130`.
 
+- Insurance FNOL demo pack with scripted sample claims, expected extraction
+  JSON, transcripts, and broker-facing demo materials.
+
 ## Architecture
 
 ```

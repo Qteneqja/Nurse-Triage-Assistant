@@ -1,0 +1,354 @@
+[
+  {
+    "scenario_id": "auto_accident_injury",
+    "title": "Auto Accident With Possible Injury",
+    "claim_type": "auto accident",
+    "caller_profile": {
+      "caller_name": "Jordan Lee",
+      "callback_number": "555-0100",
+      "relationship_to_policyholder": "self",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": "AUTO-DEMO-1001",
+      "loss_datetime": "2026-05-16 17:40",
+      "loss_location": "123 Demo Street, Winnipeg, MB",
+      "incident_summary": "Another vehicle hit the caller's demo sedan at an intersection."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "Thanks for calling. Can I get your name?",
+        "caller": "Jordan Lee."
+      },
+      {
+        "assistant": "What is the best phone number for a callback?",
+        "caller": "555-0100."
+      },
+      {
+        "assistant": "What is your policy number, if you have it handy?",
+        "caller": "AUTO-DEMO-1001."
+      },
+      {
+        "assistant": "What type of claim is this?",
+        "caller": "Auto accident."
+      },
+      {
+        "assistant": "When did the loss or incident happen?",
+        "caller": "May 16, 2026 at about 5:40 PM."
+      },
+      {
+        "assistant": "Where did the loss or incident happen?",
+        "caller": "123 Demo Street, Winnipeg, MB."
+      },
+      {
+        "assistant": "Please briefly describe what happened.",
+        "caller": "Another vehicle hit my demo sedan at an intersection."
+      },
+      {
+        "assistant": "Was anyone hurt, were emergency services involved, and is the vehicle still safe to drive?",
+        "caller": "One driver has neck pain, police and EMS are on scene, the vehicle is not drivable, another party was involved, and I have photos but no report number yet."
+      }
+    ],
+    "expected_routing": "URGENT_ADJUSTER_REVIEW",
+    "expected_key_fields": {
+      "injuries_mentioned": true,
+      "emergency_services_involved": true,
+      "police_or_fire_report": false,
+      "documents_available": true,
+      "human_review_required": false
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Use this first when showing injury-sensitive auto routing without turning the demo into an emergency-services script.",
+    "dashboard_summary": "Urgent auto FNOL with another party, possible injury, EMS/police involvement, not-drivable vehicle, and photos available.",
+    "expected_output_file": "auto_accident_injury.json",
+    "transcript_file": "auto_accident_injury.md"
+  },
+  {
+    "scenario_id": "active_property_danger",
+    "title": "Active Property Danger",
+    "claim_type": "property damage",
+    "caller_profile": {
+      "caller_name": "Morgan Patel",
+      "callback_number": "555-0101",
+      "relationship_to_policyholder": "tenant reporting for policyholder",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": "HOME-DEMO-2002",
+      "loss_datetime": "2026-05-17 02:15",
+      "loss_location": "456 Demo Court, Winnipeg, MB",
+      "incident_summary": "There is an active fire right now with smoke and an unsafe scene at the demo property."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "Thanks for calling. Can I get your name?",
+        "caller": "Morgan Patel."
+      },
+      {
+        "assistant": "Please briefly describe what happened.",
+        "caller": "There is an active fire right now, smoke is coming from the demo property, and the scene is unsafe."
+      },
+      {
+        "assistant": "If there is immediate danger, please contact emergency services now.",
+        "caller": "The fire department is on the way, and I am outside."
+      }
+    ],
+    "expected_routing": "EMERGENCY_SERVICES_NOW",
+    "expected_key_fields": {
+      "emergency_or_safety_issue": true,
+      "emergency_services_involved": true,
+      "property_secure": false,
+      "mitigation_needed": true,
+      "human_review_required": true
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Show that active danger gets an immediate safety instruction and does not continue a long intake before emergency guidance.",
+    "dashboard_summary": "Emergency property FNOL with active fire, unsafe scene, fire department involvement, and urgent follow-up required.",
+    "expected_output_file": "active_property_danger.json",
+    "transcript_file": null
+  },
+  {
+    "scenario_id": "water_damage_mitigation",
+    "title": "Water Damage Requiring Mitigation",
+    "claim_type": "water damage",
+    "caller_profile": {
+      "caller_name": "Casey Nguyen",
+      "callback_number": "555-0102",
+      "relationship_to_policyholder": "self",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": "HOME-DEMO-3003",
+      "loss_datetime": "2026-05-17 06:30",
+      "loss_location": "789 Demo Avenue, Winnipeg, MB",
+      "incident_summary": "A supply line leaked into the demo kitchen ceiling and water is still dripping."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "What type of claim is this?",
+        "caller": "Water damage."
+      },
+      {
+        "assistant": "Please briefly describe what happened.",
+        "caller": "A supply line leaked into the kitchen ceiling and water is still dripping."
+      },
+      {
+        "assistant": "Is the water stopped, is the property safe, and is any urgent mitigation needed?",
+        "caller": "The water is partly shut off but still dripping, the property is safe, mitigation is needed, and I have photos."
+      }
+    ],
+    "expected_routing": "URGENT_ADJUSTER_REVIEW",
+    "expected_key_fields": {
+      "property_secure": true,
+      "mitigation_needed": true,
+      "documents_available": true,
+      "missing_information": []
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Good for brokers who care about after-hours mitigation capture and same-day adjuster handoff.",
+    "dashboard_summary": "Urgent water damage FNOL with active leak, property safe, photos available, and mitigation needed.",
+    "expected_output_file": "water_damage_mitigation.json",
+    "transcript_file": "water_damage_mitigation.md"
+  },
+  {
+    "scenario_id": "theft_documents_needed",
+    "title": "Theft Or Loss With Documents Available",
+    "claim_type": "theft/loss",
+    "caller_profile": {
+      "caller_name": "Riley Chen",
+      "callback_number": "555-0103",
+      "relationship_to_policyholder": "self",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": "HOME-DEMO-4004",
+      "loss_datetime": "2026-05-15 evening",
+      "loss_location": "22 Demo Road, Winnipeg, MB",
+      "incident_summary": "A demo laptop bag and sample camera were stolen from a locked storage room."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "What type of claim is this?",
+        "caller": "Theft or loss."
+      },
+      {
+        "assistant": "Please briefly describe what happened.",
+        "caller": "A demo laptop bag and sample camera were stolen from a locked storage room."
+      },
+      {
+        "assistant": "Have you filed a police report, and do you have receipts or photos for the missing items?",
+        "caller": "Yes, a police report was filed, and I have receipts, photos, and documents ready."
+      }
+    ],
+    "expected_routing": "STANDARD_CLAIM_INTAKE",
+    "expected_key_fields": {
+      "police_or_fire_report": true,
+      "documents_available": true,
+      "missing_information": [],
+      "human_review_required": false
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Shows theft intake, report capture, and document readiness without implying a coverage decision.",
+    "dashboard_summary": "Standard theft FNOL with police report filed, receipts/photos available, and complete core details.",
+    "expected_output_file": "theft_documents_needed.json",
+    "transcript_file": "theft_documents_needed.md"
+  },
+  {
+    "scenario_id": "glass_window_damage",
+    "title": "Glass Damage With Unsecured Opening",
+    "claim_type": "glass/window damage",
+    "caller_profile": {
+      "caller_name": "Avery Brooks",
+      "callback_number": "555-0104",
+      "relationship_to_policyholder": "business manager",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": "BIZ-DEMO-5005",
+      "loss_datetime": "2026-05-16 23:20",
+      "loss_location": "404 Demo Market Lane, Winnipeg, MB",
+      "incident_summary": "A front demo shop window was broken overnight and the opening is not secure."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "What type of claim is this?",
+        "caller": "Glass or window damage."
+      },
+      {
+        "assistant": "Please briefly describe what happened.",
+        "caller": "A front demo shop window was broken overnight and the opening is not secure."
+      },
+      {
+        "assistant": "Is anyone hurt or in immediate danger, is the property secure, and do you have photos or documents available?",
+        "caller": "No one is hurt, but the opening is not secure, weather can get in, and I have photos."
+      }
+    ],
+    "expected_routing": "URGENT_ADJUSTER_REVIEW",
+    "expected_key_fields": {
+      "property_secure": false,
+      "mitigation_needed": true,
+      "documents_available": true,
+      "safety_flags": [
+        "property_not_secure",
+        "mitigation_needed"
+      ]
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Use this to show urgent routing for exposure/security risk while avoiding a payout or repair promise.",
+    "dashboard_summary": "Urgent glass FNOL with unsecured opening, weather exposure, photos available, and mitigation need.",
+    "expected_output_file": "glass_window_damage.json",
+    "transcript_file": "glass_window_damage.md"
+  },
+  {
+    "scenario_id": "information_only",
+    "title": "Information-Only Caller",
+    "claim_type": "other",
+    "caller_profile": {
+      "caller_name": "Taylor Morgan",
+      "callback_number": "555-0105",
+      "relationship_to_policyholder": "self",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": null,
+      "loss_datetime": null,
+      "loss_location": null,
+      "incident_summary": "The caller only wants to understand the claims process and does not want to start a claim right now."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "Thanks for calling. How can I help today?",
+        "caller": "I just want to understand the claims process. I do not want to start a claim right now."
+      },
+      {
+        "assistant": "I can explain the general intake process and note that no coverage or claim decision is being made.",
+        "caller": "That is all I need today."
+      }
+    ],
+    "expected_routing": "INFORMATION_ONLY",
+    "expected_key_fields": {
+      "missing_information": [
+        "policy_number",
+        "loss_datetime",
+        "loss_location"
+      ],
+      "human_review_required": false
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Demonstrates process support without creating an implied claim approval, denial, or opened claim.",
+    "dashboard_summary": "Information-only insurance caller asking about the claims process; no claim decision made.",
+    "expected_output_file": "information_only.json",
+    "transcript_file": "information_only.md"
+  },
+  {
+    "scenario_id": "missing_information_review",
+    "title": "Missing Information Or Unclear Claim",
+    "claim_type": "property damage",
+    "caller_profile": {
+      "caller_name": "Jamie Rivera",
+      "callback_number": "555-0106",
+      "relationship_to_policyholder": "family member",
+      "preferred_callback_method": "phone"
+    },
+    "caller_answers": {
+      "policy_number": null,
+      "loss_datetime": null,
+      "loss_location": null,
+      "incident_summary": "The caller thinks there may be demo property damage but cannot confirm when or where it happened."
+    },
+    "scripted_turns": [
+      {
+        "assistant": "What is your policy number, if you have it handy?",
+        "caller": "I do not have the policy number with me."
+      },
+      {
+        "assistant": "When did the loss or incident happen?",
+        "caller": "I am not sure."
+      },
+      {
+        "assistant": "Where did the loss or incident happen?",
+        "caller": "I do not know the exact location yet."
+      },
+      {
+        "assistant": "Is anyone hurt or in immediate danger, is the property secure, and do you have photos or documents available?",
+        "caller": "No one is hurt, I have no documents, and I need someone to review what is missing."
+      }
+    ],
+    "expected_routing": "DOCUMENTS_NEEDED",
+    "expected_key_fields": {
+      "missing_information": [
+        "policy_number",
+        "loss_datetime",
+        "loss_location"
+      ],
+      "documents_available": false,
+      "human_review_required": true
+    },
+    "expected_disclaimers": [
+      "A licensed broker or adjuster can confirm coverage.",
+      "This intake does not guarantee claim approval."
+    ],
+    "demo_notes": "Shows conservative handling when core FNOL fields are missing and no emergency issue is present.",
+    "dashboard_summary": "Document/information gap FNOL with missing policy number, loss date/time, and loss location.",
+    "expected_output_file": "missing_information_review.json",
+    "transcript_file": null
+  }
+]

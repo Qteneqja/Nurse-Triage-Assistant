@@ -1,0 +1,36 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Morgan Patel",
+  "callback_number": "555-0101",
+  "policy_number": "HOME-DEMO-2002",
+  "claim_type": "property damage",
+  "loss_datetime": "2026-05-17 02:15",
+  "loss_location": "456 Demo Court, Winnipeg, MB",
+  "incident_summary": "There is an active fire right now with smoke and an unsafe scene at the demo property.",
+  "relationship_to_policyholder": "tenant reporting for policyholder",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": true,
+  "injuries_mentioned": false,
+  "emergency_services_involved": true,
+  "police_or_fire_report": false,
+  "property_secure": false,
+  "mitigation_needed": true,
+  "documents_available": false,
+  "missing_information": [],
+  "recommended_routing": "EMERGENCY_SERVICES_NOW",
+  "confidence": 0.95,
+  "human_review_required": true,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Active fire or unsafe scene reported.",
+  "recommended_action": "Advise the caller to contact emergency services immediately, then route the claim for urgent follow-up.",
+  "rules_triggered": [
+    "insurance:emergency:active_fire"
+  ],
+  "safety_flags": [
+    "active_fire"
+  ]
+}
