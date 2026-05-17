@@ -1,0 +1,40 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Jamie Rivera",
+  "callback_number": "555-0106",
+  "policy_number": null,
+  "claim_type": "property damage",
+  "loss_datetime": null,
+  "loss_location": null,
+  "incident_summary": "The caller thinks there may be demo property damage but cannot confirm when or where it happened.",
+  "relationship_to_policyholder": "family member",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": false,
+  "injuries_mentioned": false,
+  "emergency_services_involved": false,
+  "police_or_fire_report": false,
+  "property_secure": null,
+  "mitigation_needed": false,
+  "documents_available": false,
+  "missing_information": [
+    "policy_number",
+    "loss_datetime",
+    "loss_location"
+  ],
+  "recommended_routing": "DOCUMENTS_NEEDED",
+  "confidence": 0.58,
+  "human_review_required": true,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Required FNOL information is missing or uncertain.",
+  "recommended_action": "Ask an intake specialist to collect missing claim details.",
+  "rules_triggered": [
+    "insurance:documents_needed"
+  ],
+  "safety_flags": [
+    "missing_required_information"
+  ]
+}
