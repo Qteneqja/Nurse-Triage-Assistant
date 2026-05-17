@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 from src.verticals.insurance.constants import INSURANCE_FNOL_PHONE_PLACEHOLDER
@@ -40,6 +41,27 @@ FORBIDDEN_PROMISE_PATTERN = re.compile(
     r"definitely\s+covered",
     re.IGNORECASE,
 )
+ALLOWED_CONTROL_CHARACTERS = {"\n", "\r", "\t"}
+BIDI_CONTROL_CODEPOINTS = {
+    0x061C,
+    0x200E,
+    0x200F,
+    0x202A,
+    0x202B,
+    0x202C,
+    0x202D,
+    0x202E,
+    0x2066,
+    0x2067,
+    0x2068,
+    0x2069,
+}
+PHASE_13_1_TEXT_PATHS = [
+    ROOT / "README.md",
+    ROOT / "docs" / "insurance_fnol_vertical.md",
+    ROOT / "scripts" / "run_insurance_demo.py",
+    ROOT / "tests" / "test_insurance_demo_pack.py",
+]
 
 
 def test_insurance_demo_scenarios_file_exists_and_has_required_fields():
@@ -118,6 +140,48 @@ def test_broker_demo_script_and_one_pager_exist():
     assert (DEMO_ROOT / "INSURANCE_FNOL_ONE_PAGER.md").exists()
 
 
+def test_phase_13_1_files_have_no_hidden_unicode_controls():
+    findings = []
+
+    for path in [*PHASE_13_1_TEXT_PATHS, *_demo_text_files()]:
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(keepends=True), 1):
+            for column_number, character in enumerate(line, 1):
+                if _is_hidden_unicode_control(character):
+                    findings.append(
+                        (
+                            str(path.relative_to(ROOT)),
+                            line_number,
+                            column_number,
+                            f"U+{ord(character):04X}",
+                            unicodedata.name(character, "<no name>"),
+                        )
+                    )
+
+    assert findings == []
+
+
+def test_demo_pack_files_are_plain_ascii():
+    findings = []
+
+    for path in _demo_text_files():
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(keepends=True), 1):
+            for column_number, character in enumerate(line, 1):
+                if ord(character) > 0x7F:
+                    findings.append(
+                        (
+                            str(path.relative_to(ROOT)),
+                            line_number,
+                            column_number,
+                            f"U+{ord(character):04X}",
+                            unicodedata.name(character, "<no name>"),
+                        )
+                    )
+
+    assert findings == []
+
+
 def test_offline_insurance_demo_runner_can_run_sample_without_api_keys():
     result = subprocess.run(
         [
@@ -158,6 +222,16 @@ def _demo_text_files() -> list[Path]:
 
 def _normalize_phone(value: str) -> str:
     return re.sub(r"\D", "", value)
+
+
+def _is_hidden_unicode_control(character: str) -> bool:
+    if character in ALLOWED_CONTROL_CHARACTERS:
+        return False
+    codepoint = ord(character)
+    return (
+        unicodedata.category(character) in {"Cc", "Cf"}
+        or codepoint in BIDI_CONTROL_CODEPOINTS
+    )
 
 
 def _offline_env() -> dict[str, str]:

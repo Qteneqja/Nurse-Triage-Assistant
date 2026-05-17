@@ -1,4 +1,4 @@
-﻿# Nurse Triage Assistant
+# Nurse Triage Assistant
 
 [![CI](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml)
 
