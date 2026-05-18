@@ -1,0 +1,37 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Jordan Lee",
+  "callback_number": "555-0100",
+  "policy_number": "AUTO-DEMO-1001",
+  "claim_type": "auto accident",
+  "loss_datetime": "2026-05-16 17:40",
+  "loss_location": "123 Demo Street, Winnipeg, MB",
+  "incident_summary": "Another vehicle hit the caller's demo sedan at an intersection.",
+  "relationship_to_policyholder": "self",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": false,
+  "injuries_mentioned": true,
+  "emergency_services_involved": true,
+  "police_or_fire_report": false,
+  "property_secure": null,
+  "mitigation_needed": false,
+  "documents_available": true,
+  "missing_information": [],
+  "recommended_routing": "URGENT_ADJUSTER_REVIEW",
+  "confidence": 0.88,
+  "human_review_required": false,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Potentially urgent claim details need adjuster review.",
+  "recommended_action": "Route to an urgent adjuster queue for same-day review.",
+  "rules_triggered": [
+    "insurance:urgent_adjuster_review"
+  ],
+  "safety_flags": [
+    "injuries_mentioned",
+    "emergency_services_involved"
+  ]
+}

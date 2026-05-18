@@ -9,6 +9,7 @@ Twilio signature validation enforced via router-level dependency.
 import asyncio
 import logging
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from xml.sax import saxutils
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, Request, Form, BackgroundTasks
 from fastapi.responses import Response
 from typing import Optional
 
+import src.config as config
 from src.storage.session_repository import get_session_repository
 from src.orchestrator.orchestrator import get_orchestrator
 from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
@@ -27,6 +29,7 @@ from src.platform.workflows.router import (
 from src.platform.workflows.schemas import (
     ScriptedIntakeDefinition,
     ScriptedStageDefinition,
+    ResolvedWorkflowRoute,
     WorkflowContext,
     WorkflowFinalResult,
     WorkflowInput,
@@ -325,9 +328,21 @@ STAGE_AGE = "AGE"
 STAGE_SEX = "SEX"
 STAGE_CHIEF_COMPLAINT = "CHIEF_COMPLAINT"
 STAGE_DYNAMIC = "DYNAMIC"
+STAGE_VERTICAL_MENU = "VERTICAL_MENU"
 
 # Maximum name re-prompts before accepting whatever was given
 _MAX_NAME_RETRIES = 3
+
+_SHARED_VERTICAL_MENU_PROMPT = (
+    "If this is a life-threatening emergency, hang up and call 9 1 1. "
+    "For nurse triage, say or press 1. "
+    "For insurance claims, say or press 2."
+)
+
+_SHARED_VERTICAL_MENU_HINTS = (
+    "nurse triage,healthcare,medical,clinic,symptoms,insurance claims,"
+    "insurance,claim,claims,policy,loss,adjuster,broker"
+)
 
 _SYMPTOM_RECOVERY_KEYWORDS = (
     "ache",
@@ -503,6 +518,201 @@ async def generate_twiml_gather(
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
 </Response>"""
+
+
+async def _generate_vertical_menu_twiml(reprompt: bool = False) -> str:
+    prompt = _SHARED_VERTICAL_MENU_PROMPT
+    if reprompt:
+        prompt = f"Sorry, I didn't catch that. {prompt}"
+
+    escaped_prompt = saxutils.escape(prompt)
+    audio_url = await text_to_speech_url(prompt, _get_azure_voice())
+    prompt_tag = (
+        f"<Play>{saxutils.escape(audio_url)}</Play>"
+        if audio_url
+        else f'<Say voice="{_TTS_VOICE}">{escaped_prompt}</Say>'
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="speech dtmf" numDigits="1" speechTimeout="auto" timeout="8" action="/api/v1/voice/gather" method="POST" speechModel="phone_call" enhanced="true" hints="{saxutils.escape(_SHARED_VERTICAL_MENU_HINTS)}">
+        {prompt_tag}
+    </Gather>
+    <Redirect method="POST">/api/v1/voice/gather</Redirect>
+</Response>"""
+
+
+def _shared_vertical_menu_enabled_for(called_phone_number: str | None) -> bool:
+    if not getattr(config, "ENABLE_SHARED_NUMBER_VERTICAL_MENU", False):
+        return False
+    configured_number = _normalise_phone(
+        getattr(config, "SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER", "")
+    )
+    if not configured_number:
+        return True
+    return _normalise_phone(called_phone_number or "") == configured_number
+
+
+def _parse_vertical_menu_choice(
+    speech_text: str | None,
+    digits: str | None,
+) -> str | None:
+    if digits == "1":
+        return "healthcare"
+    if digits == "2":
+        return "insurance"
+
+    normalized = (speech_text or "").strip().lower()
+    if not normalized:
+        return None
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+
+    if tokens & {"1", "one"}:
+        return "healthcare"
+    if tokens & {"2", "two"}:
+        return "insurance"
+    if tokens & {
+        "insurance",
+        "claim",
+        "claims",
+        "policy",
+        "loss",
+        "adjuster",
+        "broker",
+    }:
+        return "insurance"
+    if tokens & {
+        "nurse",
+        "triage",
+        "health",
+        "healthcare",
+        "medical",
+        "clinic",
+        "symptom",
+        "symptoms",
+    }:
+        return "healthcare"
+    return None
+
+
+def _build_menu_selected_route(
+    session: OrchestratorSession,
+    selected_vertical: str,
+) -> ResolvedWorkflowRoute:
+    route_metadata = session.channel_metadata.get("route") or {}
+    audit_metadata = {
+        "routing_source": "shared_number_vertical_menu",
+        "selected_vertical": selected_vertical,
+        "original_route": route_metadata,
+    }
+    common = {
+        "organization_id": session.organization_id
+        or route_metadata.get("organization_id"),
+        "phone_number_id": session.phone_number_id
+        or route_metadata.get("phone_number_id"),
+        "config_json": {"route_type": "shared_number_vertical_menu"},
+        "audit_metadata": audit_metadata,
+    }
+    if selected_vertical == "insurance":
+        from src.verticals.insurance.constants import (
+            INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
+            INSURANCE_CLAIMS_FNOL_WORKFLOW_VERSION,
+            INSURANCE_VERTICAL,
+        )
+
+        return ResolvedWorkflowRoute(
+            **common,
+            vertical_key=INSURANCE_VERTICAL,
+            workflow_id=INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
+            workflow_version=INSURANCE_CLAIMS_FNOL_WORKFLOW_VERSION,
+        )
+
+    from src.verticals.healthcare.constants import HEALTHCARE_TRIAGE_WORKFLOW_ID
+
+    return ResolvedWorkflowRoute(
+        **common,
+        vertical_key="healthcare",
+        workflow_id=(
+            session.workflow_id
+            if session.vertical_key == "healthcare" and session.workflow_id
+            else HEALTHCARE_TRIAGE_WORKFLOW_ID
+        ),
+        workflow_version=session.workflow_version
+        or getattr(config, "DEFAULT_WORKFLOW_VERSION", "v1"),
+    )
+
+
+def _apply_workflow_route_to_session(
+    session: OrchestratorSession,
+    route: ResolvedWorkflowRoute,
+) -> None:
+    session.organization_id = route.organization_id
+    session.vertical_key = route.vertical_key
+    session.workflow_id = route.workflow_id
+    session.workflow_version = route.workflow_version
+    session.phone_number_id = route.phone_number_id
+    session.channel_metadata["route"] = {
+        "organization_id": route.organization_id,
+        "vertical_key": route.vertical_key,
+        "workflow_id": route.workflow_id,
+        "workflow_version": route.workflow_version,
+        "phone_number_id": route.phone_number_id,
+        "fallback_used": route.fallback_used,
+        "fallback_reason": route.fallback_reason,
+        "audit_metadata": route.audit_metadata,
+        "config_json": route.config_json,
+    }
+    session.channel_metadata["workflow_id"] = route.workflow_id
+    session.channel_metadata["vertical_key"] = route.vertical_key
+    session.channel_metadata["workflow_version"] = route.workflow_version
+
+
+async def _start_selected_workflow_from_menu(
+    *,
+    session: OrchestratorSession,
+    repo,
+    selected_vertical: str,
+) -> str:
+    route = _build_menu_selected_route(session, selected_vertical)
+    _apply_workflow_route_to_session(session, route)
+    session.channel_metadata.setdefault("shared_vertical_menu", {})[
+        "selected_vertical"
+    ] = selected_vertical
+
+    workflow = ensure_default_workflows_registered().get(route.workflow_id)
+    intake = workflow.get_scripted_intake_definition()
+    first_stage = (
+        _initialize_scripted_intake(session, intake) if intake is not None else None
+    )
+    first_question = (
+        _stage_prompt(first_stage)
+        if first_stage is not None
+        else "How can I help you today?"
+    )
+    greeting = intake.intro_text if intake and intake.intro_text else ""
+    ack = (
+        "Okay, starting insurance claims intake."
+        if selected_vertical == "insurance"
+        else "Okay, starting nurse triage."
+    )
+    intro_text = " ".join(part for part in (ack, greeting) if part)
+
+    if intro_text:
+        session.conversation.append(ConversationTurn(role="assistant", text=intro_text))
+    session.conversation.append(ConversationTurn(role="assistant", text=first_question))
+    repo.persist_session(session)
+
+    if first_stage is not None:
+        return await _generate_initial_scripted_twiml(
+            intro_text,
+            first_stage,
+            "/api/v1/voice/gather",
+        )
+    return await generate_twiml_gather(
+        first_question,
+        "/api/v1/voice/gather",
+        timeout=8,
+        speech_timeout="auto",
+    )
 
 
 async def generate_twiml_say_and_hangup(text: str) -> str:
@@ -850,6 +1060,27 @@ async def handle_incoming_call(
         ensure_default_workflows_registered()
         route = get_workflow_route_resolver().resolve(called_phone_number=To)
 
+        repo = get_session_repository()
+
+        if _shared_vertical_menu_enabled_for(To):
+            session = repo.create_session(call_sid=CallSid, workflow_route=route)
+            session.channel_metadata["called_phone_number"] = To
+            session.channel_metadata["stage"] = STAGE_VERTICAL_MENU
+            session.channel_metadata["shared_vertical_menu"] = {
+                "enabled": True,
+                "prompted_at": datetime.now(UTC).isoformat(),
+            }
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=_SHARED_VERTICAL_MENU_PROMPT)
+            )
+            repo.persist_session(session)
+            twiml = await _generate_vertical_menu_twiml()
+            logger.info(
+                "[TWILIO] Shared-number vertical menu started for session %s",
+                session.session_id,
+            )
+            return Response(content=twiml, media_type="application/xml")
+
         if route.safe_response_required:
             logger.error("[TWILIO] Incoming call could not be safely routed")
             twiml = await generate_twiml_say_and_hangup(
@@ -859,7 +1090,6 @@ async def handle_incoming_call(
             )
             return Response(content=twiml, media_type="application/xml")
 
-        repo = get_session_repository()
         session = repo.create_session(call_sid=CallSid, workflow_route=route)
         session.channel_metadata["called_phone_number"] = To
 
@@ -1011,11 +1241,17 @@ async def handle_gather(
     CallSid: str = Form(...),
     To: Optional[str] = Form(None),
     SpeechResult: Optional[str] = Form(None),
+    Digits: Optional[str] = Form(None),
 ):
     """
     Handle Twilio <Gather> results — all state in OrchestratorSession via SessionRepository.
     """
     try:
+        if not isinstance(SpeechResult, str):
+            SpeechResult = None
+        if not isinstance(Digits, str):
+            Digits = None
+
         logger.info(
             f"[TWILIO] Gather from {CallSid}: speech_len={len(SpeechResult) if SpeechResult else 0}"
         )
@@ -1051,6 +1287,29 @@ async def handle_gather(
             return Response(content=twiml, media_type="application/xml")
 
         session_id = session.session_id
+
+        if session.channel_metadata.get("stage") == STAGE_VERTICAL_MENU:
+            choice = _parse_vertical_menu_choice(SpeechResult, Digits)
+            if choice is None:
+                menu_state = session.channel_metadata.setdefault(
+                    "shared_vertical_menu",
+                    {},
+                )
+                menu_state["attempts"] = int(menu_state.get("attempts", 0)) + 1
+                repo.persist_session(session)
+                twiml = await _generate_vertical_menu_twiml(reprompt=True)
+                return Response(content=twiml, media_type="application/xml")
+
+            selected_text = SpeechResult.strip() if SpeechResult else Digits or choice
+            session.conversation.append(
+                ConversationTurn(role="caller", text=selected_text)
+            )
+            twiml = await _start_selected_workflow_from_menu(
+                session=session,
+                repo=repo,
+                selected_vertical=choice,
+            )
+            return Response(content=twiml, media_type="application/xml")
 
         # Handle empty speech result
         # Speak EXACTLY one apology sentence and re-run the same stage question

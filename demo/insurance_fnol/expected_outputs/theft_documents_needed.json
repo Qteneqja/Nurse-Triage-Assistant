@@ -1,0 +1,34 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Riley Chen",
+  "callback_number": "555-0103",
+  "policy_number": "HOME-DEMO-4004",
+  "claim_type": "theft/loss",
+  "loss_datetime": "2026-05-15 evening",
+  "loss_location": "22 Demo Road, Winnipeg, MB",
+  "incident_summary": "A demo laptop bag and sample camera were stolen from a locked storage room.",
+  "relationship_to_policyholder": "self",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": false,
+  "injuries_mentioned": false,
+  "emergency_services_involved": false,
+  "police_or_fire_report": true,
+  "property_secure": null,
+  "mitigation_needed": false,
+  "documents_available": true,
+  "missing_information": [],
+  "recommended_routing": "STANDARD_CLAIM_INTAKE",
+  "confidence": 0.82,
+  "human_review_required": false,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Core FNOL fields are present and no urgent safety issue was detected.",
+  "recommended_action": "Create a standard claim intake record for adjuster triage.",
+  "rules_triggered": [
+    "insurance:standard_claim_intake"
+  ],
+  "safety_flags": []
+}

@@ -125,6 +125,49 @@ schema version is:
 insurance_claims_fnol_extraction_v1
 ```
 
+## Demo Pack
+
+Phase 13.1 adds a repeatable insurance FNOL demo pack in:
+
+```text
+demo/insurance_fnol/
+```
+
+It includes:
+
+- `scenarios.json` - seven fake scripted FNOL scenarios for auto, property
+  danger, water mitigation, theft/loss, glass/window damage, information-only,
+  and missing-information demos.
+- `expected_outputs/` - one expected extracted JSON example per scenario,
+  shaped to the implemented `InsuranceClaimRecord` schema and extraction entity
+  list.
+- `transcripts/` - readable Markdown demo transcripts for common sales-call
+  walk-throughs.
+- `BROKER_DEMO_SCRIPT.md` - broker/agency demo guidance with positioning,
+  setup, talk track, and pilot success metrics.
+- `INSURANCE_FNOL_ONE_PAGER.md` - concise client-facing overview.
+
+Run the offline demo reader without API keys:
+
+```bash
+python scripts/run_insurance_demo.py
+python scripts/run_insurance_demo.py --scenario water_damage_mitigation
+python scripts/run_insurance_demo.py --all
+```
+
+The runner is intentionally static and deterministic. It reads the demo files,
+prints expected routing, extracted fields, dashboard summary, and disclaimer
+checks. It does not call Twilio, DeepSeek, OpenAI, or any external service.
+
+Use the broker demo script when preparing a sales or stakeholder call. Use the
+one-pager as a short client-facing leave-behind. The expected outputs are useful
+for showing how dashboard or CRM data could look after the call.
+
+To replace the local placeholder phone number later, keep
+`INSURANCE_FNOL_PHONE_NUMBER=+15555550130` for local/demo routing and configure
+production numbers through seeded `phone_numbers` routing rows or
+organization-specific deployment configuration.
+
 ## Evals
 
 Insurance FNOL deterministic evals live in:

@@ -12,6 +12,8 @@ ENV/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tmp/
+codex-pytest-tmp/
 .coverage
 htmlcov/
 dist/

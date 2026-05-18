@@ -1,0 +1,38 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Taylor Morgan",
+  "callback_number": "555-0105",
+  "policy_number": null,
+  "claim_type": "other",
+  "loss_datetime": null,
+  "loss_location": null,
+  "incident_summary": "The caller only wants to understand the claims process and does not want to start a claim right now.",
+  "relationship_to_policyholder": "self",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": false,
+  "injuries_mentioned": false,
+  "emergency_services_involved": false,
+  "police_or_fire_report": false,
+  "property_secure": null,
+  "mitigation_needed": false,
+  "documents_available": false,
+  "missing_information": [
+    "policy_number",
+    "loss_datetime",
+    "loss_location"
+  ],
+  "recommended_routing": "INFORMATION_ONLY",
+  "confidence": 0.78,
+  "human_review_required": false,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Caller is asking about the process and does not want to open a claim.",
+  "recommended_action": "Provide general claims-process information and offer a callback.",
+  "rules_triggered": [
+    "insurance:information_only"
+  ],
+  "safety_flags": []
+}
