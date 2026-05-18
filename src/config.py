@@ -179,8 +179,10 @@ INSURANCE_FNOL_PHONE_NUMBER: str = os.getenv(
 )
 
 # Temporary shared-number front door. When enabled, Twilio calls first hear a
-# vertical menu and are routed to healthcare or insurance based on the caller's
-# choice. Disable this once insurance has a dedicated phone route.
+# vertical menu and are routed to healthcare, insurance, or automotive
+# collision based on the caller's choice. Set
+# SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER to scope the menu to one phone
+# number, or leave it blank to apply to all inbound numbers while enabled.
 ENABLE_SHARED_NUMBER_VERTICAL_MENU: bool = _env_flag(
     "ENABLE_SHARED_NUMBER_VERTICAL_MENU",
     "false",

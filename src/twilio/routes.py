@@ -336,12 +336,14 @@ _MAX_NAME_RETRIES = 3
 _SHARED_VERTICAL_MENU_PROMPT = (
     "If this is a life-threatening emergency, hang up and call 9 1 1. "
     "For nurse triage, say or press 1. "
-    "For insurance claims, say or press 2."
+    "For insurance claims, say or press 2. "
+    "For automotive collision intake, say or press 3."
 )
 
 _SHARED_VERTICAL_MENU_HINTS = (
     "nurse triage,healthcare,medical,clinic,symptoms,insurance claims,"
-    "insurance,claim,claims,policy,loss,adjuster,broker"
+    "insurance,claim,claims,policy,loss,adjuster,broker,automotive collision,"
+    "automotive,collision,auto,car,vehicle,repair,birchwood"
 )
 
 _SYMPTOM_RECOVERY_KEYWORDS = (
@@ -560,6 +562,8 @@ def _parse_vertical_menu_choice(
         return "healthcare"
     if digits == "2":
         return "insurance"
+    if digits == "3":
+        return "automotive_collision"
 
     normalized = (speech_text or "").strip().lower()
     if not normalized:
@@ -570,6 +574,8 @@ def _parse_vertical_menu_choice(
         return "healthcare"
     if tokens & {"2", "two"}:
         return "insurance"
+    if tokens & {"3", "three"}:
+        return "automotive_collision"
     if tokens & {
         "insurance",
         "claim",
@@ -580,6 +586,12 @@ def _parse_vertical_menu_choice(
         "broker",
     }:
         return "insurance"
+    if tokens & {"automotive", "collision", "birchwood"}:
+        return "automotive_collision"
+    if {"body", "shop"}.issubset(tokens):
+        return "automotive_collision"
+    if {"collision", "repair"}.issubset(tokens):
+        return "automotive_collision"
     if tokens & {
         "nurse",
         "triage",
@@ -624,6 +636,20 @@ def _build_menu_selected_route(
             vertical_key=INSURANCE_VERTICAL,
             workflow_id=INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
             workflow_version=INSURANCE_CLAIMS_FNOL_WORKFLOW_VERSION,
+        )
+
+    if selected_vertical == "automotive_collision":
+        from src.verticals.automotive_collision.constants import (
+            AUTOMOTIVE_COLLISION_VERTICAL,
+            BIRCHWOOD_COLLISION_WORKFLOW_ID,
+            BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
+        )
+
+        return ResolvedWorkflowRoute(
+            **common,
+            vertical_key=AUTOMOTIVE_COLLISION_VERTICAL,
+            workflow_id=BIRCHWOOD_COLLISION_WORKFLOW_ID,
+            workflow_version=BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
         )
 
     from src.verticals.healthcare.constants import HEALTHCARE_TRIAGE_WORKFLOW_ID
@@ -692,7 +718,11 @@ async def _start_selected_workflow_from_menu(
     ack = (
         "Okay, starting insurance claims intake."
         if selected_vertical == "insurance"
-        else "Okay, starting nurse triage."
+        else (
+            "Okay, starting Birchwood collision intake."
+            if selected_vertical == "automotive_collision"
+            else "Okay, starting nurse triage."
+        )
     )
     intro_text = " ".join(part for part in (ack, greeting) if part)
 
