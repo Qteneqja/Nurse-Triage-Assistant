@@ -19,6 +19,7 @@ import hashlib
 import logging
 import time
 from typing import Optional
+from xml.sax import saxutils
 
 import httpx
 
@@ -68,9 +69,45 @@ def _get_client() -> httpx.AsyncClient:
     return _async_client
 
 
-def _cache_key(text: str, voice: str) -> str:
-    """Generate a deterministic cache key from text + voice."""
-    return hashlib.sha256(f"{voice}:{text}".encode()).hexdigest()[:16]
+def _cache_key(
+    text: str,
+    voice: str,
+    rate: str,
+    pitch: str,
+    style: str | None,
+    break_ms: int,
+) -> str:
+    """Generate a deterministic cache key from the rendered speech profile."""
+    cache_input = f"{voice}:{rate}:{pitch}:{style or ''}:{break_ms}:{text}"
+    return hashlib.sha256(cache_input.encode()).hexdigest()[:16]
+
+
+def _build_ssml(
+    text: str,
+    voice: str,
+    *,
+    rate: str,
+    pitch: str,
+    style: str | None,
+    break_ms: int,
+) -> str:
+    escaped_text = saxutils.escape(text)
+    sentence_pause = max(100, int(break_ms))
+    comma_pause = max(75, sentence_pause // 2)
+    prosody = (
+        f"<prosody rate='{rate}' pitch='{pitch}' volume='+5%'>{escaped_text}</prosody>"
+    )
+    if style:
+        prosody = f"<mstts:express-as style='{style}'>{prosody}</mstts:express-as>"
+
+    return f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis'
+    xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='en-US'>
+    <voice name='{voice}'>
+        <mstts:silence type='Sentenceboundary' value='{sentence_pause}ms'/>
+        <mstts:silence type='Comma-Semicolon' value='{comma_pause}ms'/>
+        {prosody}
+    </voice>
+</speak>"""
 
 
 async def synthesize_speech(
@@ -78,6 +115,12 @@ async def synthesize_speech(
     voice: str = "en-US-AvaMultilingualNeural",
     speech_key: Optional[str] = None,
     speech_region: Optional[str] = None,
+    *,
+    rate: str = "-3%",
+    pitch: str = "+2%",
+    style: str | None = None,
+    break_ms: int = 250,
+    fallback_voice: str | None = None,
 ) -> Optional[bytes]:
     """Synthesize speech using Azure Speech REST API (async).
 
@@ -103,19 +146,6 @@ async def synthesize_speech(
 
     url = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
 
-    # SSML for natural, warm speech — empathetic style with gentle prosody
-    # DragonHD voices don't support express-as styles; use prosody only.
-    ssml = f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis'
-    xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='en-US'>
-    <voice name='{voice}'>
-        <mstts:silence type='Sentenceboundary' value='250ms'/>
-        <mstts:silence type='Comma-Semicolon' value='150ms'/>
-        <prosody rate='-3%' pitch='+2%' volume='+5%'>
-            {text}
-        </prosody>
-    </voice>
-</speak>"""
-
     headers = {
         "Ocp-Apim-Subscription-Key": key,
         "Content-Type": "application/ssml+xml",
@@ -126,19 +156,45 @@ async def synthesize_speech(
     try:
         start = time.time()
         client = _get_client()
-        response = await client.post(url, content=ssml, headers=headers)
-        elapsed = time.time() - start
+        attempts: list[tuple[str, str | None]] = [(voice, style or None)]
+        if style:
+            attempts.append((voice, None))
+        fallback_candidate = (fallback_voice or "").strip()
+        if fallback_candidate and fallback_candidate != voice:
+            attempts.append((fallback_candidate, None))
 
-        if response.status_code == 200:
-            logger.info(
-                f"[AzureTTS] Synthesized {len(text)} chars in {elapsed:.2f}s ({len(response.content)} bytes)"
+        for attempt_voice, attempt_style in attempts:
+            ssml = _build_ssml(
+                text,
+                attempt_voice,
+                rate=rate,
+                pitch=pitch,
+                style=attempt_style,
+                break_ms=break_ms,
             )
-            return response.content
-        else:
-            logger.error(
-                f"[AzureTTS] Failed: HTTP {response.status_code} — {response.text[:200]}"
+            response = await client.post(url, content=ssml, headers=headers)
+            elapsed = time.time() - start
+
+            if response.status_code == 200:
+                logger.info(
+                    "[AzureTTS] Synthesized %s chars in %.2fs (%s bytes) using voice=%s style=%s",
+                    len(text),
+                    elapsed,
+                    len(response.content),
+                    attempt_voice,
+                    attempt_style or "none",
+                )
+                return response.content
+
+            logger.warning(
+                "[AzureTTS] Attempt failed: HTTP %s voice=%s style=%s - %s",
+                response.status_code,
+                attempt_voice,
+                attempt_style or "none",
+                response.text[:200],
             )
-            return None
+
+        return None
 
     except Exception as exc:
         logger.error(f"[AzureTTS] Request failed: {exc}")
@@ -196,6 +252,12 @@ def _upload_to_blob(audio_bytes: bytes, blob_name: str) -> Optional[str]:
 async def text_to_speech_url(
     text: str,
     voice: str = "en-US-AvaMultilingualNeural",
+    *,
+    rate: str = "-3%",
+    pitch: str = "+2%",
+    style: str | None = None,
+    break_ms: int = 250,
+    fallback_voice: str | None = None,
 ) -> Optional[str]:
     """Convert text to speech and return a publicly accessible audio URL (async).
 
@@ -206,7 +268,7 @@ async def text_to_speech_url(
     if not AZURE_SPEECH_KEY:
         return None
 
-    cache_k = _cache_key(text, voice)
+    cache_k = _cache_key(text, voice, rate, pitch, style, break_ms)
 
     if cache_k in _audio_cache:
         url, expiry_ts = _audio_cache[cache_k]
@@ -222,7 +284,15 @@ async def text_to_speech_url(
     try:
         # Synthesize (up to 10s — DragonHD voices are slower for long text)
         audio_bytes = await asyncio.wait_for(
-            synthesize_speech(text, voice),
+            synthesize_speech(
+                text,
+                voice,
+                rate=rate,
+                pitch=pitch,
+                style=style,
+                break_ms=break_ms,
+                fallback_voice=fallback_voice,
+            ),
             timeout=10.0,
         )
         if not audio_bytes:
