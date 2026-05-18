@@ -570,9 +570,26 @@ def _parse_vertical_menu_choice(
         return "healthcare"
     if tokens & {"2", "two"}:
         return "insurance"
-    if tokens & {"insurance", "claim", "claims", "policy", "loss", "adjuster", "broker"}:
+    if tokens & {
+        "insurance",
+        "claim",
+        "claims",
+        "policy",
+        "loss",
+        "adjuster",
+        "broker",
+    }:
         return "insurance"
-    if tokens & {"nurse", "triage", "health", "healthcare", "medical", "clinic", "symptom", "symptoms"}:
+    if tokens & {
+        "nurse",
+        "triage",
+        "health",
+        "healthcare",
+        "medical",
+        "clinic",
+        "symptom",
+        "symptoms",
+    }:
         return "healthcare"
     return None
 

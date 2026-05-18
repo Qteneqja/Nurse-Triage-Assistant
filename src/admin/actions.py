@@ -89,6 +89,27 @@ class ProposedActionService:
                     "Internal reminder to request missing claim documents.",
                 ),
             ]
+        elif vertical == "automotive_collision":
+            templates = [
+                (
+                    "review_collision_intake",
+                    "intake_review",
+                    "Review collision intake",
+                    "Internal reminder to review the Birchwood collision intake.",
+                ),
+                (
+                    "callback_customer",
+                    "callback",
+                    "Call customer back",
+                    "Internal reminder for staff follow-up on missing details.",
+                ),
+                (
+                    "route_collision_center",
+                    "queue_routing",
+                    "Route collision center",
+                    "Internal placeholder for collision center routing review.",
+                ),
+            ]
         else:
             templates = [
                 (
@@ -201,6 +222,8 @@ def _vertical_key(session: OrchestratorSession) -> str | None:
         return "property_management"
     if workflow_id.startswith("insurance"):
         return "insurance"
+    if workflow_id.startswith("birchwood_collision"):
+        return "automotive_collision"
     if workflow_id.startswith("healthcare"):
         return "healthcare"
     return None

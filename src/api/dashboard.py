@@ -297,11 +297,17 @@ def _session_detail(repo: Any, session: OrchestratorSession) -> dict[str, Any]:
         "transcript": turns,
         "healthcare": None,
         "property_management": None,
+        "automotive_collision": None,
     }
     if _vertical_key(session) == "healthcare":
         detail["healthcare"] = _healthcare_view(session, final_result)
     elif _vertical_key(session) == "property_management":
         detail["property_management"] = _property_view(session, final_result)
+    elif _vertical_key(session) == "automotive_collision":
+        detail["automotive_collision"] = _automotive_collision_view(
+            session,
+            final_result,
+        )
     return detail
 
 
@@ -321,8 +327,14 @@ def _summary_text(
     final_result = final_result or {}
     structured = final_result.get("structured_output") or {}
     work_order = structured.get("work_order") or {}
+    collision_record = structured.get("intake_record") or {}
     if work_order.get("issue_description"):
         return safe_display_value(work_order["issue_description"], "summary")
+    if collision_record.get("incident_description"):
+        return safe_display_value(
+            collision_record["incident_description"],
+            "summary",
+        )
     if session.intake_state.chief_complaint:
         return safe_display_value(session.intake_state.chief_complaint, "summary")
     intake = structured.get("intake_state") or {}
@@ -339,6 +351,10 @@ def _vertical_key(session: OrchestratorSession) -> str | None:
     workflow_id = session.workflow_id or ""
     if workflow_id.startswith("property_management"):
         return "property_management"
+    if workflow_id.startswith("insurance"):
+        return "insurance"
+    if workflow_id.startswith("birchwood_collision"):
+        return "automotive_collision"
     if workflow_id.startswith("healthcare"):
         return "healthcare"
     return None
@@ -489,6 +505,31 @@ def _property_view(
             or final_result.get("safety_events")
             or [],
             "work_order": work_order,
+        }
+    )
+
+
+def _automotive_collision_view(
+    session: OrchestratorSession,
+    final_result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    final_result = final_result or {}
+    structured = final_result.get("structured_output") or {}
+    record = structured.get("intake_record") or {}
+    return mask_dashboard_payload(
+        {
+            "workflow_id": session.workflow_id,
+            "powered_by": record.get("powered_by") or "ORCA",
+            "client_target": record.get("client_target")
+            or "Birchwood Automotive Group",
+            "workflow_status": record.get("workflow_status") or "demo/pilot",
+            "recommended_routing": record.get("recommended_routing")
+            or final_result.get("final_disposition"),
+            "preferred_collision_center": record.get("preferred_collision_center"),
+            "flags": record.get("flags") or [],
+            "missing_information": record.get("missing_information") or [],
+            "callback_needed": record.get("callback_needed"),
+            "intake_record": record,
         }
     )
 

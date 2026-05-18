@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml)
 
-An AI-powered multi-vertical voice decision-support platform that conducts structured intake through phone calls (Twilio Voice) or API integrations. Healthcare triage remains the primary safety-critical workflow, while property management maintenance and insurance first notice of loss (FNOL) intake are emerging non-clinical verticals.
+An AI-powered multi-vertical voice decision-support platform that conducts structured intake through phone calls (Twilio Voice) or API integrations. Healthcare triage remains the primary safety-critical workflow, while property management maintenance, insurance first notice of loss (FNOL), and automotive collision intake are emerging non-clinical verticals.
 
 For a categorized map of operational, security, pilot, platform, and evaluation
 documents, see [`docs/README.md`](docs/README.md).
@@ -37,7 +37,15 @@ the insurance FNOL foundation with workflow ID `insurance_claims_fnol_v1` and
 placeholder local route `INSURANCE_FNOL_PHONE_NUMBER=+15555550130`.
 
 - Insurance FNOL demo pack with scripted sample claims, expected extraction
-  JSON, transcripts, and broker-facing demo materials.
+  JSON, transcripts, broker-facing demo materials, and an offline demo runner
+  in `scripts/run_insurance_demo.py`.
+- A temporary shared-number vertical menu can route one Twilio number to
+  healthcare or insurance during demos until dedicated routes are provisioned.
+
+Phase 14 adds an automotive collision vertical demo workflow for the first
+target account: Birchwood Collision Intake powered by ORCA. The workflow ID is
+`birchwood_collision_intake_v1`, and the fake local route placeholder is
+`BIRCHWOOD_COLLISION_PHONE_NUMBER=+15555550140`.
 
 ## Architecture
 
