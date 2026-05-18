@@ -482,3 +482,22 @@ environment variables.
 Healthcare safety evals remain blocking and unchanged. Insurance evals must not
 modify healthcare red flags, SBAR output, completeness gates, or clinical
 disposition logic.
+
+## Phase 14: Automotive Collision Deterministic Evals
+
+Phase 14 adds non-clinical automotive collision eval coverage for ORCA's
+Birchwood-targeted demo workflow under `tests/evals`:
+
+```bash
+python -m pytest tests/evals/test_automotive_collision_eval.py
+deepeval test run tests/evals/test_automotive_collision_eval.py
+```
+
+The automotive collision evals cover completed intake, non-drivable transfer,
+glass-only transfer, old vehicle decline, rebuilt/salvage decline, missing
+claim number callback, language boundaries, and ORCA/Birchwood branding
+correctness. They are deterministic, offline, and do not require live LLMs,
+Twilio, API keys, or production environment variables.
+
+ORCA remains the platform/company name. Birchwood Automotive Group is the
+target client/demo account. Healthcare eval CI remains blocking and unchanged.

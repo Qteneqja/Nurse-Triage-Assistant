@@ -23,6 +23,7 @@ class WorkflowDefinition(BaseModel):
     supported_output_types: list[str] = Field(default_factory=list)
     default_output_type: str
     supports_post_call_extraction: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ScriptedStageDefinition(BaseModel):
