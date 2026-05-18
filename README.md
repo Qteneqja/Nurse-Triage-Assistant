@@ -4,6 +4,9 @@
 
 An AI-powered multi-vertical voice decision-support platform that conducts structured intake through phone calls (Twilio Voice) or API integrations. Healthcare triage remains the primary safety-critical workflow, while property management maintenance and insurance first notice of loss (FNOL) intake are emerging non-clinical verticals.
 
+For a categorized map of operational, security, pilot, platform, and evaluation
+documents, see [`docs/README.md`](docs/README.md).
+
 ## Secrets & Security
 
 - **Secrets must never be committed** to this repository. All API keys, tokens, and credentials must be provided via environment variables or a `.env` file (which is `.gitignore`d).

@@ -10,6 +10,9 @@ __pycache__
 *.pyo
 .pytest_cache
 .tmp/
+codex-pytest-tmp/
+.deepeval
+.ruff_cache
 .mypy_cache
 *.egg-info
 dist
@@ -24,6 +27,7 @@ build
 # Environment & secrets
 .env
 .env.*
+.azure-deploy-info
 *.pem
 *.key
 *.crt
@@ -49,6 +53,7 @@ start_server.bat
 scripts/
 patch_result.txt
 patch.json
+deploy_body.json
 
 # CI/CD
 .github/
