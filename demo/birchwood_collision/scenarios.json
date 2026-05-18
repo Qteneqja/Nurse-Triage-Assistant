@@ -1,0 +1,243 @@
+[
+  {
+    "scenario_id": "BC_001_COMPLETED_TOYOTA",
+    "title": "Completed intake: drivable 2020 Toyota Camry with claim number",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "John Smith",
+      "phone": "204-555-0101",
+      "demo_only": true
+    },
+    "scripted_turns": [
+      "Vehicle is safe to drive.",
+      "Front bumper body damage.",
+      "2020 Toyota Camry.",
+      "Clean title, not rebuilt.",
+      "Claim number CLM-DEMO-1001."
+    ],
+    "expected_outcome": "COMPLETED_INTAKE",
+    "expected_flags": [],
+    "expected_key_fields": {
+      "vehicle_year": 2020,
+      "vehicle_make": "Toyota",
+      "vehicle_model": "Camry",
+      "claim_number": "CLM-DEMO-1001"
+    },
+    "dashboard_summary": "Completed Birchwood collision intake powered by ORCA.",
+    "demo_notes": "Best first demo scenario for a clean end-to-end intake."
+  },
+  {
+    "scenario_id": "BC_002_NON_DRIVABLE_TRANSFER",
+    "title": "Non-drivable vehicle transfers to collision center",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Avery Lee",
+      "phone": "204-555-0102",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "is_drivable": "No, it needs towing."
+    },
+    "expected_outcome": "TRANSFER_COLLISION_CENTER",
+    "expected_flags": ["non_drivable_transfer"],
+    "expected_key_fields": {
+      "is_drivable": false
+    },
+    "dashboard_summary": "Transfer to collision team for non-drivable vehicle.",
+    "demo_notes": "Shows Gate 1 and urgent human routing without healthcare language."
+  },
+  {
+    "scenario_id": "BC_003_GLASS_ONLY_TRANSFER",
+    "title": "Glass-only windshield damage transfers to glass department",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Morgan Patel",
+      "phone": "204-555-0103",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "damage_type": "Windshield glass only."
+    },
+    "expected_outcome": "TRANSFER_GLASS_DEPARTMENT",
+    "expected_flags": ["glass_only_transfer"],
+    "expected_key_fields": {
+      "glass_only": true,
+      "body_damage": false
+    },
+    "dashboard_summary": "Glass-only transfer to glass department.",
+    "demo_notes": "Shows Gate 2 department routing."
+  },
+  {
+    "scenario_id": "BC_004_OLD_VEHICLE_DECLINE",
+    "title": "2010 vehicle declines by vehicle year gate",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Casey Nguyen",
+      "phone": "204-555-0104",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "vehicle_year": 2010
+    },
+    "expected_outcome": "DECLINED_VEHICLE_YEAR",
+    "expected_flags": ["vehicle_year_declined"],
+    "expected_key_fields": {
+      "vehicle_year": 2010
+    },
+    "dashboard_summary": "Declined because vehicle is older than supported demo rule.",
+    "demo_notes": "Uses polite decline wording."
+  },
+  {
+    "scenario_id": "BC_005_REBUILT_DECLINE",
+    "title": "Rebuilt or salvage title declines",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Riley Brown",
+      "phone": "204-555-0105",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "rebuilt_salvage_status": "Yes, it is rebuilt."
+    },
+    "expected_outcome": "DECLINED_REBUILT_SALVAGE",
+    "expected_flags": ["rebuilt_salvage_declined"],
+    "expected_key_fields": {
+      "is_rebuilt_or_salvage": true
+    },
+    "dashboard_summary": "Declined by rebuilt/salvage gate.",
+    "demo_notes": "Shows Gate 4 without over-explaining policy."
+  },
+  {
+    "scenario_id": "BC_006_MISSING_CLAIM_NUMBER",
+    "title": "Insurance filing without claim number flags callback",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Taylor Johnson",
+      "phone": "204-555-0106",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "filing_insurance_claim": "Yes",
+      "claim_number": ""
+    },
+    "expected_outcome": "INCOMPLETE_CALLBACK_NEEDED",
+    "expected_flags": ["missing_claim_number", "callback_needed"],
+    "expected_key_fields": {
+      "filing_insurance_claim": true
+    },
+    "dashboard_summary": "Callback needed for missing claim number.",
+    "demo_notes": "Shows follow-up capture without asking for insurance company."
+  },
+  {
+    "scenario_id": "BC_007_VW_LOCATION_CHOICE",
+    "title": "VW vehicle offers all three placeholder locations",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Jamie Carter",
+      "phone": "204-555-0107",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "vehicle_make": "Volkswagen"
+    },
+    "expected_outcome": "INCOMPLETE_CALLBACK_NEEDED",
+    "expected_flags": ["vw_location_choice"],
+    "expected_key_fields": {
+      "is_vw": true,
+      "available_collision_centers": [
+        "BIRCHWOOD_COLLISION_LOCATION_1",
+        "BIRCHWOOD_COLLISION_LOCATION_2",
+        "BIRCHWOOD_COLLISION_LOCATION_3"
+      ]
+    },
+    "dashboard_summary": "VW caller offered all placeholder collision locations.",
+    "demo_notes": "Exact locations require Birchwood stakeholder confirmation."
+  },
+  {
+    "scenario_id": "BC_008_LUXURY_AUTO_ASSIGN",
+    "title": "Luxury brand auto-assigns luxury placeholder location",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Sam Rivera",
+      "phone": "204-555-0108",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "vehicle_make": "BMW"
+    },
+    "expected_outcome": "COMPLETED_INTAKE",
+    "expected_flags": ["luxury_auto_assigned"],
+    "expected_key_fields": {
+      "is_luxury": true,
+      "preferred_collision_center": "BIRCHWOOD_COLLISION_LUXURY_LOCATION"
+    },
+    "dashboard_summary": "Luxury brand auto-assigned for staff review.",
+    "demo_notes": "Luxury list is configurable and needs stakeholder sign-off."
+  },
+  {
+    "scenario_id": "BC_009_PRESS_ZERO_TRANSFER",
+    "title": "Caller presses 0 for human transfer",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Demo Caller",
+      "phone": "204-555-0109",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "dynamic_text": "0"
+    },
+    "expected_outcome": "TRANSFER_COLLISION_CENTER",
+    "expected_flags": ["caller_requested_transfer"],
+    "expected_key_fields": {},
+    "dashboard_summary": "Caller-requested transfer to collision center.",
+    "demo_notes": "Demonstrates caller control during the demo."
+  },
+  {
+    "scenario_id": "BC_010_POSSIBLE_DUPLICATE",
+    "title": "Customer already spoke to someone flags possible duplicate",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Jordan Green",
+      "phone": "204-555-0110",
+      "demo_only": true
+    },
+    "caller_answers": {
+      "already_spoke_to_someone": true
+    },
+    "expected_outcome": "COMPLETED_INTAKE",
+    "expected_flags": ["possible_duplicate"],
+    "expected_key_fields": {},
+    "dashboard_summary": "Completed intake with possible duplicate flag.",
+    "demo_notes": "Shows workload reduction without dropping context."
+  }
+]
