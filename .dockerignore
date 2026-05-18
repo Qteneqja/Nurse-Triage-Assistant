@@ -9,6 +9,7 @@ __pycache__
 *.pyc
 *.pyo
 .pytest_cache
+.tmp/
 .mypy_cache
 *.egg-info
 dist

@@ -178,6 +178,18 @@ INSURANCE_FNOL_PHONE_NUMBER: str = os.getenv(
     "+15555550130",
 )
 
+# Temporary shared-number front door. When enabled, Twilio calls first hear a
+# vertical menu and are routed to healthcare or insurance based on the caller's
+# choice. Disable this once insurance has a dedicated phone route.
+ENABLE_SHARED_NUMBER_VERTICAL_MENU: bool = _env_flag(
+    "ENABLE_SHARED_NUMBER_VERTICAL_MENU",
+    "false",
+)
+SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER: str = os.getenv(
+    "SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER",
+    "",
+)
+
 # ---------------------------------------------------------------------------
 # Twilio
 # ---------------------------------------------------------------------------
@@ -351,5 +363,9 @@ def require_valid_config() -> None:
         f"[CONFIG] ENABLE_DEFAULT_WORKFLOW_ROUTE={ENABLE_DEFAULT_WORKFLOW_ROUTE}"
     )
     logger.info(f"[CONFIG] ENABLE_WORKFLOW_HINT_ROUTE={ENABLE_WORKFLOW_HINT_ROUTE}")
+    logger.info(
+        "[CONFIG] ENABLE_SHARED_NUMBER_VERTICAL_MENU="
+        f"{ENABLE_SHARED_NUMBER_VERTICAL_MENU}"
+    )
     logger.info(f"[CONFIG] TWILIO_VALIDATE_SIGNATURE={TWILIO_VALIDATE_SIGNATURE}")
     logger.info(f"[CONFIG] RUN_MIGRATIONS_ON_STARTUP={RUN_MIGRATIONS_ON_STARTUP}")
