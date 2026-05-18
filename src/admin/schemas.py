@@ -41,6 +41,7 @@ class WorkflowListItem(BaseModel):
     supported_output_types: list[str] = Field(default_factory=list)
     default_output_type: str | None = None
     supports_post_call_extraction: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
     session_count: int = 0
 
 
@@ -139,6 +140,7 @@ class SessionDetail(BaseModel):
     healthcare_metadata: dict[str, Any] | None = None
     property_management_metadata: dict[str, Any] | None = None
     insurance_metadata: dict[str, Any] | None = None
+    automotive_collision_metadata: dict[str, Any] | None = None
     proposed_actions: list[ProposedAction] = Field(default_factory=list)
 
 
