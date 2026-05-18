@@ -39,8 +39,9 @@ placeholder local route `INSURANCE_FNOL_PHONE_NUMBER=+15555550130`.
 - Insurance FNOL demo pack with scripted sample claims, expected extraction
   JSON, transcripts, broker-facing demo materials, and an offline demo runner
   in `scripts/run_insurance_demo.py`.
-- A temporary shared-number vertical menu can route one Twilio number to
-  healthcare or insurance during demos until dedicated routes are provisioned.
+- When enabled, a temporary shared-number vertical menu can route incoming
+  calls to healthcare, insurance, or automotive collision during demos until
+  dedicated routes are provisioned.
 
 Phase 14 adds an automotive collision vertical demo workflow for the first
 target account: Birchwood Collision Intake powered by ORCA. The workflow ID is
