@@ -30,6 +30,7 @@ echo ""
 
 SECRETS_ARGS=()
 SECRET_ENV_ARGS=()
+NON_SECRET_ENV_ARGS=()
 
 # DeepSeek API Key
 if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
@@ -52,51 +53,69 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
     echo "  [UPDATE] database-url"
 fi
 
-if [[ ${#SECRETS_ARGS[@]} -eq 0 ]]; then
+# Non-secret env vars
+if [[ -n "${CORS_ALLOWED_ORIGINS:-}" ]]; then
+    NON_SECRET_ENV_ARGS+=("CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}")
+    echo "  [UPDATE] CORS_ALLOWED_ORIGINS"
+fi
+
+if [[ -n "${TWILIO_WEBHOOK_BASE_URL:-}" ]]; then
+    NON_SECRET_ENV_ARGS+=("TWILIO_WEBHOOK_BASE_URL=${TWILIO_WEBHOOK_BASE_URL}")
+    echo "  [UPDATE] TWILIO_WEBHOOK_BASE_URL"
+fi
+
+if [[ -n "${ENABLE_SHARED_NUMBER_VERTICAL_MENU:-}" ]]; then
+    NON_SECRET_ENV_ARGS+=(
+        "ENABLE_SHARED_NUMBER_VERTICAL_MENU=${ENABLE_SHARED_NUMBER_VERTICAL_MENU}"
+    )
+    echo "  [UPDATE] ENABLE_SHARED_NUMBER_VERTICAL_MENU"
+fi
+
+if [[ -n "${SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER:-}" ]]; then
+    NON_SECRET_ENV_ARGS+=(
+        "SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER=${SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER}"
+    )
+    echo "  [UPDATE] SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER"
+fi
+
+if [[ ${#SECRETS_ARGS[@]} -eq 0 && ${#NON_SECRET_ENV_ARGS[@]} -eq 0 ]]; then
     echo "  No secrets to update. Set env vars before running:"
     echo "    export DEEPSEEK_API_KEY='new-key'"
     echo "    export TWILIO_AUTH_TOKEN='new-token'"
     echo "    export DATABASE_URL='postgresql://...'"
+    echo "    export ENABLE_SHARED_NUMBER_VERTICAL_MENU='true'"
     exit 0
 fi
 
-echo ""
-echo ">>> Updating secrets ..."
-az containerapp secret set \
-    --resource-group "$RG" \
-    --name "$APP" \
-    --secrets "${SECRETS_ARGS[@]}" \
-    --output none
+if [[ ${#SECRETS_ARGS[@]} -gt 0 ]]; then
+    echo ""
+    echo ">>> Updating secrets ..."
+    az containerapp secret set \
+        --resource-group "$RG" \
+        --name "$APP" \
+        --secrets "${SECRETS_ARGS[@]}" \
+        --output none
 
-echo "    Secrets updated."
+    echo "    Secrets updated."
 
-echo ">>> Pointing app env vars at secret references ..."
-az containerapp update \
-    --resource-group "$RG" \
-    --name "$APP" \
-    --set-env-vars "${SECRET_ENV_ARGS[@]}" \
-    --output none
-echo "    Env vars now reference Container App secrets."
-
-# Update env vars if CORS or other non-secret values are provided
-if [[ -n "${CORS_ALLOWED_ORIGINS:-}" ]]; then
-    echo ">>> Updating CORS_ALLOWED_ORIGINS ..."
+    echo ">>> Pointing app env vars at secret references ..."
     az containerapp update \
         --resource-group "$RG" \
         --name "$APP" \
-        --set-env-vars "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}" \
+        --set-env-vars "${SECRET_ENV_ARGS[@]}" \
         --output none
-    echo "    CORS updated."
+    echo "    Env vars now reference Container App secrets."
 fi
 
-if [[ -n "${TWILIO_WEBHOOK_BASE_URL:-}" ]]; then
-    echo ">>> Updating TWILIO_WEBHOOK_BASE_URL ..."
+# Update non-secret env vars if provided
+if [[ ${#NON_SECRET_ENV_ARGS[@]} -gt 0 ]]; then
+    echo ">>> Updating non-secret env vars ..."
     az containerapp update \
         --resource-group "$RG" \
         --name "$APP" \
-        --set-env-vars "TWILIO_WEBHOOK_BASE_URL=${TWILIO_WEBHOOK_BASE_URL}" \
+        --set-env-vars "${NON_SECRET_ENV_ARGS[@]}" \
         --output none
-    echo "    Twilio webhook URL updated."
+    echo "    Non-secret env vars updated."
 fi
 
 echo ""

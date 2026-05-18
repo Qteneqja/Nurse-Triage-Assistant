@@ -1,0 +1,36 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Casey Nguyen",
+  "callback_number": "555-0102",
+  "policy_number": "HOME-DEMO-3003",
+  "claim_type": "water damage",
+  "loss_datetime": "2026-05-17 06:30",
+  "loss_location": "789 Demo Avenue, Winnipeg, MB",
+  "incident_summary": "A supply line leaked into the demo kitchen ceiling and water is still dripping.",
+  "relationship_to_policyholder": "self",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": false,
+  "injuries_mentioned": false,
+  "emergency_services_involved": false,
+  "police_or_fire_report": false,
+  "property_secure": true,
+  "mitigation_needed": true,
+  "documents_available": true,
+  "missing_information": [],
+  "recommended_routing": "URGENT_ADJUSTER_REVIEW",
+  "confidence": 0.88,
+  "human_review_required": false,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Potentially urgent claim details need adjuster review.",
+  "recommended_action": "Route to an urgent adjuster queue for same-day review.",
+  "rules_triggered": [
+    "insurance:urgent_adjuster_review"
+  ],
+  "safety_flags": [
+    "mitigation_needed"
+  ]
+}

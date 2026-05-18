@@ -36,6 +36,7 @@ Write-Host ""
 
 $SecretsList = @()
 $SecretEnvVarsList = @()
+$NonSecretEnvVarsList = @()
 $Updated = $false
 
 if ($env:DEEPSEEK_API_KEY) {
@@ -59,51 +60,68 @@ if ($env:DATABASE_URL) {
     $Updated = $true
 }
 
+if ($env:CORS_ALLOWED_ORIGINS) {
+    $NonSecretEnvVarsList += "CORS_ALLOWED_ORIGINS=$($env:CORS_ALLOWED_ORIGINS)"
+    Write-Host "  [UPDATE] CORS_ALLOWED_ORIGINS"
+    $Updated = $true
+}
+
+if ($env:TWILIO_WEBHOOK_BASE_URL) {
+    $NonSecretEnvVarsList += "TWILIO_WEBHOOK_BASE_URL=$($env:TWILIO_WEBHOOK_BASE_URL)"
+    Write-Host "  [UPDATE] TWILIO_WEBHOOK_BASE_URL"
+    $Updated = $true
+}
+
+if ($env:ENABLE_SHARED_NUMBER_VERTICAL_MENU) {
+    $NonSecretEnvVarsList += "ENABLE_SHARED_NUMBER_VERTICAL_MENU=$($env:ENABLE_SHARED_NUMBER_VERTICAL_MENU)"
+    Write-Host "  [UPDATE] ENABLE_SHARED_NUMBER_VERTICAL_MENU"
+    $Updated = $true
+}
+
+if ($env:SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER) {
+    $NonSecretEnvVarsList += "SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER=$($env:SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER)"
+    Write-Host "  [UPDATE] SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER"
+    $Updated = $true
+}
+
 if (-not $Updated) {
     Write-Host "  No secrets to update. Set env vars before running:" -ForegroundColor Yellow
     Write-Host '    $env:DEEPSEEK_API_KEY = "new-key"'
     Write-Host '    $env:TWILIO_AUTH_TOKEN = "new-token"'
     Write-Host '    $env:DATABASE_URL = "postgresql://..."'
+    Write-Host '    $env:ENABLE_SHARED_NUMBER_VERTICAL_MENU = "true"'
     exit 0
 }
 
-Write-Host ""
-Write-Host ">>> Updating secrets ..." -ForegroundColor Green
-az containerapp secret set `
-    --resource-group $RG `
-    --name $APP `
-    --secrets @SecretsList `
-    --output none
+if ($SecretsList.Count -gt 0) {
+    Write-Host ""
+    Write-Host ">>> Updating secrets ..." -ForegroundColor Green
+    az containerapp secret set `
+        --resource-group $RG `
+        --name $APP `
+        --secrets @SecretsList `
+        --output none
 
-Write-Host "    Secrets updated."
+    Write-Host "    Secrets updated."
 
-Write-Host ">>> Pointing app env vars at secret references ..." -ForegroundColor Green
-az containerapp update `
-    --resource-group $RG `
-    --name $APP `
-    --set-env-vars @SecretEnvVarsList `
-    --output none
-Write-Host "    Env vars now reference Container App secrets."
-
-# Update non-secret env vars if provided
-if ($env:CORS_ALLOWED_ORIGINS) {
-    Write-Host ">>> Updating CORS_ALLOWED_ORIGINS ..." -ForegroundColor Green
+    Write-Host ">>> Pointing app env vars at secret references ..." -ForegroundColor Green
     az containerapp update `
         --resource-group $RG `
         --name $APP `
-        --set-env-vars "CORS_ALLOWED_ORIGINS=$($env:CORS_ALLOWED_ORIGINS)" `
+        --set-env-vars @SecretEnvVarsList `
         --output none
-    Write-Host "    CORS updated."
+    Write-Host "    Env vars now reference Container App secrets."
 }
 
-if ($env:TWILIO_WEBHOOK_BASE_URL) {
-    Write-Host ">>> Updating TWILIO_WEBHOOK_BASE_URL ..." -ForegroundColor Green
+# Update non-secret env vars if provided
+if ($NonSecretEnvVarsList.Count -gt 0) {
+    Write-Host ">>> Updating non-secret env vars ..." -ForegroundColor Green
     az containerapp update `
         --resource-group $RG `
         --name $APP `
-        --set-env-vars "TWILIO_WEBHOOK_BASE_URL=$($env:TWILIO_WEBHOOK_BASE_URL)" `
+        --set-env-vars @NonSecretEnvVarsList `
         --output none
-    Write-Host "    Twilio webhook URL updated."
+    Write-Host "    Non-secret env vars updated."
 }
 
 Write-Host ""

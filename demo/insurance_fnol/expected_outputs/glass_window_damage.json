@@ -1,0 +1,37 @@
+{
+  "workflow_id": "insurance_claims_fnol_v1",
+  "vertical": "insurance",
+  "caller_name": "Avery Brooks",
+  "callback_number": "555-0104",
+  "policy_number": "BIZ-DEMO-5005",
+  "claim_type": "glass/window damage",
+  "loss_datetime": "2026-05-16 23:20",
+  "loss_location": "404 Demo Market Lane, Winnipeg, MB",
+  "incident_summary": "A front demo shop window was broken overnight and the opening is not secure.",
+  "relationship_to_policyholder": "business manager",
+  "preferred_callback_method": "phone",
+  "emergency_or_safety_issue": false,
+  "injuries_mentioned": false,
+  "emergency_services_involved": false,
+  "police_or_fire_report": false,
+  "property_secure": false,
+  "mitigation_needed": true,
+  "documents_available": true,
+  "missing_information": [],
+  "recommended_routing": "URGENT_ADJUSTER_REVIEW",
+  "confidence": 0.88,
+  "human_review_required": false,
+  "disclaimers_given": [
+    "A licensed broker or adjuster can confirm coverage.",
+    "This intake does not guarantee claim approval."
+  ],
+  "routing_reason": "Potentially urgent claim details need adjuster review.",
+  "recommended_action": "Route to an urgent adjuster queue for same-day review.",
+  "rules_triggered": [
+    "insurance:urgent_adjuster_review"
+  ],
+  "safety_flags": [
+    "property_not_secure",
+    "mitigation_needed"
+  ]
+}
