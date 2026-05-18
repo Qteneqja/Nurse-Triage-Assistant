@@ -206,8 +206,21 @@ def _workflow_hint_route_enabled() -> bool:
 def _configured_phone_number_route(
     called_phone_number: str | None,
 ) -> ResolvedWorkflowRoute | None:
+    if not called_phone_number:
+        return None
+
+    insurance_route = _insurance_phone_number_route(called_phone_number)
+    if insurance_route is not None:
+        return insurance_route
+
+    return _birchwood_collision_phone_number_route(called_phone_number)
+
+
+def _insurance_phone_number_route(
+    called_phone_number: str,
+) -> ResolvedWorkflowRoute | None:
     configured = _normalize_phone(getattr(config, "INSURANCE_FNOL_PHONE_NUMBER", ""))
-    if not called_phone_number or not configured or called_phone_number != configured:
+    if not configured or called_phone_number != configured:
         return None
 
     from src.verticals.insurance.constants import (
@@ -227,6 +240,52 @@ def _configured_phone_number_route(
             "configured_key": "INSURANCE_FNOL_PHONE_NUMBER",
             "called_phone_number_masked": _mask_phone(called_phone_number),
             "environment": getattr(config, "ENVIRONMENT", "development"),
+        },
+    )
+
+
+def _birchwood_collision_phone_number_route(
+    called_phone_number: str,
+) -> ResolvedWorkflowRoute | None:
+    configured = _normalize_phone(
+        getattr(config, "BIRCHWOOD_COLLISION_PHONE_NUMBER", "")
+    )
+    if not configured or called_phone_number != configured:
+        return None
+
+    from src.verticals.automotive_collision.constants import (
+        AUTOMOTIVE_COLLISION_VERTICAL,
+        BIRCHWOOD_COLLISION_CLIENT_TARGET,
+        BIRCHWOOD_COLLISION_DISPLAY_NAME,
+        BIRCHWOOD_COLLISION_POWERED_BY,
+        BIRCHWOOD_COLLISION_STATUS,
+        BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
+    )
+
+    return ResolvedWorkflowRoute(
+        vertical_key=AUTOMOTIVE_COLLISION_VERTICAL,
+        workflow_id=BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        workflow_version=BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
+        config_json={
+            "route_type": "birchwood_collision_demo_placeholder",
+            "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
+            "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
+            "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
+            "status": BIRCHWOOD_COLLISION_STATUS,
+        },
+        fallback_used=False,
+        audit_metadata={
+            "routing_source": "configured_phone_number",
+            "configured_key": "BIRCHWOOD_COLLISION_PHONE_NUMBER",
+            "called_phone_number_masked": _mask_phone(called_phone_number),
+            "environment": getattr(config, "ENVIRONMENT", "development"),
+            "vertical": AUTOMOTIVE_COLLISION_VERTICAL,
+            "workflow_id": BIRCHWOOD_COLLISION_WORKFLOW_ID,
+            "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
+            "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
+            "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
+            "status": BIRCHWOOD_COLLISION_STATUS,
         },
     )
 
