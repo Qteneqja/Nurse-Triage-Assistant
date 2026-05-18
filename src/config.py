@@ -224,6 +224,39 @@ BIRCHWOOD_COLLISION_LUXURY_BRANDS: str = os.getenv(
     "Audi,Porsche,BMW,Mercedes-Benz,Lexus,Land Rover,Jaguar,Genesis,"
     "Acura,Cadillac,Infiniti,Volvo",
 )
+BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS: int = int(
+    os.getenv("BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS", "5")
+)
+BIRCHWOOD_NARRATIVE_TIMEOUT_SECONDS: int = int(
+    os.getenv("BIRCHWOOD_NARRATIVE_TIMEOUT_SECONDS", "15")
+)
+BIRCHWOOD_NARRATIVE_SPEECH_TIMEOUT_SECONDS: str = os.getenv(
+    "BIRCHWOOD_NARRATIVE_SPEECH_TIMEOUT_SECONDS",
+    "auto",
+)
+BIRCHWOOD_ALLOW_LONG_INCIDENT_DESCRIPTION: bool = _env_flag(
+    "BIRCHWOOD_ALLOW_LONG_INCIDENT_DESCRIPTION",
+    "true",
+)
+BIRCHWOOD_AZURE_TTS_VOICE: str = os.getenv(
+    "BIRCHWOOD_AZURE_TTS_VOICE",
+    "en-CA-ClaraNeural",
+)
+BIRCHWOOD_AZURE_TTS_RATE: str = os.getenv(
+    "BIRCHWOOD_AZURE_TTS_RATE",
+    "+3%",
+)
+BIRCHWOOD_AZURE_TTS_PITCH: str = os.getenv(
+    "BIRCHWOOD_AZURE_TTS_PITCH",
+    "+0%",
+)
+BIRCHWOOD_AZURE_TTS_STYLE: str = os.getenv(
+    "BIRCHWOOD_AZURE_TTS_STYLE",
+    "friendly",
+)
+BIRCHWOOD_AZURE_TTS_BREAK_MS: int = int(
+    os.getenv("BIRCHWOOD_AZURE_TTS_BREAK_MS", "250")
+)
 
 # ---------------------------------------------------------------------------
 # Twilio

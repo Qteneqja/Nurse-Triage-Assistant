@@ -1,12 +1,12 @@
 # BC_003 Glass-Only Transfer
 
-ORCA: Thanks for calling Birchwood Collision. I will ask a few quick questions.
+ORCA: Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions, and you can press 0 anytime to speak with someone.
 
-ORCA: Is your vehicle safe to drive right now?
+ORCA: First, is your vehicle safe to drive right now?
 
 Caller: Yes.
 
-ORCA: What part of the vehicle is damaged?
+ORCA: Is the damage only to the glass, like a windshield or window, or is there body damage as well?
 
 Caller: Just the windshield glass.
 

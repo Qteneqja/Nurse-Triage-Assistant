@@ -1,16 +1,16 @@
 # BC_004 Vehicle Year Decline
 
-ORCA: Thanks for calling Birchwood Collision. I can collect repair intake details and route them for staff follow-up.
+ORCA: Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions so the right person can follow up.
 
-ORCA: Is your vehicle safe to drive right now?
+ORCA: First, is your vehicle safe to drive right now?
 
 Caller: Yes.
 
-ORCA: What part of the vehicle is damaged?
+ORCA: Is the damage only to the glass, like a windshield or window, or is there body damage as well?
 
 Caller: The driver door has a dent.
 
-ORCA: What year is your vehicle?
+ORCA: What year is the vehicle?
 
 Caller: It is a 2010 Mazda.
 
