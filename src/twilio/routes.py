@@ -462,16 +462,222 @@ _TTS_VOICE = "Polly.Ruth-Neural"
 _pending_turns: dict[str, tuple[asyncio.Task, object]] = {}
 
 
-def _get_azure_voice() -> str:
+def _get_tts_settings_for_session(
+    session: OrchestratorSession | None,
+) -> dict[str, str | int | None]:
+    default_voice = getattr(config, "AZURE_TTS_VOICE", "en-US-AvaMultilingualNeural")
+    settings: dict[str, str | int | None] = {
+        "voice": default_voice,
+        "rate": "-3%",
+        "pitch": "+2%",
+        "style": None,
+        "break_ms": 250,
+        "fallback_voice": default_voice,
+        "profile": "default",
+    }
+
+    if session is None:
+        return settings
+
+    try:
+        from src.verticals.automotive_collision.constants import (
+            BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        )
+    except Exception:
+        BIRCHWOOD_COLLISION_WORKFLOW_ID = "birchwood_collision_intake_v1"
+
+    if session.workflow_id == BIRCHWOOD_COLLISION_WORKFLOW_ID:
+        birchwood_voice = (
+            getattr(config, "BIRCHWOOD_AZURE_TTS_VOICE", "") or default_voice
+        )
+        settings.update(
+            {
+                "voice": birchwood_voice,
+                "rate": getattr(config, "BIRCHWOOD_AZURE_TTS_RATE", "+3%"),
+                "pitch": getattr(config, "BIRCHWOOD_AZURE_TTS_PITCH", "+0%"),
+                "style": getattr(config, "BIRCHWOOD_AZURE_TTS_STYLE", None) or None,
+                "break_ms": getattr(config, "BIRCHWOOD_AZURE_TTS_BREAK_MS", 250),
+                "profile": "birchwood_collision",
+            }
+        )
+
+    return settings
+
+
+def _get_azure_voice(session: OrchestratorSession | None = None) -> str:
     """Get the configured Azure TTS voice name."""
-    from src.config import AZURE_TTS_VOICE
-
-    return AZURE_TTS_VOICE
+    return str(_get_tts_settings_for_session(session)["voice"])
 
 
-async def generate_twiml_say(text: str) -> str:
+async def _tts_audio_url(
+    text: str,
+    session: OrchestratorSession | None = None,
+) -> str | None:
+    settings = _get_tts_settings_for_session(session)
+    return await text_to_speech_url(
+        text,
+        str(settings["voice"]),
+        rate=str(settings["rate"]),
+        pitch=str(settings["pitch"]),
+        style=(str(settings["style"]) if settings["style"] is not None else None),
+        break_ms=int(settings["break_ms"]),
+        fallback_voice=(
+            str(settings["fallback_voice"])
+            if settings["fallback_voice"] is not None
+            else None
+        ),
+    )
+
+
+def _record_scripted_prompt_metadata(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+) -> dict[str, str | int | None]:
+    scripted = session.channel_metadata.setdefault("scripted_intake", {})
+    metadata: dict[str, str | int | None] = {
+        "workflow_id": session.workflow_id,
+        "field_name": stage.field_name,
+        "speech_profile": stage.speech_profile,
+        "timeout_seconds": stage.timeout_seconds,
+        "speech_timeout": stage.speech_timeout,
+        "prompted_at": datetime.now(UTC).isoformat(),
+    }
+    scripted["last_prompt_metadata"] = metadata
+    history = scripted.setdefault("prompt_metadata_history", [])
+    if isinstance(history, list):
+        history.append(metadata)
+
+    if stage.speech_profile == "narrative":
+        logger.info(
+            "[TWILIO] Narrative prompt workflow_id=%s field_name=%s speech_profile=%s timeout=%s speech_timeout=%s",
+            session.workflow_id,
+            stage.field_name,
+            stage.speech_profile,
+            stage.timeout_seconds,
+            stage.speech_timeout,
+        )
+
+    return metadata
+
+
+def _scripted_stage_acknowledgement(
+    stage: ScriptedStageDefinition,
+) -> str | None:
+    if stage.speech_profile == "narrative":
+        return "Got it. I noted that."
+    return None
+
+
+def _compose_stage_prompt(
+    stage: ScriptedStageDefinition,
+    *,
+    preamble: str | None = None,
+) -> str:
+    prompt = _stage_prompt(stage)
+    if not preamble:
+        return prompt
+    return f"{preamble} {prompt}"
+
+
+def _is_birchwood_scripted_transfer_request(
+    session: OrchestratorSession,
+    speech_text: str | None,
+    digits: str | None,
+) -> bool:
+    try:
+        from src.verticals.automotive_collision.constants import (
+            BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        )
+    except Exception:
+        BIRCHWOOD_COLLISION_WORKFLOW_ID = "birchwood_collision_intake_v1"
+
+    if session.workflow_id != BIRCHWOOD_COLLISION_WORKFLOW_ID:
+        return False
+    if session.channel_metadata.get("stage") in {
+        STAGE_VERTICAL_MENU,
+        STAGE_DYNAMIC,
+        "FINAL",
+    }:
+        return False
+    if digits == "0":
+        return True
+    normalized = (speech_text or "").strip().lower()
+    return (
+        normalized == "transfer"
+        or normalized.startswith("transfer ")
+        or any(
+            phrase in normalized
+            for phrase in [
+                "speak with someone",
+                "person please",
+                "human please",
+                "representative",
+                "operator",
+            ]
+        )
+    )
+
+
+async def _handle_birchwood_scripted_transfer_request(
+    *,
+    session: OrchestratorSession,
+    repo,
+    request: Request,
+    user_text: str,
+) -> str:
+    session.conversation.append(ConversationTurn(role="caller", text=user_text))
+    workflow_user_text = "0" if user_text != "0" else user_text
+    context = _build_workflow_context(session, request=request)
+    workflow_input = WorkflowInput(
+        user_text=workflow_user_text,
+        session_state=session.model_dump(mode="json"),
+        called_phone_number=session.channel_metadata.get("called_phone_number"),
+        metadata={"channel": "twilio", "scripted_transfer_request": True},
+    )
+    turn_result = await _get_workflow_for_session(session).handle_turn(
+        context,
+        workflow_input,
+    )
+    updated_session = OrchestratorSession.model_validate(turn_result.updated_state)
+    repo.persist_session(updated_session)
+    return await generate_twiml_say_and_hangup(
+        turn_result.assistant_text,
+        session=updated_session,
+    )
+
+
+def _birchwood_scripted_gather_supports_dtmf(
+    session: OrchestratorSession | None,
+) -> bool:
+    if session is None:
+        return False
+
+    try:
+        from src.verticals.automotive_collision.constants import (
+            BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        )
+    except Exception:
+        BIRCHWOOD_COLLISION_WORKFLOW_ID = "birchwood_collision_intake_v1"
+
+    scripted_state = session.channel_metadata.get("scripted_intake") or {}
+    if session.workflow_id != BIRCHWOOD_COLLISION_WORKFLOW_ID:
+        return False
+    if scripted_state.get("completed"):
+        return False
+    return session.channel_metadata.get("stage") not in {
+        None,
+        STAGE_VERTICAL_MENU,
+        STAGE_DYNAMIC,
+        "FINAL",
+    }
+
+
+async def generate_twiml_say(
+    text: str,
+    session: OrchestratorSession | None = None,
+) -> str:
     """Generate TwiML <Say> or <Play> with Azure TTS (fallback to Polly)."""
-    audio_url = await text_to_speech_url(text, _get_azure_voice())
+    audio_url = await _tts_audio_url(text, session)
     if audio_url:
         return f"<Play>{saxutils.escape(audio_url)}</Play>"
     return f'<Say voice="{_TTS_VOICE}">{saxutils.escape(text)}</Say>'
@@ -483,6 +689,7 @@ async def generate_twiml_gather(
     timeout: int = 6,
     hints: str | None = None,
     speech_timeout: str = "3",
+    session: OrchestratorSession | None = None,
 ) -> str:
     """Generate TwiML with <Gather> for speech input.
 
@@ -500,14 +707,18 @@ async def generate_twiml_gather(
             accommodate natural pauses, confused callers, and elderly speakers).
     """
     escaped_prompt = saxutils.escape(prompt)
-    audio_url = await text_to_speech_url(prompt, _get_azure_voice())
+    audio_url = await _tts_audio_url(prompt, session)
     hints_attr = f' hints="{saxutils.escape(hints)}"' if hints else ""
+    gather_input = (
+        "speech dtmf" if _birchwood_scripted_gather_supports_dtmf(session) else "speech"
+    )
+    num_digits_attr = ' numDigits="1"' if gather_input == "speech dtmf" else ""
 
     if audio_url:
         escaped_url = saxutils.escape(audio_url)
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" speechTimeout="{speech_timeout}" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
+    <Gather input="{gather_input}"{num_digits_attr} speechTimeout="{speech_timeout}" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
         <Play>{escaped_url}</Play>
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
@@ -515,7 +726,7 @@ async def generate_twiml_gather(
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Gather input="speech" speechTimeout="{speech_timeout}" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
+    <Gather input="{gather_input}"{num_digits_attr} speechTimeout="{speech_timeout}" timeout="{timeout}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
         <Say voice="{_TTS_VOICE}">{escaped_prompt}</Say>
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
@@ -733,6 +944,7 @@ async def _start_selected_workflow_from_menu(
 
     if first_stage is not None:
         return await _generate_initial_scripted_twiml(
+            session,
             intro_text,
             first_stage,
             "/api/v1/voice/gather",
@@ -742,13 +954,17 @@ async def _start_selected_workflow_from_menu(
         "/api/v1/voice/gather",
         timeout=8,
         speech_timeout="auto",
+        session=session,
     )
 
 
-async def generate_twiml_say_and_hangup(text: str) -> str:
+async def generate_twiml_say_and_hangup(
+    text: str,
+    session: OrchestratorSession | None = None,
+) -> str:
     """Generate TwiML that says/plays something and hangs up"""
     escaped_text = saxutils.escape(text)
-    audio_url = await text_to_speech_url(text, _get_azure_voice())
+    audio_url = await _tts_audio_url(text, session)
 
     if audio_url:
         escaped_url = saxutils.escape(audio_url)
@@ -766,11 +982,14 @@ async def generate_twiml_say_and_hangup(text: str) -> str:
 
 
 async def _generate_initial_scripted_twiml(
+    session: OrchestratorSession,
     intro_text: str | None,
     first_stage: ScriptedStageDefinition,
     action_url: str,
 ) -> str:
     """Generate first scripted-intake TwiML from workflow stage metadata."""
+
+    _record_scripted_prompt_metadata(session, first_stage)
 
     prompt = _stage_prompt(first_stage)
     if not intro_text:
@@ -780,11 +999,12 @@ async def _generate_initial_scripted_twiml(
             timeout=first_stage.timeout_seconds,
             hints=first_stage.hints,
             speech_timeout=first_stage.speech_timeout,
+            session=session,
         )
 
     intro_url, question_url = await asyncio.gather(
-        text_to_speech_url(intro_text, _get_azure_voice()),
-        text_to_speech_url(prompt, _get_azure_voice()),
+        _tts_audio_url(intro_text, session),
+        _tts_audio_url(prompt, session),
     )
     intro_tag = (
         f"<Play>{saxutils.escape(intro_url)}</Play>"
@@ -799,17 +1019,24 @@ async def _generate_initial_scripted_twiml(
     hints_attr = (
         f' hints="{saxutils.escape(first_stage.hints)}"' if first_stage.hints else ""
     )
+    gather_input = (
+        "speech dtmf" if _birchwood_scripted_gather_supports_dtmf(session) else "speech"
+    )
+    num_digits_attr = ' numDigits="1"' if gather_input == "speech dtmf" else ""
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     {intro_tag}
-    <Gather input="speech" speechTimeout="{first_stage.speech_timeout}" timeout="{first_stage.timeout_seconds}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
+    <Gather input="{gather_input}"{num_digits_attr} speechTimeout="{first_stage.speech_timeout}" timeout="{first_stage.timeout_seconds}" action="{action_url}" method="POST" speechModel="phone_call" enhanced="true"{hints_attr}>
         {question_tag}
     </Gather>
     <Redirect method="POST">{action_url}</Redirect>
 </Response>"""
 
 
-async def generate_twiml_handoff(text: str) -> str:
+async def generate_twiml_handoff(
+    text: str,
+    session: OrchestratorSession | None = None,
+) -> str:
     """Speak a closing message then transfer or hang up.
 
     If ``NURSE_TRANSFER_NUMBER`` is set (e.g. ``+18005551234``), the call is
@@ -819,7 +1046,7 @@ async def generate_twiml_handoff(text: str) -> str:
     from src.config import NURSE_TRANSFER_NUMBER
 
     escaped_text = saxutils.escape(text)
-    audio_url = await text_to_speech_url(text, _get_azure_voice())
+    audio_url = await _tts_audio_url(text, session)
 
     if NURSE_TRANSFER_NUMBER:
         num = saxutils.escape(NURSE_TRANSFER_NUMBER)
@@ -834,7 +1061,7 @@ async def generate_twiml_handoff(text: str) -> str:
             f"    <Dial>{num}</Dial>\n"
             "</Response>"
         )
-    return await generate_twiml_say_and_hangup(text)
+    return await generate_twiml_say_and_hangup(text, session=session)
 
 
 def _get_workflow_for_session(session: OrchestratorSession):
@@ -1065,12 +1292,24 @@ async def _handle_scripted_stage_response(
 
 
 async def _prompt_for_scripted_stage(stage: ScriptedStageDefinition) -> str:
+    return await _prompt_for_scripted_stage_with_session(None, stage)
+
+
+async def _prompt_for_scripted_stage_with_session(
+    session: OrchestratorSession | None,
+    stage: ScriptedStageDefinition,
+    *,
+    preamble: str | None = None,
+) -> str:
+    if session is not None:
+        _record_scripted_prompt_metadata(session, stage)
     return await generate_twiml_gather(
-        _stage_prompt(stage),
+        _compose_stage_prompt(stage, preamble=preamble),
         "/api/v1/voice/gather",
         timeout=stage.timeout_seconds,
         hints=stage.hints,
         speech_timeout=stage.speech_timeout,
+        session=session,
     )
 
 
@@ -1160,6 +1399,7 @@ async def handle_incoming_call(
 
         if first_stage is not None:
             twiml = await _generate_initial_scripted_twiml(
+                session,
                 greeting,
                 first_stage,
                 "/api/v1/voice/gather",
@@ -1170,6 +1410,7 @@ async def handle_incoming_call(
                 "/api/v1/voice/gather",
                 timeout=8,
                 speech_timeout="auto",
+                session=session,
             )
 
         logger.info(f"[TWILIO] Session {session.session_id} started for call {CallSid}")
@@ -1245,6 +1486,7 @@ async def _recover_missing_twilio_session(
                 timeout=first_stage.timeout_seconds,
                 hints=first_stage.hints,
                 speech_timeout=first_stage.speech_timeout,
+                session=session,
             )
 
         return await generate_twiml_gather(
@@ -1253,6 +1495,7 @@ async def _recover_missing_twilio_session(
             "/api/v1/voice/gather",
             timeout=8,
             speech_timeout="auto",
+            session=session,
         )
     except Exception as exc:
         logger.error(
@@ -1341,6 +1584,23 @@ async def handle_gather(
             )
             return Response(content=twiml, media_type="application/xml")
 
+        if _is_birchwood_scripted_transfer_request(session, SpeechResult, Digits):
+            requested_text = Digits if Digits == "0" else (SpeechResult or "transfer")
+            twiml = await _handle_birchwood_scripted_transfer_request(
+                session=session,
+                repo=repo,
+                request=request,
+                user_text=requested_text,
+            )
+            return Response(content=twiml, media_type="application/xml")
+
+        intake = _get_scripted_intake_for_session(session)
+        current_stage = session.channel_metadata.get("stage")
+        if current_stage is None and intake and intake.stages:
+            current_stage = intake.stages[0].stage_id
+            session.channel_metadata["stage"] = current_stage
+        scripted_stage = _current_scripted_stage(session, intake)
+
         # Handle empty speech result
         # Speak EXACTLY one apology sentence and re-run the same stage question
         # already embedded in the next <Gather>.  Do NOT append the stage
@@ -1350,6 +1610,10 @@ async def handle_gather(
             twiml = await generate_twiml_gather(
                 "Sorry, I didn't catch that. Can you please repeat your answer?",
                 "/api/v1/voice/gather",
+                timeout=scripted_stage.timeout_seconds if scripted_stage else 6,
+                hints=scripted_stage.hints if scripted_stage else None,
+                speech_timeout=scripted_stage.speech_timeout if scripted_stage else "3",
+                session=session,
             )
             return Response(content=twiml, media_type="application/xml")
 
@@ -1358,14 +1622,7 @@ async def handle_gather(
             ConversationTurn(role="caller", text=SpeechResult.strip())
         )
 
-        intake = _get_scripted_intake_for_session(session)
-        current_stage = session.channel_metadata.get("stage")
-        if current_stage is None and intake and intake.stages:
-            current_stage = intake.stages[0].stage_id
-            session.channel_metadata["stage"] = current_stage
         logger.info(f"[TWILIO] Session {session_id} current stage: {current_stage}")
-
-        scripted_stage = _current_scripted_stage(session, intake)
         if intake is not None and scripted_stage is not None:
             next_stage, reprompt = await _handle_scripted_stage_response(
                 session,
@@ -1381,6 +1638,7 @@ async def handle_gather(
                     timeout=scripted_stage.timeout_seconds,
                     hints=scripted_stage.hints,
                     speech_timeout=scripted_stage.speech_timeout,
+                    session=session,
                 )
                 return Response(content=twiml, media_type="application/xml")
             if next_stage is not None:
@@ -1389,7 +1647,11 @@ async def handle_gather(
                     ConversationTurn(role="assistant", text=next_question)
                 )
                 repo.persist_session(session)
-                twiml = await _prompt_for_scripted_stage(next_stage)
+                twiml = await _prompt_for_scripted_stage_with_session(
+                    session,
+                    next_stage,
+                    preamble=_scripted_stage_acknowledgement(scripted_stage),
+                )
                 return Response(content=twiml, media_type="application/xml")
 
             logger.info(f"[TWILIO] Session {session_id} entering DYNAMIC stage")
@@ -1591,7 +1853,10 @@ async def handle_thinking(
                         session_id=session_id,
                         session=session,
                     )
-            twiml = await generate_twiml_say_and_hangup(spoken_message)
+            twiml = await generate_twiml_say_and_hangup(
+                spoken_message,
+                session=session,
+            )
             return Response(content=twiml, media_type="application/xml")
 
         elif action == "finalize":
@@ -1618,9 +1883,12 @@ async def handle_thinking(
                         session=session,
                     )
             if _is_healthcare_session(session):
-                twiml = await generate_twiml_handoff(spoken_message)
+                twiml = await generate_twiml_handoff(spoken_message, session=session)
             else:
-                twiml = await generate_twiml_say_and_hangup(spoken_message)
+                twiml = await generate_twiml_say_and_hangup(
+                    spoken_message,
+                    session=session,
+                )
             return Response(content=twiml, media_type="application/xml")
 
         else:
@@ -1630,6 +1898,7 @@ async def handle_thinking(
                 "/api/v1/voice/gather",
                 timeout=8,
                 speech_timeout="auto",
+                session=session,
             )
             _tts_ms = (_time.monotonic() - _t_tts) * 1000
             logger.info(f"[TWILIO] TTS={_tts_ms:.0f}ms for session {session_id}")

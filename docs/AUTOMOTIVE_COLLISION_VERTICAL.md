@@ -18,6 +18,8 @@ The phone value above is fake demo data. Do not hard-code or commit a production
 
 The Birchwood Collision Intake workflow is a deterministic automotive-service intake flow powered by ORCA. It qualifies collision leads, captures structured customer and vehicle details, routes callers to the correct team, supports after-hours lead capture, and reduces repetitive call center intake work.
 
+Phase 14.1 refines the live call experience for Birchwood without changing the deterministic routing logic. Birchwood now uses a warmer voice script, longer narrative capture for the incident-description field, and a workflow-specific Azure TTS profile with safe fallback to the global default voice.
+
 Demo business targets:
 
 - 70%+ call deflection target.
@@ -29,14 +31,14 @@ Demo business targets:
 
 ### Gate 1: Drivability
 
-Question: "Is your vehicle safe to drive right now?"
+Question: "First, is your vehicle safe to drive right now?"
 
 - No or unsure: `TRANSFER_COLLISION_CENTER`
 - Yes: continue
 
 ### Gate 2: Damage Type
 
-Question: "What part of the vehicle is damaged?"
+Question: "Is the damage only to the glass, like a windshield or window, or is there body damage as well?"
 
 - Glass-only: `TRANSFER_GLASS_DEPARTMENT`
 - Body damage: continue
@@ -44,7 +46,7 @@ Question: "What part of the vehicle is damaged?"
 
 ### Gate 3: Vehicle Year
 
-Question: "What year is your vehicle?"
+Question: "What year is the vehicle?"
 
 - 2011 or older: `DECLINED_VEHICLE_YEAR`
 - 2012 or newer: continue
@@ -56,7 +58,32 @@ Decline message:
 
 ### Gate 4: Rebuilt/Salvage Status
 
-Question: "Has this vehicle ever been written off by insurance and rebuilt? This would show as rebuilt or salvage on your title."
+Question: "Has the vehicle ever been written off by insurance and rebuilt? It may show as rebuilt or salvage on the title."
+
+## Voice UX
+
+Warm opening:
+
+"Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions so the right person can follow up. If your vehicle isn't safe to drive, or you'd rather speak with someone, just say transfer or press 0."
+
+Narrative prompt:
+
+"Can you tell me what happened and what parts of the vehicle were damaged? Take your time - you can describe it in your own words."
+
+Narrative capture settings are workflow-specific so healthcare and insurance keep their existing speech timing:
+
+- `BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS=5`
+- `BIRCHWOOD_NARRATIVE_TIMEOUT_SECONDS=15`
+- `BIRCHWOOD_NARRATIVE_SPEECH_TIMEOUT_SECONDS=auto`
+- `BIRCHWOOD_ALLOW_LONG_INCIDENT_DESCRIPTION=true`
+
+Azure TTS defaults for Birchwood remain configurable and currently target a friendlier Canadian English voice with graceful fallback to the global default voice:
+
+- `BIRCHWOOD_AZURE_TTS_VOICE=en-CA-ClaraNeural`
+- `BIRCHWOOD_AZURE_TTS_RATE=+3%`
+- `BIRCHWOOD_AZURE_TTS_PITCH=+0%`
+- `BIRCHWOOD_AZURE_TTS_STYLE=friendly`
+- `BIRCHWOOD_AZURE_TTS_BREAK_MS=250`
 
 - Yes: `DECLINED_REBUILT_SALVAGE`
 - No: continue
@@ -172,6 +199,10 @@ Structured extraction includes customer, vehicle, incident, insurance, routing, 
 ORCA can capture intake details, answer basic procedural questions, route calls, flag callbacks, and produce structured output.
 
 ORCA cannot provide repair estimates, answer specific insurance policy questions, give coverage advice, process payments, decide what insurance covers, promise an appointment without staff confirmation, or promise repair acceptance.
+
+Completed-intake closing:
+
+"Thanks, I have the main details noted. The Birchwood Collision team will be able to review this intake and follow up with you. Just a reminder, this doesn't confirm coverage, pricing, or an appointment yet - the team will confirm the next steps."
 
 ## Open Stakeholder Questions
 

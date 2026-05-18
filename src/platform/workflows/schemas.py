@@ -43,6 +43,7 @@ class ScriptedStageDefinition(BaseModel):
     sensitivity: str | None = None
     validation_hint: str | None = None
     hints: str | None = None
+    speech_profile: str | None = None
     timeout_seconds: int = 8
     speech_timeout: str = "3"
 

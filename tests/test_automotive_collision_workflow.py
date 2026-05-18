@@ -375,6 +375,15 @@ async def test_assistant_language_avoids_forbidden_promises():
     assert "we will " + "pay" not in combined
 
 
+@pytest.mark.asyncio
+async def test_completed_intake_uses_warm_non_promissory_closing():
+    result = await _run_case()
+
+    combined = result.assistant_text.lower()
+    assert "main details noted" in combined
+    assert "doesn't confirm coverage, pricing, or an appointment yet" in combined
+
+
 def test_display_metadata_preserves_orca_platform_and_birchwood_target():
     definition = BirchwoodCollisionIntakeWorkflow().get_definition()
 

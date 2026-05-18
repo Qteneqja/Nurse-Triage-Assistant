@@ -6,6 +6,7 @@ from pathlib import Path
 DEMO_DIR = Path("demo/birchwood_collision")
 EXPECTED_DIR = DEMO_DIR / "expected_outputs"
 TRANSCRIPTS_DIR = DEMO_DIR / "transcripts"
+CHECKLIST_PATH = Path("docs/BIRCHWOOD_CALL_TEST_CHECKLIST.md")
 
 FORBIDDEN_PHRASES = [
     "ORCA is " + "Birchwood",
@@ -130,6 +131,26 @@ def test_forbidden_phrases_do_not_appear():
 
     for phrase in FORBIDDEN_PHRASES:
         assert phrase not in text
+
+
+def test_demo_materials_reflect_refined_birchwood_voice_ux():
+    text = _demo_text().lower()
+
+    assert "take your time" in text
+    assert "press 0" in text
+    assert "main details noted" in text
+    assert "doesn't confirm coverage, pricing, or an appointment yet" in text
+
+
+def test_manual_call_checklist_exists_and_covers_narrative_cases():
+    assert CHECKLIST_PATH.exists()
+
+    text = CHECKLIST_PATH.read_text(encoding="utf-8").lower()
+    assert "20-30 second collision story" in text
+    assert "pause briefly mid-story" in text
+    assert "twilio call sid" in text
+    assert "cut-off happened" in text
+    assert "fix needed yes/no" in text
 
 
 def _scenarios() -> list[dict]:
