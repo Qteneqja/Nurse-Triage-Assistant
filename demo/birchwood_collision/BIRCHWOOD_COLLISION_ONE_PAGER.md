@@ -16,6 +16,8 @@ This placeholder is fake demo data. It is not a production Birchwood phone numbe
 
 - Qualifies collision leads using deterministic intake gates.
 - Captures customer, vehicle, incident, insurance claim, and location preference details.
+- Uses a warmer Birchwood voice profile with a longer narrative capture window for the collision story.
+- Reminds callers they can say transfer or press 0 if they want a person.
 - Routes non-drivable vehicles to the collision team.
 - Routes glass-only damage to the glass department.
 - Captures after-hours leads for staff follow-up.
@@ -49,7 +51,7 @@ This placeholder is fake demo data. It is not a production Birchwood phone numbe
 
 - Customer: name, phone, email, address.
 - Vehicle: year, make, model, license plate if available, drivable status, rebuilt/salvage status.
-- Incident: damage type, description, optional incident date/time.
+- Incident: damage type, collision story, optional incident date/time.
 - Insurance: whether the caller is filing a claim and claim number if available.
 - Location: preferred collision center or luxury placeholder auto-assignment.
 

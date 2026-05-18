@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import src.config as config
 from src.orchestrator.schemas import OrchestratorSession
 from src.platform.workflows.base import BaseWorkflow
 from src.platform.workflows.schemas import (
@@ -307,6 +308,9 @@ def _stage(
     sensitivity: str | None = None,
     hints: str | None = None,
 ) -> ScriptedStageDefinition:
+    speech_profile, timeout_seconds, speech_timeout = _speech_settings_for_stage(
+        field_name=field_name,
+    )
     return ScriptedStageDefinition(
         stage_id=stage_id,
         field_name=field_name,
@@ -316,8 +320,27 @@ def _stage(
         required=required,
         sensitivity=sensitivity,
         hints=hints,
-        timeout_seconds=10 if field_type == "free_text" else 8,
-        speech_timeout="auto" if field_type == "free_text" else "3",
+        speech_profile=speech_profile,
+        timeout_seconds=timeout_seconds,
+        speech_timeout=speech_timeout,
+    )
+
+
+def _speech_settings_for_stage(field_name: str) -> tuple[str, int, str]:
+    if (
+        field_name == "incident_description"
+        and config.BIRCHWOOD_ALLOW_LONG_INCIDENT_DESCRIPTION
+    ):
+        return (
+            "narrative",
+            config.BIRCHWOOD_NARRATIVE_TIMEOUT_SECONDS,
+            config.BIRCHWOOD_NARRATIVE_SPEECH_TIMEOUT_SECONDS,
+        )
+
+    return (
+        "short_field",
+        config.BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS,
+        "3",
     )
 
 
@@ -528,8 +551,10 @@ def _spoken_final_message(
             "need confirmation."
         )
     return (
-        "Thanks. I have collected the collision intake details and marked them "
-        "for the Birchwood collision team to review."
+        "Thanks, I have the main details noted. The Birchwood Collision team "
+        "will be able to review this intake and follow up with you. Just a "
+        "reminder, this doesn't confirm coverage, pricing, or an appointment "
+        "yet - the team will confirm the next steps."
     )
 
 
