@@ -178,6 +178,39 @@ INSURANCE_FNOL_PHONE_NUMBER: str = os.getenv(
     "+15555550130",
 )
 
+# Phase 14 Birchwood Collision demo route. This is a fake local/dev placeholder
+# for ORCA's automotive collision intake workflow, not a production Birchwood
+# phone number.
+BIRCHWOOD_COLLISION_PHONE_NUMBER: str = os.getenv(
+    "BIRCHWOOD_COLLISION_PHONE_NUMBER",
+    "+15555550140",
+)
+
+# TODO(stakeholder-confirmation): Confirm exact Birchwood collision center
+# location names/addresses and the glass department transfer process before
+# production use. Demo values intentionally remain placeholders.
+BIRCHWOOD_COLLISION_LOCATION_1: str = os.getenv(
+    "BIRCHWOOD_COLLISION_LOCATION_1",
+    "BIRCHWOOD_COLLISION_LOCATION_1",
+)
+BIRCHWOOD_COLLISION_LOCATION_2: str = os.getenv(
+    "BIRCHWOOD_COLLISION_LOCATION_2",
+    "BIRCHWOOD_COLLISION_LOCATION_2",
+)
+BIRCHWOOD_COLLISION_LOCATION_3: str = os.getenv(
+    "BIRCHWOOD_COLLISION_LOCATION_3",
+    "BIRCHWOOD_COLLISION_LOCATION_3",
+)
+BIRCHWOOD_COLLISION_LUXURY_LOCATION: str = os.getenv(
+    "BIRCHWOOD_COLLISION_LUXURY_LOCATION",
+    "BIRCHWOOD_COLLISION_LUXURY_LOCATION",
+)
+BIRCHWOOD_COLLISION_LUXURY_BRANDS: str = os.getenv(
+    "BIRCHWOOD_COLLISION_LUXURY_BRANDS",
+    "Audi,Porsche,BMW,Mercedes-Benz,Lexus,Land Rover,Jaguar,Genesis,"
+    "Acura,Cadillac,Infiniti,Volvo",
+)
+
 # ---------------------------------------------------------------------------
 # Twilio
 # ---------------------------------------------------------------------------

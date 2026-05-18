@@ -87,6 +87,7 @@ class AdminDashboardService:
                     supports_post_call_extraction=(
                         definition.supports_post_call_extraction
                     ),
+                    metadata=dict(definition.metadata),
                     session_count=counts.get(definition.workflow_id, 0),
                 )
             )
@@ -152,6 +153,7 @@ class AdminDashboardService:
             healthcare_metadata=None,
             property_management_metadata=None,
             insurance_metadata=None,
+            automotive_collision_metadata=None,
             proposed_actions=proposed_actions,
         )
 
@@ -166,6 +168,10 @@ class AdminDashboardService:
         elif _vertical_key(session) == "insurance":
             detail.insurance_metadata = mask_dashboard_payload(
                 self._insurance_metadata(session, final_output)
+            )
+        elif _vertical_key(session) == "automotive_collision":
+            detail.automotive_collision_metadata = mask_dashboard_payload(
+                self._automotive_collision_metadata(session, final_output)
             )
 
         return detail
@@ -422,6 +428,38 @@ class AdminDashboardService:
             "disclaimers_given": claim.get("disclaimers_given") or [],
         }
 
+    def _automotive_collision_metadata(
+        self,
+        session: OrchestratorSession,
+        final_output: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        structured = (final_output or {}).get("structured_output") or {}
+        record = structured.get("intake_record") or {}
+        intake = structured.get("intake") or {}
+        scripted_fields = session.channel_metadata.get("scripted_intake", {}).get(
+            "fields",
+            {},
+        )
+        field_source = {**intake, **record, **scripted_fields}
+        completeness = _required_field_completeness(
+            workflow_id=session.workflow_id,
+            fields=field_source,
+        )
+        return {
+            "intake_output": record,
+            "powered_by": record.get("powered_by") or "ORCA",
+            "client_target": record.get("client_target")
+            or "Birchwood Automotive Group",
+            "workflow_status": record.get("workflow_status") or "demo/pilot",
+            "recommended_routing": record.get("recommended_routing")
+            or (final_output or {}).get("final_disposition"),
+            "preferred_collision_center": record.get("preferred_collision_center"),
+            "flags": record.get("flags") or [],
+            "missing_information": record.get("missing_information") or [],
+            "required_fields_completeness": completeness,
+            "callback_needed": record.get("callback_needed"),
+        }
+
     def _list_repository_organizations(self) -> list[Any]:
         try:
             return list(self._sessions.list_organizations())
@@ -490,14 +528,22 @@ def _required_field_completeness(
             required = list(definition.get_definition().required_fields)
         except Exception:
             required = []
-    missing = [field for field in required if not fields.get(field)]
-    present = [field for field in required if fields.get(field)]
+    missing = [field for field in required if _field_missing(fields.get(field))]
+    present = [field for field in required if not _field_missing(fields.get(field))]
     return {
         "required_fields": required,
         "present_fields": present,
         "missing_fields": missing,
         "is_complete": bool(required) and not missing,
     }
+
+
+def _field_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    return False
 
 
 def _final_result(session: OrchestratorSession) -> dict[str, Any] | None:
@@ -522,6 +568,8 @@ def _vertical_key(session: OrchestratorSession) -> str | None:
         return "property_management"
     if workflow_id.startswith("insurance"):
         return "insurance"
+    if workflow_id.startswith("birchwood_collision"):
+        return "automotive_collision"
     if workflow_id.startswith("healthcare"):
         return "healthcare"
     return None

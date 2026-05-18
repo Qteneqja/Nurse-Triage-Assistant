@@ -150,6 +150,12 @@ def _register_default_agents(service: ExtractionService) -> None:
     )
     from src.verticals.insurance.constants import INSURANCE_CLAIMS_FNOL_WORKFLOW_ID
     from src.verticals.insurance.extraction import InsuranceClaimsExtractionAgent
+    from src.verticals.automotive_collision.constants import (
+        BIRCHWOOD_COLLISION_WORKFLOW_ID,
+    )
+    from src.verticals.automotive_collision.extraction import (
+        AutomotiveCollisionExtractionAgent,
+    )
 
     service.register(HEALTHCARE_TRIAGE_WORKFLOW_ID, HealthcareExtractionAgent())
     service.register(
@@ -159,4 +165,8 @@ def _register_default_agents(service: ExtractionService) -> None:
     service.register(
         INSURANCE_CLAIMS_FNOL_WORKFLOW_ID,
         InsuranceClaimsExtractionAgent(),
+    )
+    service.register(
+        BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        AutomotiveCollisionExtractionAgent(),
     )
