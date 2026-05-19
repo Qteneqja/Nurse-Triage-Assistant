@@ -2,6 +2,12 @@
 
 Production deployment to **Azure Container Apps** with PostgreSQL Flexible Server and Azure Container Registry.
 
+Security note: production credential rotation has already been completed by the
+operator. Do not rotate secrets again as part of this repo remediation unless a
+future compromise is discovered. New deployments should use managed identity,
+Container App `secretRef`, and Key Vault references; see
+`docs/AZURE_SECURITY_HARDENING.md`.
+
 ---
 
 ## Architecture
@@ -27,10 +33,16 @@ Twilio ──HTTPS──► Azure Container Apps (nurse-triage-api)
 
 Scripts are provided in both **PowerShell** (`.ps1`, for Windows) and **Bash** (`.sh`, for WSL/Linux/macOS).
 
-**Secrets you'll need:**
+**Secrets handling:**
 - `DEEPSEEK_API_KEY` — your DeepSeek API key
 - `TWILIO_AUTH_TOKEN` — from the Twilio Console
 - A strong password for PostgreSQL admin
+
+Never paste real secret values into docs, issue comments, or shared terminal
+output. Prefer creating secret values directly in Key Vault and referencing them
+from Container Apps. The legacy deployment scripts may still accept env vars for
+new non-production environments. For production hardening, use
+`scripts/azure-remediate-identity-secrets.ps1`.
 
 ---
 
@@ -46,10 +58,11 @@ winget install Microsoft.AzureCLI
 # 2. Login to Azure
 az login
 
-# 3. Set required secrets
-$env:PG_ADMIN_PASS = "YourStrongPassword123!"
-$env:DEEPSEEK_API_KEY = "sk-..."
-$env:TWILIO_AUTH_TOKEN = "your-twilio-auth-token"
+# 3. For a new non-production deployment only, set required local values.
+#    Do not use real production values in examples or shared logs.
+$env:PG_ADMIN_PASS = "<postgres-admin-password>"
+$env:DEEPSEEK_API_KEY = "<deepseek-api-key>"
+$env:TWILIO_AUTH_TOKEN = "<twilio-auth-token>"
 
 # 4. Deploy everything
 .\scripts\azure-deploy.ps1
@@ -67,10 +80,11 @@ $env:TWILIO_AUTH_TOKEN = "your-twilio-auth-token"
 # 1. Login to Azure
 az login
 
-# 2. Set required secrets
-export PG_ADMIN_PASS='YourStrongPassword123!'
-export DEEPSEEK_API_KEY='sk-...'
-export TWILIO_AUTH_TOKEN='your-twilio-auth-token'
+# 2. For a new non-production deployment only, set required local values.
+#    Do not use real production values in examples or shared logs.
+export PG_ADMIN_PASS='<postgres-admin-password>'
+export DEEPSEEK_API_KEY='<deepseek-api-key>'
+export TWILIO_AUTH_TOKEN='<twilio-auth-token>'
 
 # 3. Deploy everything
 ./scripts/azure-deploy.sh
@@ -151,12 +165,37 @@ Checks:
 
 ---
 
+## Production Identity And Secret Hardening
+
+Use the production hardening runbook instead of passing production secret values
+through shell arguments:
+
+```powershell
+.\scripts\azure-remediate-identity-secrets.ps1 `
+  -SubscriptionId "<subscription-id>" `
+  -KeyVaultName "<production-key-vault-name>" `
+  -DryRun
+
+.\scripts\azure-security-verify.ps1 `
+  -SubscriptionId "<subscription-id>" `
+  -KeyVaultName "<production-key-vault-name>"
+```
+
+The remediation script enables managed identity, assigns Key Vault and ACR
+roles, configures ACR pull through identity, and converts Container App secret
+names to Key Vault references when the named Key Vault secrets exist.
+
 ## Updating Secrets
 
-Update API keys or tokens without redeploying:
+For future planned secret changes, update the value in Key Vault or a Container
+App secret store without printing it. Rotation is not part of the current
+remediation because the operator has already completed it.
+
+Legacy helper scripts are retained for non-production compatibility, but
+production should use Key Vault references.
 
 ```bash
-export DEEPSEEK_API_KEY='new-key'
+export DEEPSEEK_API_KEY='<new-non-production-key>'
 ./scripts/azure-update-secrets.sh
 ```
 
@@ -183,6 +222,9 @@ The container restarts automatically to pick up new values.
 | `RATE_LIMIT` | `60/minute` | env var |
 | `RUN_MIGRATIONS_ON_STARTUP` | `false` | env var |
 | `CORS_ALLOWED_ORIGINS` | (your domain) | env var |
+| `DASHBOARD_ADMIN_TOKEN` | â€” | Key Vault reference preferred |
+| `SECURITY_CSP` | safe default | env var |
+| `SECURITY_FRAME_ANCESTORS` | `'none'` | env var |
 
 ---
 

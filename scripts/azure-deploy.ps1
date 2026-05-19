@@ -79,12 +79,12 @@ catch {
 # Validate required secrets
 if (-not $PG_ADMIN_PASS) {
     Write-Host "ERROR: PG_ADMIN_PASS is not set." -ForegroundColor Red
-    Write-Host '  $env:PG_ADMIN_PASS = "YourStrongPassword123!"' -ForegroundColor Yellow
+    Write-Host '  $env:PG_ADMIN_PASS = "<postgres-admin-password>"' -ForegroundColor Yellow
     exit 1
 }
 if (-not $DEEPSEEK_API_KEY) {
     Write-Host "ERROR: DEEPSEEK_API_KEY is not set." -ForegroundColor Red
-    Write-Host '  $env:DEEPSEEK_API_KEY = "sk-..."' -ForegroundColor Yellow
+    Write-Host '  $env:DEEPSEEK_API_KEY = "<deepseek-api-key>"' -ForegroundColor Yellow
     exit 1
 }
 if (-not $TWILIO_AUTH_TOKEN) {

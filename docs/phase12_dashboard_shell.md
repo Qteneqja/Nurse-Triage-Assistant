@@ -56,9 +56,12 @@ Then open:
 http://localhost:8000/dashboard
 ```
 
-In `APP_ENV=development` or `APP_ENV=test`, dashboard API calls do not require
-an admin token. In staging and production, set `DASHBOARD_ADMIN_TOKEN` and send
-it as `X-Dashboard-Token` or `Authorization: Bearer <token>`.
+In `APP_ENV=development` or `APP_ENV=test`, dashboard API calls and the local
+HTML shell do not require an admin token. In staging and production, set
+`DASHBOARD_ADMIN_TOKEN` and send it as `X-Dashboard-Token` or
+`Authorization: Bearer <token>`. The production shell route and API routes use
+the same token gate. If no approved admin access path exists, set
+`DASHBOARD_ENABLED=false`.
 
 ## Privacy And Masking
 
@@ -77,7 +80,8 @@ This shell is meant for operational review without casually exposing PHI.
 - The dashboard is a static vanilla JavaScript shell, not a full React app.
 - Actions are deterministic placeholders only.
 - There is no persistent proposed-action table yet; status is process-local.
-- Auth is token-based and intentionally minimal.
+- Auth is token-based and intentionally minimal; production should move toward
+  an Entra-authenticated front door or private admin surface.
 - Summary counts are computed from recent sessions, not optimized aggregate
   tables.
 

@@ -4,7 +4,7 @@
 # Update API keys, tokens, or DB connection strings without redeploying.
 #
 # Usage:
-#   $env:DEEPSEEK_API_KEY = "new-key"
+#   $env:DEEPSEEK_API_KEY = "<replacement-key>"
 #   .\scripts\azure-update-secrets.ps1
 # =============================================================================
 
@@ -86,9 +86,9 @@ if ($env:SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER) {
 
 if (-not $Updated) {
     Write-Host "  No secrets to update. Set env vars before running:" -ForegroundColor Yellow
-    Write-Host '    $env:DEEPSEEK_API_KEY = "new-key"'
-    Write-Host '    $env:TWILIO_AUTH_TOKEN = "new-token"'
-    Write-Host '    $env:DATABASE_URL = "postgresql://..."'
+    Write-Host '    $env:DEEPSEEK_API_KEY = "<replacement-key>"'
+    Write-Host '    $env:TWILIO_AUTH_TOKEN = "<replacement-token>"'
+    Write-Host '    $env:DATABASE_URL = "<postgres-connection-string>"'
     Write-Host '    $env:ENABLE_SHARED_NUMBER_VERTICAL_MENU = "true"'
     exit 0
 }
