@@ -15,7 +15,7 @@ tenacity>=8.2.0,<9.0.0  # tenacity 9+ requires tornado at import time; pin to v8
 tornado>=6.0             # required by tenacity[tornado] on Windows
 
 # Environment Management
-python-dotenv>=1.1.1,<2.0.0
+python-dotenv>=1.2.2,<2.0.0
 
 # Phase 3: Persistent Storage
 sqlalchemy>=2.0.0
