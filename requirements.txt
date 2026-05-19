@@ -18,7 +18,7 @@ tornado>=6.0             # required by tenacity[tornado] on Windows
 python-dotenv>=1.1.1,<2.0.0
 
 # Phase 3: Persistent Storage
-sqlalchemy>=2.0.0
+sqlalchemy>=2.0.49
 alembic>=1.13.0
 psycopg2-binary>=2.9.0   # PostgreSQL driver (binary for easy install)
 
