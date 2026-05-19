@@ -23,12 +23,3 @@ repos:
         language: system
         files: '\.(pem|key|p12|pfx)$'
         types: [file]
-
-      - id: no-inline-secrets
-        name: Block inline secret patterns
-        entry: "bash -c 'echo \"ERROR: Possible inline secret detected\" && exit 1'"
-        language: system
-        types: [text]
-        # Matches sk-<hex>, hardcoded tokens, etc.
-        files: '\.(py|bat|sh|yml|yaml|json|toml|cfg|ini|md)$'
-        args: []

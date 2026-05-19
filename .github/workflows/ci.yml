@@ -148,13 +148,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bandit safety
+          pip install bandit pip-audit
 
-      - name: Run bandit (security linter)
-        run: bandit -r src/ -c pyproject.toml --format json --output bandit-report.json || true
+      - name: Run bandit (high confidence/high severity)
+        run: |
+          bandit -r src/ \
+            -c pyproject.toml \
+            --severity-level high \
+            --confidence-level high \
+            --format json \
+            --output bandit-report.json
 
       - name: Check dependencies for known vulnerabilities
-        run: pip install -r requirements.txt && safety check --output json > safety-report.json || true
+        run: |
+          pip-audit -r requirements.txt \
+            --progress-spinner off \
+            --format json \
+            --output pip-audit-report.json
 
       - name: Upload security reports
         if: always()
@@ -163,5 +173,5 @@ jobs:
           name: security-reports
           path: |
             bandit-report.json
-            safety-report.json
+            pip-audit-report.json
           retention-days: 30

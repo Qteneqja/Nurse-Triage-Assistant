@@ -18,9 +18,46 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from src import config
 from src.config import ENVIRONMENT, RATE_LIMIT, TRUST_PROXY_HEADERS
 
 logger = logging.getLogger(__name__)
+
+_SENSITIVE_NO_STORE_PREFIXES = ("/api/", "/admin", "/dashboard")
+_CACHE_CONTROL_EXEMPT_PATHS = (
+    "/api/v1/voice/audio/typing.wav",
+    "/dashboard/static/",
+)
+
+
+def _security_csp() -> str:
+    """Return the configured CSP with safe frame protection defaults."""
+
+    if config.SECURITY_CSP:
+        return config.SECURITY_CSP
+
+    frame_ancestors = config.SECURITY_FRAME_ANCESTORS or "'none'"
+    return "; ".join(
+        [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self'",
+            "base-uri 'none'",
+            "form-action 'self'",
+            f"frame-ancestors {frame_ancestors}",
+        ]
+    )
+
+
+def _is_sensitive_response_path(path: str) -> bool:
+    if path in _CACHE_CONTROL_EXEMPT_PATHS:
+        return False
+    if any(path.startswith(exempt) for exempt in _CACHE_CONTROL_EXEMPT_PATHS):
+        return False
+    return any(path.startswith(prefix) for prefix in _SENSITIVE_NO_STORE_PREFIXES)
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +201,40 @@ class SafeErrorMiddleware(BaseHTTPMiddleware):
                 )
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Apply browser hardening headers without changing response bodies."""
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        response: Response = await call_next(request)
+
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Content-Security-Policy", _security_csp())
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "accelerometer=(), ambient-light-sensor=(), autoplay=(), "
+            "camera=(), display-capture=(), encrypted-media=(), "
+            "fullscreen=(), geolocation=(), gyroscope=(), magnetometer=(), "
+            "microphone=(), midi=(), payment=(), picture-in-picture=(), "
+            "publickey-credentials-get=(), screen-wake-lock=(), usb=(), "
+            "web-share=(), xr-spatial-tracking=()",
+        )
+
+        if _is_sensitive_response_path(request.url.path):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers.setdefault("Pragma", "no-cache")
+            response.headers.setdefault("Expires", "0")
+
+        return response
+
+
 def add_security_middleware(app: FastAPI) -> None:
     """Add all security middleware to the FastAPI app."""
     app.add_middleware(SafeErrorMiddleware)
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
