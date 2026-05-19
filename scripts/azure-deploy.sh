@@ -76,7 +76,7 @@ fi
 # Validate required secrets
 if [[ -z "$PG_ADMIN_PASS" ]]; then
     echo "ERROR: PG_ADMIN_PASS is not set."
-    echo "  export PG_ADMIN_PASS='YourStrongPassword123!'"
+    echo "  export PG_ADMIN_PASS='<postgres-admin-password>'"
     exit 1
 fi
 if [[ -z "$DEEPSEEK_API_KEY" ]]; then

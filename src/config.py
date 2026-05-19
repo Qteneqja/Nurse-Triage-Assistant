@@ -287,12 +287,17 @@ TRUST_PROXY_HEADERS: bool = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in
     "1",
     "yes",
 )
+SECURITY_CSP: str = os.getenv("SECURITY_CSP", "").strip()
+SECURITY_FRAME_ANCESTORS: str = os.getenv("SECURITY_FRAME_ANCESTORS", "'none'").strip()
 
 # Dashboard/admin shell. Local development is allowed without a token, while
 # staging/production API access requires DASHBOARD_ADMIN_TOKEN.
 DASHBOARD_ENABLED: bool = _env_flag("DASHBOARD_ENABLED", "true")
 DASHBOARD_ADMIN_TOKEN: str = os.getenv("DASHBOARD_ADMIN_TOKEN") or os.getenv(
     "ADMIN_API_KEY", ""
+)
+DASHBOARD_ADMIN_TOKEN_MIN_LENGTH: int = int(
+    os.getenv("DASHBOARD_ADMIN_TOKEN_MIN_LENGTH", "32")
 )
 
 # CORS — restrict in production; allow all in development
@@ -380,6 +385,17 @@ def validate_config() -> list[str]:
                 "ENABLE_WORKFLOW_HINT_ROUTE must be false in production unless "
                 "a specific operational exception is approved."
             )
+        if DASHBOARD_ENABLED:
+            if not DASHBOARD_ADMIN_TOKEN:
+                errors.append(
+                    "DASHBOARD_ADMIN_TOKEN is required when DASHBOARD_ENABLED=true "
+                    "in production"
+                )
+            elif len(DASHBOARD_ADMIN_TOKEN.strip()) < DASHBOARD_ADMIN_TOKEN_MIN_LENGTH:
+                errors.append(
+                    "DASHBOARD_ADMIN_TOKEN must be at least "
+                    f"{DASHBOARD_ADMIN_TOKEN_MIN_LENGTH} characters in production"
+                )
 
     if not (0.0 <= CONFIDENCE_MIN_THRESHOLD <= 1.0):
         errors.append(

@@ -375,6 +375,91 @@ def test_dashboard_api_requires_token_in_production_like_env(monkeypatch):
     assert allowed.status_code == 200
 
 
+def test_production_dashboard_enabled_without_admin_token_fails_validation(
+    monkeypatch,
+):
+    monkeypatch.setattr(dashboard.config, "APP_ENV", "production")
+    monkeypatch.setattr(dashboard.config, "ENVIRONMENT", "production")
+    monkeypatch.setattr(dashboard.config, "STORAGE_BACKEND", "postgres")
+    monkeypatch.setattr(
+        dashboard.config,
+        "DATABASE_URL",
+        "postgresql://user:pass@localhost:5432/db",
+    )
+    monkeypatch.setattr(dashboard.config, "DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(dashboard.config, "TWILIO_VALIDATE_SIGNATURE", False)
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ENABLED", True)
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ADMIN_TOKEN", "")
+
+    errors = dashboard.config.validate_config()
+
+    assert any("DASHBOARD_ADMIN_TOKEN" in error for error in errors)
+
+
+def test_production_dashboard_enabled_with_weak_admin_token_fails_validation(
+    monkeypatch,
+):
+    monkeypatch.setattr(dashboard.config, "APP_ENV", "production")
+    monkeypatch.setattr(dashboard.config, "ENVIRONMENT", "production")
+    monkeypatch.setattr(dashboard.config, "STORAGE_BACKEND", "postgres")
+    monkeypatch.setattr(
+        dashboard.config,
+        "DATABASE_URL",
+        "postgresql://user:pass@localhost:5432/db",
+    )
+    monkeypatch.setattr(dashboard.config, "DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(dashboard.config, "TWILIO_VALIDATE_SIGNATURE", False)
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ENABLED", True)
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ADMIN_TOKEN", "short-token")
+
+    errors = dashboard.config.validate_config()
+
+    assert any("at least" in error for error in errors)
+
+
+def _dashboard_shell_client(
+    monkeypatch,
+    token: str = "strong-dashboard-token-value-12345",
+):
+    app = FastAPI()
+    monkeypatch.setattr(dashboard.config, "APP_ENV", "production")
+    monkeypatch.setattr(dashboard.config, "ENVIRONMENT", "production")
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ENABLED", True)
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ADMIN_TOKEN", token)
+    app.include_router(dashboard.page_router)
+    return TestClient(app), token
+
+
+def test_production_dashboard_shell_blocks_unauthenticated_access(monkeypatch):
+    client, _ = _dashboard_shell_client(monkeypatch)
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 401
+    assert "Voice Decision Support Platform" not in response.text
+
+
+def test_production_dashboard_shell_renders_with_valid_auth(monkeypatch):
+    client, token = _dashboard_shell_client(monkeypatch)
+
+    response = client.get("/dashboard", headers={"X-Dashboard-Token": token})
+
+    assert response.status_code == 200
+    assert "Voice Decision Support Platform" in response.text
+
+
+def test_dashboard_shell_returns_disabled_response_when_dashboard_disabled(
+    monkeypatch,
+):
+    client, _ = _dashboard_shell_client(monkeypatch)
+    monkeypatch.setattr(dashboard.config, "DASHBOARD_ENABLED", False)
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Dashboard is disabled"
+
+
 def test_admin_dashboard_shell_and_routes_load(monkeypatch):
     client = _admin_client(
         FakeDashboardRepo([_healthcare_session(), _property_session()]),

@@ -100,7 +100,7 @@ else
     # the actual DATABASE_URL. If you stored it, pass it as env var.
     # Otherwise, we set env vars referencing secrets.
     echo "    NOTE: You may need to set the DATABASE_URL secret on the job manually:"
-    echo "      az containerapp job secret set -g $RG -n $JOB_NAME --secrets database-url='YOUR_CONN_STRING'"
+    echo "      az containerapp job secret set -g $RG -n $JOB_NAME --secrets database-url='<postgres-connection-string>'"
     echo "      az containerapp job update -g $RG -n $JOB_NAME --set-env-vars DATABASE_URL=secretref:database-url"
 fi
 
