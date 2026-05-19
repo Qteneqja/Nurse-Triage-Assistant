@@ -4,7 +4,7 @@ uvicorn[standard]>=0.27.0
 gunicorn>=21.2.0          # Production multi-worker server
 pydantic>=2.10.0
 pydantic-settings>=2.1.0
-python-multipart>=0.0.6  # Required for Twilio form data
+python-multipart>=0.0.29  # Required for Twilio form data
 twilio>=8.0.0             # Twilio SDK (signature validation + utilities)
 
 # LLM Integration
