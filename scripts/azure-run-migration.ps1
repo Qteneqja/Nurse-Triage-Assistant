@@ -88,7 +88,7 @@ else {
         --output none
 
     Write-Host "    NOTE: Set DATABASE_URL secret on the job:" -ForegroundColor Yellow
-    Write-Host "      az containerapp job secret set -g $RG -n $JOB_NAME --secrets database-url='YOUR_CONN_STRING'"
+    Write-Host "      az containerapp job secret set -g $RG -n $JOB_NAME --secrets database-url='<postgres-connection-string>'"
     Write-Host "      az containerapp job update -g $RG -n $JOB_NAME --set-env-vars DATABASE_URL=secretref:database-url"
 }
 

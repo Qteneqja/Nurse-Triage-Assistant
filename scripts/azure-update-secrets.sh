@@ -5,7 +5,7 @@
 # Update API keys, tokens, or DB connection strings without redeploying.
 #
 # Usage:
-#   export DEEPSEEK_API_KEY="new-key"
+#   export DEEPSEEK_API_KEY="<replacement-key>"
 #   ./scripts/azure-update-secrets.sh
 #
 # Only non-empty values are updated. Omit a variable to leave it unchanged.
@@ -80,9 +80,9 @@ fi
 
 if [[ ${#SECRETS_ARGS[@]} -eq 0 && ${#NON_SECRET_ENV_ARGS[@]} -eq 0 ]]; then
     echo "  No secrets to update. Set env vars before running:"
-    echo "    export DEEPSEEK_API_KEY='new-key'"
-    echo "    export TWILIO_AUTH_TOKEN='new-token'"
-    echo "    export DATABASE_URL='postgresql://...'"
+    echo "    export DEEPSEEK_API_KEY='<replacement-key>'"
+    echo "    export TWILIO_AUTH_TOKEN='<replacement-token>'"
+    echo "    export DATABASE_URL='<postgres-connection-string>'"
     echo "    export ENABLE_SHARED_NUMBER_VERTICAL_MENU='true'"
     exit 0
 fi

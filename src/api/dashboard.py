@@ -84,6 +84,18 @@ def require_dashboard_shell_enabled() -> None:
         raise HTTPException(status_code=404, detail="Dashboard is disabled")
 
 
+def require_dashboard_shell_access(
+    authorization: str | None = Header(default=None),
+    x_dashboard_token: str | None = Header(default=None),
+) -> None:
+    """Protect the browser dashboard shell with the same production auth gate."""
+
+    require_dashboard_api_access(
+        authorization=authorization,
+        x_dashboard_token=x_dashboard_token,
+    )
+
+
 def _bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -233,7 +245,7 @@ async def list_dashboard_actions() -> dict[str, Any]:
 @page_router.get("/dashboard/sessions/{session_id}", include_in_schema=False)
 @page_router.get("/dashboard/actions", include_in_schema=False)
 async def dashboard_shell(
-    _: None = Depends(require_dashboard_shell_enabled),
+    _: None = Depends(require_dashboard_shell_access),
 ) -> FileResponse:
     return FileResponse(_INDEX_FILE)
 
