@@ -5,7 +5,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -13,6 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from src.api.admin import router as admin_router
 from src.api.dashboard import api_router as dashboard_api_router
 from src.api.dashboard import page_router as dashboard_page_router
+from src.api.dashboard import require_dashboard_api_access
 from src.api.routes import router as intake_router
 from src.api.reports import router as reports_router
 from src.twilio.routes import router as twilio_router
@@ -280,7 +281,7 @@ async def readiness_check():
     return {"status": "ready", **checks}
 
 
-@app.get("/metrics")
+@app.get("/metrics", dependencies=[Depends(require_dashboard_api_access)])
 async def metrics_endpoint():
     """Expose application metrics (Phase 3)."""
     return get_metrics().to_dict()
