@@ -1,17 +1,16 @@
 name: Trigger auto deployment for nurse-triage-api
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '**'
-      - '.github/workflows/nurse-triage-api-AutoDeployTrigger-58c15c36-b65d-4acc-a121-a29399dcc40c.yml'
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
       id-token: write
       contents: read
