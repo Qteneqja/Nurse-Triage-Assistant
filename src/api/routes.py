@@ -12,15 +12,16 @@ Legacy REST intake path is removed. Only endpoints:
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from src.storage.session_repository import get_session_repository
 from src.orchestrator.orchestrator import get_orchestrator
+from src.api.dashboard import require_dashboard_api_access
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_dashboard_api_access)])
 
 
 # ---------------------------------------------------------------------------
