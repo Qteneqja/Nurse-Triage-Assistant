@@ -14,10 +14,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.api.dashboard import require_dashboard_api_access
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_dashboard_api_access)])
 
 # Same reports directory used by the background report generator
 REPORTS_DIR = Path("reports")
