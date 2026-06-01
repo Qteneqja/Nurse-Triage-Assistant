@@ -32,8 +32,8 @@ router = APIRouter(dependencies=[Depends(require_dashboard_api_access)])
 class StartRequest(BaseModel):
     """Start a new triage session."""
 
-    chief_complaint: Optional[str] = None
-    call_sid: Optional[str] = None
+    chief_complaint: Optional[str] = Field(default=None, max_length=500)
+    call_sid: Optional[str] = Field(default=None, max_length=64)
 
 
 class StartResponse(BaseModel):
