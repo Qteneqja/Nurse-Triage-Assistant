@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -75,7 +76,7 @@ def require_dashboard_api_access(
         )
 
     token = x_dashboard_token or _bearer_token(authorization)
-    if token != expected:
+    if not token or not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="Dashboard token required")
 
 
