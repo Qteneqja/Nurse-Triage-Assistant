@@ -83,10 +83,38 @@ function Invoke-AzQuery {
         [switch]$Required
     )
 
-    $output = & az @Arguments 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $maxAttempts = 3
+    $exitCode = 1
+    $output = @()
+
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $rawOutput = & az @Arguments 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        $output = @(
+            $rawOutput | ForEach-Object { $_.ToString() } |
+                Where-Object { $_ -notmatch "^WARNING:" }
+        )
+
+        if ($exitCode -eq 0) {
+            break
+        }
+
+        if ($attempt -lt $maxAttempts) {
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
+
+    if ($exitCode -ne 0) {
         if ($Required) {
-            throw "az $($Arguments -join ' ') failed."
+            throw "az $($Arguments -join ' ') failed after $maxAttempts attempts."
         }
         return $null
     }
@@ -192,7 +220,7 @@ if (-not $app) {
     Add-Check -Status "FAIL" -Severity "P0" -Area "ContainerApp" -Message "Container App not found"
 }
 else {
-    $Evidence.resources.containerApp = @{
+    $Evidence["resources"]["containerApp"] = @{
         name = $ContainerAppName
         id = $app.id
         identityType = $app.identityType
@@ -260,7 +288,7 @@ $acaEnv = Invoke-AzQuery -Arguments @(
     "-o", "json"
 ) -Json
 if ($acaEnv) {
-    $Evidence.resources.containerAppsEnvironment = @{
+    $Evidence["resources"]["containerAppsEnvironment"] = @{
         name = $ContainerAppsEnvironmentName
         id = $acaEnv.id
         appLogsDestination = $acaEnv.appLogsDestination
@@ -286,7 +314,7 @@ $acr = Invoke-AzQuery -Arguments @(
     "-o", "json"
 ) -Json
 if ($acr) {
-    $Evidence.resources.acr = @{
+    $Evidence["resources"]["acr"] = @{
         name = $AcrName
         id = $acr.id
         sku = $acr.sku
@@ -322,7 +350,7 @@ if ($KeyVaultName) {
     ) -Json
 
     if ($kv) {
-        $Evidence.resources.keyVault = @{
+        $Evidence["resources"]["keyVault"] = @{
             name = $KeyVaultName
             id = $kv.id
             publicNetworkAccess = $kv.publicNetworkAccess
@@ -375,7 +403,7 @@ if ($PostgreSqlServerName) {
     ) -Json
 
     if ($pg) {
-        $Evidence.resources.postgresql = @{
+        $Evidence["resources"]["postgresql"] = @{
             name = $PostgreSqlServerName
             id = $pg.id
             version = $pg.version
@@ -434,7 +462,7 @@ if ($StorageAccountName) {
     ) -Json
 
     if ($storage) {
-        $Evidence.resources.storage = @{
+        $Evidence["resources"]["storage"] = @{
             name = $StorageAccountName
             id = $storage.id
             publicNetworkAccess = $storage.publicNetworkAccess
@@ -543,13 +571,29 @@ foreach ($group in $grouped) {
     Write-Host ("  {0}: {1}" -f $group.Name, $group.Count)
 }
 
-$Evidence.checks = @($Checks)
 if ($JsonOut) {
     $outDir = Split-Path -Parent $JsonOut
     if ($outDir -and -not (Test-Path $outDir)) {
         New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     }
-    $Evidence | ConvertTo-Json -Depth 10 | Set-Content -Path $JsonOut -Encoding UTF8
+    $evidenceExport = [ordered]@{
+        generatedAtUtc = $Evidence["generatedAtUtc"]
+        subscriptionId = $Evidence["subscriptionId"]
+        resourceGroup = $Evidence["resourceGroup"]
+        resources = $Evidence["resources"]
+        checks = @(
+            $Checks | ForEach-Object {
+                [ordered]@{
+                    status = $_.status
+                    severity = $_.severity
+                    area = $_.area
+                    message = $_.message
+                    data = $_.data
+                }
+            }
+        )
+    }
+    $evidenceExport | ConvertTo-Json -Depth 10 | Set-Content -Path $JsonOut -Encoding UTF8
     Write-Host "Sanitized evidence written to: $JsonOut"
 }
 

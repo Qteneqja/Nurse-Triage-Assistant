@@ -100,12 +100,40 @@ function Invoke-AzSafe {
         return $null
     }
 
-    $output = & az @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $maxAttempts = 3
+    $exitCode = 1
+    $output = @()
+
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $rawOutput = & az @Arguments 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        $output = @(
+            $rawOutput | ForEach-Object { $_.ToString() } |
+                Where-Object { $_ -notmatch "^WARNING:" }
+        )
+
+        if ($exitCode -eq 0) {
+            break
+        }
+
+        if ($attempt -lt $maxAttempts) {
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
+
+    if ($exitCode -ne 0) {
         if ($AllowFailure) {
             return $null
         }
-        throw "az $($Arguments -join ' ') failed: $output"
+        throw "az $($Arguments -join ' ') failed after $maxAttempts attempts."
     }
 
     if ($Json) {
