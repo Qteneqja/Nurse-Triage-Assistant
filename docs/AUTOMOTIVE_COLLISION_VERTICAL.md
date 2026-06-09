@@ -79,6 +79,9 @@ Narrative capture settings are workflow-specific so healthcare and insurance kee
 
 Azure TTS defaults for Birchwood remain configurable and currently target Bree Dragon HD Latest with graceful fallback to the global default voice:
 
+- `AZURE_SPEECH_KEY=secretref:azure-speech-key` in production Container Apps
+- `AZURE_SPEECH_REGION=canadacentral`
+- `AZURE_TTS_VOICE=en-US-Bree:DragonHDLatestNeural`
 - `BIRCHWOOD_AZURE_TTS_VOICE=en-US-Bree:DragonHDLatestNeural`
 - `BIRCHWOOD_AZURE_TTS_RATE=+3%`
 - `BIRCHWOOD_AZURE_TTS_PITCH=+0%`
