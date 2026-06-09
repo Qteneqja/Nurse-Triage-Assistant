@@ -35,4 +35,4 @@ deepeval==4.0.2
 requests>=2.31.0         # used by test_intake_flow.py (live-server integration test)
 
 # Error Monitoring (Step 4 - Production Hardening)
-sentry-sdk>=1.40.0        # Error monitoring with PHI scrubbing
+sentry-sdk>=2.61.1        # Error monitoring with PHI scrubbing
