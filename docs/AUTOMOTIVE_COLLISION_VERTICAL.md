@@ -77,12 +77,12 @@ Narrative capture settings are workflow-specific so healthcare and insurance kee
 - `BIRCHWOOD_NARRATIVE_SPEECH_TIMEOUT_SECONDS=auto`
 - `BIRCHWOOD_ALLOW_LONG_INCIDENT_DESCRIPTION=true`
 
-Azure TTS defaults for Birchwood remain configurable and currently target a friendlier Canadian English voice with graceful fallback to the global default voice:
+Azure TTS defaults for Birchwood remain configurable and currently target Bree Dragon HD Latest with graceful fallback to the global default voice:
 
-- `BIRCHWOOD_AZURE_TTS_VOICE=en-CA-ClaraNeural`
+- `BIRCHWOOD_AZURE_TTS_VOICE=en-US-Bree:DragonHDLatestNeural`
 - `BIRCHWOOD_AZURE_TTS_RATE=+3%`
 - `BIRCHWOOD_AZURE_TTS_PITCH=+0%`
-- `BIRCHWOOD_AZURE_TTS_STYLE=friendly`
+- `BIRCHWOOD_AZURE_TTS_STYLE=` (blank by default for DragonHD compatibility)
 - `BIRCHWOOD_AZURE_TTS_BREAK_MS=250`
 
 - Yes: `DECLINED_REBUILT_SALVAGE`

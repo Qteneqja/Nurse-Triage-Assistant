@@ -240,7 +240,7 @@ BIRCHWOOD_ALLOW_LONG_INCIDENT_DESCRIPTION: bool = _env_flag(
 )
 BIRCHWOOD_AZURE_TTS_VOICE: str = os.getenv(
     "BIRCHWOOD_AZURE_TTS_VOICE",
-    "en-CA-ClaraNeural",
+    "en-US-Bree:DragonHDLatestNeural",
 )
 BIRCHWOOD_AZURE_TTS_RATE: str = os.getenv(
     "BIRCHWOOD_AZURE_TTS_RATE",
@@ -252,7 +252,7 @@ BIRCHWOOD_AZURE_TTS_PITCH: str = os.getenv(
 )
 BIRCHWOOD_AZURE_TTS_STYLE: str = os.getenv(
     "BIRCHWOOD_AZURE_TTS_STYLE",
-    "friendly",
+    "",
 )
 BIRCHWOOD_AZURE_TTS_BREAK_MS: int = int(
     os.getenv("BIRCHWOOD_AZURE_TTS_BREAK_MS", "250")
@@ -318,7 +318,10 @@ AZURE_BLOB_CONTAINER: str = os.getenv("AZURE_BLOB_CONTAINER", "triage-reports")
 # Azure Speech Service (TTS)
 AZURE_SPEECH_KEY: Optional[str] = os.getenv("AZURE_SPEECH_KEY")
 AZURE_SPEECH_REGION: str = os.getenv("AZURE_SPEECH_REGION", "eastus")
-AZURE_TTS_VOICE: str = os.getenv("AZURE_TTS_VOICE", "en-US-AvaMultilingualNeural")
+AZURE_TTS_VOICE: str = os.getenv(
+    "AZURE_TTS_VOICE",
+    "en-US-Bree:DragonHDLatestNeural",
+)
 
 # Database migrations on startup (safe + idempotent via Alembic upgrade head)
 RUN_MIGRATIONS_ON_STARTUP: bool = os.getenv(
