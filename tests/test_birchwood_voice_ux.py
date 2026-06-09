@@ -457,7 +457,10 @@ async def test_birchwood_empty_speech_retry_keeps_birchwood_tts_profile():
         mp.setattr("src.config.STORAGE_BACKEND", "memory")
         mp.setattr("src.config.ENVIRONMENT", "development")
         mp.setattr("src.config.DATABASE_URL", None)
-        mp.setattr("src.config.BIRCHWOOD_AZURE_TTS_VOICE", "en-CA-ClaraNeural")
+        mp.setattr(
+            "src.config.BIRCHWOOD_AZURE_TTS_VOICE",
+            "en-US-Bree:DragonHDLatestNeural",
+        )
         mp.setattr("src.config.BIRCHWOOD_AZURE_TTS_STYLE", "friendly")
         reset_session_repository()
         reset_storage_backend()
@@ -493,7 +496,7 @@ async def test_birchwood_empty_speech_retry_keeps_birchwood_tts_profile():
     kwargs = tts_mock.await_args.kwargs
     assert 'timeout="15"' in body
     assert 'speechTimeout="auto"' in body
-    assert args[1] == "en-CA-ClaraNeural"
+    assert args[1] == "en-US-Bree:DragonHDLatestNeural"
     assert kwargs["style"] == "friendly"
 
 
@@ -521,7 +524,10 @@ async def test_birchwood_validation_reprompt_keeps_birchwood_tts_profile():
         mp.setattr("src.config.STORAGE_BACKEND", "memory")
         mp.setattr("src.config.ENVIRONMENT", "development")
         mp.setattr("src.config.DATABASE_URL", None)
-        mp.setattr("src.config.BIRCHWOOD_AZURE_TTS_VOICE", "en-CA-ClaraNeural")
+        mp.setattr(
+            "src.config.BIRCHWOOD_AZURE_TTS_VOICE",
+            "en-US-Bree:DragonHDLatestNeural",
+        )
         mp.setattr("src.config.BIRCHWOOD_AZURE_TTS_STYLE", "friendly")
         reset_session_repository()
         reset_storage_backend()
@@ -556,11 +562,11 @@ async def test_birchwood_validation_reprompt_keeps_birchwood_tts_profile():
     args = tts_mock.await_args.args
     kwargs = tts_mock.await_args.kwargs
     assert "first and last name" in body
-    assert args[1] == "en-CA-ClaraNeural"
+    assert args[1] == "en-US-Bree:DragonHDLatestNeural"
     assert kwargs["style"] == "friendly"
 
 
-def test_birchwood_tts_settings_default_to_friendly_configurable_voice(monkeypatch):
+def test_birchwood_tts_settings_default_to_bree_dragonhd_voice(monkeypatch):
     from src.twilio import routes as twilio_routes
 
     session = OrchestratorSession(
@@ -569,31 +575,52 @@ def test_birchwood_tts_settings_default_to_friendly_configurable_voice(monkeypat
     )
     monkeypatch.setattr(
         "src.config.AZURE_TTS_VOICE",
-        "en-US-AvaMultilingualNeural",
+        "en-US-Bree:DragonHDLatestNeural",
         raising=False,
     )
     monkeypatch.setattr(
         "src.config.BIRCHWOOD_AZURE_TTS_VOICE",
-        "en-CA-ClaraNeural",
+        "en-US-Bree:DragonHDLatestNeural",
         raising=False,
     )
     monkeypatch.setattr("src.config.BIRCHWOOD_AZURE_TTS_RATE", "+3%", raising=False)
     monkeypatch.setattr("src.config.BIRCHWOOD_AZURE_TTS_PITCH", "+0%", raising=False)
     monkeypatch.setattr(
         "src.config.BIRCHWOOD_AZURE_TTS_STYLE",
-        "friendly",
+        "",
         raising=False,
     )
     monkeypatch.setattr("src.config.BIRCHWOOD_AZURE_TTS_BREAK_MS", 250, raising=False)
 
     settings = twilio_routes._get_tts_settings_for_session(session)
 
-    assert settings["voice"] == "en-CA-ClaraNeural"
+    assert settings["voice"] == "en-US-Bree:DragonHDLatestNeural"
     assert settings["rate"] == "+3%"
     assert settings["pitch"] == "+0%"
-    assert settings["style"] == "friendly"
+    assert settings["style"] is None
     assert settings["break_ms"] == 250
-    assert settings["fallback_voice"] == "en-US-AvaMultilingualNeural"
+    assert settings["fallback_voice"] == "en-US-Bree:DragonHDLatestNeural"
+
+
+@pytest.mark.parametrize("style_value", ["", "none", "default", "plain"])
+def test_birchwood_tts_settings_treat_plain_style_markers_as_unstyled(
+    monkeypatch, style_value
+):
+    from src.twilio import routes as twilio_routes
+
+    session = OrchestratorSession(
+        session_id="birchwood-tts-plain-style",
+        workflow_id=BIRCHWOOD_COLLISION_WORKFLOW_ID,
+    )
+    monkeypatch.setattr(
+        "src.config.BIRCHWOOD_AZURE_TTS_STYLE",
+        style_value,
+        raising=False,
+    )
+
+    settings = twilio_routes._get_tts_settings_for_session(session)
+
+    assert settings["style"] is None
 
 
 def test_birchwood_tts_settings_fall_back_to_global_voice_when_blank(monkeypatch):
@@ -605,7 +632,7 @@ def test_birchwood_tts_settings_fall_back_to_global_voice_when_blank(monkeypatch
     )
     monkeypatch.setattr(
         "src.config.AZURE_TTS_VOICE",
-        "en-US-AvaMultilingualNeural",
+        "en-US-Bree:DragonHDLatestNeural",
         raising=False,
     )
     monkeypatch.setattr(
@@ -616,7 +643,7 @@ def test_birchwood_tts_settings_fall_back_to_global_voice_when_blank(monkeypatch
 
     settings = twilio_routes._get_tts_settings_for_session(session)
 
-    assert settings["voice"] == "en-US-AvaMultilingualNeural"
+    assert settings["voice"] == "en-US-Bree:DragonHDLatestNeural"
 
 
 class _FakeAzureResponse:
@@ -653,7 +680,7 @@ async def test_azure_tts_retries_without_style_when_style_is_unsupported(monkeyp
 
     audio = await azure_tts.synthesize_speech(
         "Hello from Birchwood.",
-        voice="en-CA-ClaraNeural",
+        voice="en-US-Bree:DragonHDLatestNeural",
         style="friendly",
     )
 

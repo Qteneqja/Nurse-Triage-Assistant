@@ -462,10 +462,21 @@ _TTS_VOICE = "Polly.Ruth-Neural"
 _pending_turns: dict[str, tuple[asyncio.Task, object]] = {}
 
 
+def _optional_tts_style(value: object) -> str | None:
+    style = str(value or "").strip()
+    if not style or style.lower() in {"none", "null", "default", "plain"}:
+        return None
+    return style
+
+
 def _get_tts_settings_for_session(
     session: OrchestratorSession | None,
 ) -> dict[str, str | int | None]:
-    default_voice = getattr(config, "AZURE_TTS_VOICE", "en-US-AvaMultilingualNeural")
+    default_voice = getattr(
+        config,
+        "AZURE_TTS_VOICE",
+        "en-US-Bree:DragonHDLatestNeural",
+    )
     settings: dict[str, str | int | None] = {
         "voice": default_voice,
         "rate": "-3%",
@@ -495,7 +506,9 @@ def _get_tts_settings_for_session(
                 "voice": birchwood_voice,
                 "rate": getattr(config, "BIRCHWOOD_AZURE_TTS_RATE", "+3%"),
                 "pitch": getattr(config, "BIRCHWOOD_AZURE_TTS_PITCH", "+0%"),
-                "style": getattr(config, "BIRCHWOOD_AZURE_TTS_STYLE", None) or None,
+                "style": _optional_tts_style(
+                    getattr(config, "BIRCHWOOD_AZURE_TTS_STYLE", None)
+                ),
                 "break_ms": getattr(config, "BIRCHWOOD_AZURE_TTS_BREAK_MS", 250),
                 "profile": "birchwood_collision",
             }
