@@ -18,7 +18,7 @@ Root-level documents remain in place for compatibility with existing links.
 - [Security cleanup](../SECURITY_CLEANUP.md)
 - [Security posture](../SECURITY_POSTURE.md)
 - [Hardening report](../HARDENING_REPORT.md)
-- [History rewrite procedure](HISTORY_REWRITE_PROCEDURE.md) — prepared, awaiting operator execution
+- [History rewrite procedure](HISTORY_REWRITE_PROCEDURE.md) — executed 2026-06-10
 - [GitHub security setup checklist](GITHUB_SECURITY_SETUP.md) — manual UI steps for the operator
 
 ## Pilot Readiness

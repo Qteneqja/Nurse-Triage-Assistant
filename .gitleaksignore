@@ -1,11 +1,5 @@
-# Known historical findings — all instances of the DeepSeek API key that was
-# rotated in May 2026 (see SECURITY_CLEANUP.md). These fingerprints exist so
-# full-history scans (secret-scan.yml weekly job, local `gitleaks detect`) can
-# pass while the history rewrite (docs/HISTORY_REWRITE_PROCEDURE.md) is still
-# pending. The referenced commits are pre-rewrite SHAs: DELETE these entries
-# after the rewrite is executed — they become meaningless and would only mask
-# the verification that the rewrite worked.
-41007082a54a843b009692309a8a13b6d03f538c:SECURITY_CLEANUP.md:deepseek-api-key:71
-0c7e6230d4c401ba8be2e8cd31f5ac2d91c080ac:SECURITY.md:deepseek-api-key:41
-0c7e6230d4c401ba8be2e8cd31f5ac2d91c080ac:src/llm/config.py:deepseek-api-key:12
-0c7e6230d4c401ba8be2e8cd31f5ac2d91c080ac:tests/test_llm_client.py:deepseek-api-key:8
+# Per-fingerprint suppressions for gitleaks (format: commit:file:rule:line).
+# Empty since 2026-06-10: the history rewrite (docs/HISTORY_REWRITE_PROCEDURE.md)
+# purged the previously suppressed findings, and the full-history scan passes
+# with no suppressions. Add entries here only for verified false positives or
+# already-rotated credentials, with a comment explaining each.

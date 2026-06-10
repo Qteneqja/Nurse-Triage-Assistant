@@ -118,6 +118,13 @@ The `SECURITY.md` already documents pre-commit setup with gitleaks â€” this
 
 ## Blocking Issues
 
-1. **HISTORY RISK - Secrets exist in git history.** A redacted DeepSeek API key reference is present in historical commits. Production credential rotation has already been completed by the operator; history rewrite or documented risk acceptance remains a governance task.
+1. **RESOLVED 2026-06-10 — history rewritten.** The rotated DeepSeek key and
+   `test_secret.txt` were purged from all branches via `git filter-repo`
+   (mirror clone, force-push) per
+   [docs/HISTORY_REWRITE_PROCEDURE.md](docs/HISTORY_REWRITE_PROCEDURE.md).
+   Verified by a gitleaks full-history scan of a fresh clone of GitHub with
+   zero suppressions. Note: commit SHAs referenced earlier in this document
+   (`a43cf3f`, `4100708`, `0c7e623`) refer to pre-rewrite history.
 
-2. **BLOCKING â€” Git tag `v1.0.0-hardened` must NOT be applied** until history remediation is confirmed complete.
+2. **RESOLVED by #1** — release tagging is no longer blocked on history
+   remediation.

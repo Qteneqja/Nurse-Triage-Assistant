@@ -1,9 +1,13 @@
 # Git History Rewrite Procedure — Purge Secrets from History
 
-**Status: PREPARED, NOT EXECUTED.** This is a destructive, repo-wide operation
-that must be run manually by the repository owner. Nothing in this document has
-been performed. The repo is public and single-owner, which makes this the right
-time to do it (no collaborator coordination needed).
+**Status: EXECUTED 2026-06-10.** The rewrite was performed and verified: all 10
+branches force-updated, `test_secret.txt` absent from all history, and a
+gitleaks full-history scan of a fresh clone of GitHub passes with zero
+suppressions. A pre-rewrite backup bundle and the `phase-12-7` patch were kept
+temporarily in `C:\Users\QTene\rewrite-work\` — delete that directory once
+satisfied (it contains pre-rewrite history). Remaining optional step: ask
+GitHub Support to drop cached/dangling pre-rewrite commits (see Step 7).
+This document is retained as the procedure of record for any future rewrite.
 
 ## What gets purged, and why
 
