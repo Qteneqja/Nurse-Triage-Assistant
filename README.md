@@ -459,7 +459,7 @@ Runs on every push to `main` and on all pull requests:
 ### Secret Scan — All Branches (`.github/workflows/secret-scan.yml`)
 Supplements the CI gate above:
 - **Every push to every branch** is scanned (the CI gate only covers `main` pushes and PRs).
-- **Weekly full-history scan** (Mondays 06:00 UTC, also runnable manually via `workflow_dispatch`) — push/PR scans only cover the event's commit range, so this is the backstop. Known historical findings from the already-rotated key are suppressed by fingerprint in `.gitleaksignore` until the history rewrite ([docs/HISTORY_REWRITE_PROCEDURE.md](docs/HISTORY_REWRITE_PROCEDURE.md)) lands.
+- **Weekly full-history scan** (Mondays 06:00 UTC, also runnable manually via `workflow_dispatch`) — push/PR scans only cover the event's commit range, so this is the backstop. The git history was rewritten on 2026-06-10 ([docs/HISTORY_REWRITE_PROCEDURE.md](docs/HISTORY_REWRITE_PROCEDURE.md)) to purge previously committed secrets; the full-history scan passes with no suppressions in `.gitleaksignore`.
 
 ### Auto-Deploy (Azure Container Apps)
 The existing Azure deployment workflow triggers on push to `main` after CI passes.
