@@ -451,10 +451,15 @@ The project uses GitHub Actions for continuous integration and deployment:
 
 ### CI (`.github/workflows/ci.yml`)
 Runs on every push to `main` and on all pull requests:
-- **Gitleaks**: Secret scanning using [gitleaks/gitleaks-action](https://github.com/gitleaks/gitleaks-action) — **blocks merge** on any detected secret. Custom rules in `.gitleaks.toml` cover DeepSeek keys, Twilio tokens, and standard provider patterns.
+- **Gitleaks**: Secret scanning using [gitleaks/gitleaks-action](https://github.com/gitleaks/gitleaks-action) — **blocks merge** on any detected secret. Custom rules in `.gitleaks.toml` cover DeepSeek keys, Twilio tokens, and standard provider patterns. All downstream CI jobs depend on this job, so a leak stops the entire pipeline.
 - **Lint**: `ruff check` and `ruff format --check` on `src/` and `tests/`
 - **Test Suite**: Full `pytest` run with coverage reporting (excludes integration/load tests)
 - **Security Scan**: `bandit` static analysis + `safety` dependency vulnerability check
+
+### Secret Scan — All Branches (`.github/workflows/secret-scan.yml`)
+Supplements the CI gate above:
+- **Every push to every branch** is scanned (the CI gate only covers `main` pushes and PRs).
+- **Weekly full-history scan** (Mondays 06:00 UTC, also runnable manually via `workflow_dispatch`) — push/PR scans only cover the event's commit range, so this is the backstop. Known historical findings from the already-rotated key are suppressed by fingerprint in `.gitleaksignore` until the history rewrite ([docs/HISTORY_REWRITE_PROCEDURE.md](docs/HISTORY_REWRITE_PROCEDURE.md)) lands.
 
 ### Auto-Deploy (Azure Container Apps)
 The existing Azure deployment workflow triggers on push to `main` after CI passes.
