@@ -23,15 +23,15 @@ description = "Twilio Auth Token (32-char hex after known labels)"
 regex = '''(?i)(twilio.{0,20}(auth|token|secret).{0,10})[0-9a-f]{32}'''
 tags = ["key", "twilio"]
 
-# Allow-list: ignore false positives from scikit-learn CSS, test fixtures, etc.
+# Allow-list: ignore false positives from archived data-exploration exports
+# and virtualenvs. Keep this PATH-scoped only — global regex allowlists (e.g.
+# a bare '''sklearn''') suppress findings across ALL files and rules, which is
+# how a real key on a line mentioning sklearn would slip through.
+# Known historical findings are suppressed per-fingerprint in .gitleaksignore.
 [allowlist]
 paths = [
   '''archive/data_exploration/.*\.html''',
   '''archive/data_exploration/.*\.css''',
   '''\.venv/''',
   '''venv/''',
-]
-regexes = [
-  '''sklearn''',
-  '''scikit''',
 ]

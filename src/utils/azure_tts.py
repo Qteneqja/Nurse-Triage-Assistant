@@ -48,7 +48,7 @@ async def warm_up() -> None:
 
         if not AZURE_SPEECH_KEY:
             return
-        voice = AZURE_TTS_VOICE or "en-US-AvaMultilingualNeural"
+        voice = AZURE_TTS_VOICE or "en-US-Bree:DragonHDLatestNeural"
         logger.info("[AzureTTS] Pre-warming TTS pipeline...")
         url = await text_to_speech_url("Hello.", voice)
         if url:
@@ -112,7 +112,7 @@ def _build_ssml(
 
 async def synthesize_speech(
     text: str,
-    voice: str = "en-US-AvaMultilingualNeural",
+    voice: str = "en-US-Bree:DragonHDLatestNeural",
     speech_key: Optional[str] = None,
     speech_region: Optional[str] = None,
     *,
@@ -251,7 +251,7 @@ def _upload_to_blob(audio_bytes: bytes, blob_name: str) -> Optional[str]:
 
 async def text_to_speech_url(
     text: str,
-    voice: str = "en-US-AvaMultilingualNeural",
+    voice: str = "en-US-Bree:DragonHDLatestNeural",
     *,
     rate: str = "-3%",
     pitch: str = "+2%",

@@ -58,6 +58,11 @@ plaintext exposure.
 
 ### Historical Cleanup Steps
 
+> **Superseded (2026-06-10, PR 0):** the authoritative, verified procedure is
+> now [docs/HISTORY_REWRITE_PROCEDURE.md](docs/HISTORY_REWRITE_PROCEDURE.md)
+> (mirror-clone based, with pre-push verification and rollback). The steps
+> below are kept for historical context only.
+
 ```bash
 # 1. For a future incident, rotate the affected key first.
 #    The May 2026 production rotation has already been completed.
