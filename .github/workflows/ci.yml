@@ -26,7 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for thorough scan
+          # Needed so gitleaks-action can resolve the push/PR base^..head range.
+          # NOTE: the action scans only the event's commit range, NOT full
+          # history — the full-history backstop is secret-scan.yml (weekly).
+          fetch-depth: 0
 
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
