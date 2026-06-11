@@ -603,6 +603,77 @@ async def test_injury_mention_in_narrative_triggers_spoken_advisory_once():
         assert fields["injury_mentions"]
 
 
+@pytest.mark.asyncio
+async def test_injury_first_mentioned_in_final_turn_still_gets_spoken_advisory():
+    """The /thinking fallback must speak the advisory when the injury mention
+    arrives only in the final DYNAMIC-stage utterance (review finding: the
+    scripted-path marking used to swallow it)."""
+    from unittest.mock import MagicMock
+
+    from src.platform.workflows.schemas import WorkflowTurnResult
+    from src.twilio import routes as twilio_routes
+
+    call_sid = "CA-INJURY-FINAL-TURN"
+    with pytest.MonkeyPatch.context() as mp, _TTS_OFF:
+        repo = _setup_memory_repo(mp)
+        session = repo.create_session(call_sid=call_sid, workflow_route=BIRCHWOOD_ROUTE)
+        session.channel_metadata["stage"] = "DYNAMIC"
+        session.channel_metadata["scripted_intake"] = {
+            "workflow_id": BIRCHWOOD_COLLISION_WORKFLOW_ID,
+            "current_index": None,
+            "current_stage_id": "DYNAMIC",
+            "fields": {"incident_description": "minor scrape in a lot"},
+            "attempts": {},
+            "completed": True,
+        }
+        repo.persist_session(session)
+
+        engine = MagicMock()
+
+        async def _final_turn(context, workflow_input):
+            updated = repo.load_session_by_call(call_sid)
+            updated.channel_metadata["workflow_final_result"] = {
+                "final_disposition": "COMPLETED_INTAKE",
+                "confidence_score": 0.88,
+                "summary": "intake",
+                "structured_output": {
+                    "intake_record": {"flags": ["injuries_reported"]}
+                },
+                "safety_events": [],
+                "rules_triggered": ["automotive_collision:injury_safety_branch"],
+                "audit_metadata": {},
+            }
+            return WorkflowTurnResult(
+                assistant_text="Thanks, I have the main details noted.",
+                stage="FINAL",
+                should_continue=False,
+                should_finalize=True,
+                escalation_required=False,
+                updated_state=updated.model_dump(mode="json"),
+            )
+
+        engine.handle_turn = _final_turn
+        mp.setattr(twilio_routes, "get_workflow_engine", lambda: engine)
+
+        gather_response = await _gather(
+            call_sid, "actually now that you ask, my neck hurts a bit"
+        )
+        # DYNAMIC path returns typing sounds, never the advisory directly.
+        assert "9 1 1" not in gather_response.body.decode()
+
+        task, _ = twilio_routes._pending_turns[call_sid]
+        await task  # let the workflow turn finish
+
+        thinking_response = await twilio_routes.handle_thinking(
+            SimpleNamespace(headers={}),
+            BackgroundTasks(),
+            CallSid=call_sid,
+        )
+        body = thinking_response.body.decode()
+        assert "9 1 1" in body  # advisory prepended to the closing message
+        assert "Thanks, I have the main details noted." in body
+
+
 def test_injury_advisory_text_gives_no_medical_advice_beyond_911():
     lowered = INJURY_SAFETY_ADVISORY.lower()
     assert "9 1 1" in lowered

@@ -1733,8 +1733,15 @@ async def handle_gather(
 
         # Injury safety branch (Invariant 3): deterministic, non-clinical
         # verticals only, spoken at most once per call. Healthcare returns
-        # None here and is untouched.
-        injury_advisory = stability.injury_advisory_if_needed(session, SpeechResult)
+        # None here and is untouched. Only computed when a scripted prompt
+        # will actually carry it — marking it on the DYNAMIC path would
+        # swallow it, because the final-turn advisory is prepended by
+        # /thinking from the flagged workflow result instead.
+        injury_advisory = (
+            stability.injury_advisory_if_needed(session, SpeechResult)
+            if scripted_stage is not None
+            else None
+        )
 
         logger.info(f"[TWILIO] Session {session_id} current stage: {current_stage}")
         if intake is not None and scripted_stage is not None:
