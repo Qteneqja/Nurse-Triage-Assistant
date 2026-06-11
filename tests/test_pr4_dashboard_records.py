@@ -322,3 +322,28 @@ def test_record_status_event_model_round_trip():
         assert row.status == "contacted"
         assert row.actor == "shop.front-desk"
         assert row.created_at is not None
+
+
+def test_dashboard_static_pages_are_csp_compatible():
+    """The app serves script-src 'self' / style-src 'self' — inline <script>
+    or <style> blocks silently never run in the browser (PR 4.2 regression:
+    the login page's inline JS made 'Sign in' do nothing)."""
+    from pathlib import Path
+
+    static_dir = Path("src/dashboard_static")
+    for page in static_dir.glob("*.html"):
+        html = page.read_text(encoding="utf-8").lower()
+        assert "<script>" not in html, f"{page.name}: inline <script> is CSP-blocked"
+        assert "<style>" not in html, f"{page.name}: inline <style> is CSP-blocked"
+        # Event handlers as attributes are inline script too.
+        assert "onclick=" not in html, f"{page.name}: inline handler is CSP-blocked"
+
+
+def test_login_page_uses_external_assets(client):
+    with pytest.MonkeyPatch.context() as mp:
+        _setup_repo(mp)
+        mp.setattr("src.config.APP_ENV", "staging")
+        mp.setattr("src.config.DASHBOARD_ADMIN_TOKEN", "token-1234567890")
+        page = client.get("/dashboard/login")
+        assert page.status_code == 200
+        assert "/dashboard/static/login.js" in page.text
