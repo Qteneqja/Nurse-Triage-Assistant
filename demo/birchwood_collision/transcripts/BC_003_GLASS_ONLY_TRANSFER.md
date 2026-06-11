@@ -1,8 +1,8 @@
 # BC_003 Glass-Only Transfer
 
-ORCA: Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions, and you can press 0 anytime to speak with someone.
+ORCA: Thank you for calling Birchwood Automotive Group. This call may be recorded for training and quality purposes. I'm here to help get your vehicle taken care of after your accident. And if you'd rather speak with one of our team right away, just say transfer or press 0.
 
-ORCA: First, is your vehicle safe to drive right now?
+ORCA: Thank you. And is your vehicle safe to drive right now?
 
 Caller: Yes.
 
@@ -10,6 +10,6 @@ ORCA: Is the damage only to the glass, like a windshield or window, or is there 
 
 Caller: Just the windshield glass.
 
-ORCA: It sounds like glass-only damage, so I will route this to the glass department.
+ORCA: That sounds like glass-only damage, and our glass team takes care of those directly - let me get this over to them for you.
 
 Demo note: The exact glass department transfer process needs Birchwood stakeholder confirmation.

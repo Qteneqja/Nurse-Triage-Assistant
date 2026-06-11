@@ -161,8 +161,10 @@ def test_scripted_intake_definition_exists():
     assert intake.stages[-2].field_name == "confirmation_ack"
     assert intake.stages[-2].dynamic_prompt is True
     assert intake.stages[-1].field_name == "correction_note"
-    assert "ORCA" in intake.intro_text
-    assert "Birchwood Collision" in intake.intro_text
+    # Voice pass: the greeting speaks in Birchwood's brand voice (ORCA stays
+    # vendor-facing in materials/metadata, not in the customer greeting).
+    assert "Birchwood Automotive Group" in intake.intro_text
+    assert "recorded for training and quality purposes" in intake.intro_text
 
 
 @pytest.mark.asyncio
@@ -206,7 +208,7 @@ async def test_2011_or_older_vehicle_declines_politely():
     result = await _run_case(vehicle_year=2011)
 
     assert result.recommended_disposition == "DECLINED_VEHICLE_YEAR"
-    assert "vehicles 2012 and newer" in result.assistant_text
+    assert "vehicles from 2012 and newer" in result.assistant_text
     assert "vehicle_year_declined" in _record(result)["flags"]
 
 

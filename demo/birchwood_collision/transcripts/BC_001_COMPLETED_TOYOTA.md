@@ -1,8 +1,8 @@
 # BC_001 Completed Toyota Intake
 
-ORCA: Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions so the right person can follow up. If your vehicle isn't safe to drive, or you'd rather speak with someone, just say transfer or press 0.
+ORCA: Thank you for calling Birchwood Automotive Group. This call may be recorded for training and quality purposes. I'm here to help get your vehicle taken care of after your accident. And if you'd rather speak with one of our team right away, just say transfer or press 0.
 
-ORCA: First, is your vehicle safe to drive right now?
+ORCA: Thank you. And is your vehicle safe to drive right now?
 
 Caller: Yes, it is safe to drive.
 
@@ -28,4 +28,4 @@ ORCA: Are you going through insurance for this repair, or will this be private p
 
 Caller: Yes, and I have claim number CLM-DEMO-1001.
 
-ORCA: Thanks, I have the main details noted. The Birchwood Collision team will be able to review this intake and follow up with you. Just a reminder, this doesn't confirm coverage, pricing, or an appointment yet - the team will confirm the next steps.
+ORCA: Wonderful - let me just make sure I've got everything right before we wrap up. Perfect - you're all set. Here's what happens next: one of our service advisors will give you a call back to confirm timing and the Birchwood location that works best for you. Just so you know, this doesn't confirm coverage, pricing, or an appointment yet - your advisor will take care of those details with you. Thanks so much for calling Birchwood, and take care.

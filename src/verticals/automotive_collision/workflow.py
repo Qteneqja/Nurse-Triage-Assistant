@@ -311,11 +311,11 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
             p for p in [intake.caller_name or "", intake.phone or ""] if p
         ).strip()
         if contact:
-            parts.append(f"and the team should call {contact}")
+            parts.append(f"and your advisor should call {contact}")
         summary = "; ".join(parts) if parts else "the details you gave me"
         return (
-            "Thanks, I have the main details noted. Let me make sure I got "
-            f"this right: {summary}. Did I get all of that right?"
+            "Wonderful - let me just make sure I've got everything right: "
+            f"{summary}. Did I get all of that right?"
         )
 
     def _load_session(
@@ -713,26 +713,28 @@ def _plain_summary(
         for p in [intake.vehicle_year, intake.vehicle_make, intake.vehicle_model]
         if p
     )
-    bits = [f"We recorded your collision details for the {vehicle or 'vehicle'}."]
+    bits = [f"We've taken down your collision details for the {vehicle or 'vehicle'}."]
     if intake.injuries_state == "reported":
         bits.append(
             "You mentioned someone may be hurt - please get medical attention "
-            "or call 9 1 1 if needed; the team has been alerted."
+            "or call 9 1 1 if needed; our team has been alerted."
         )
     if intake.is_drivable is False:
-        bits.append("The vehicle is not safe to drive.")
+        bits.append("The vehicle isn't safe to drive.")
     if intake.filing_insurance_claim is True:
         provider = intake.insurance_provider or "your insurer"
-        bits.append(f"You're going through {provider}.")
+        bits.append(f"The repair will be coordinated with {provider}.")
     elif intake.filing_insurance_claim is False:
-        bits.append("You're paying privately.")
+        bits.append("The repair will be out of pocket.")
     if intake.phone:
-        bits.append(f"The Birchwood team will call you back at {intake.phone}.")
+        bits.append(
+            f"A Birchwood service advisor will call you back at {intake.phone}."
+        )
     else:
-        bits.append("The Birchwood team will follow up with you.")
+        bits.append("A Birchwood service advisor will follow up with you.")
     bits.append(
         "This doesn't confirm coverage, pricing, or an appointment yet - "
-        "the team will confirm next steps."
+        "your advisor will confirm next steps."
     )
     return " ".join(bits)
 
@@ -817,48 +819,54 @@ def _spoken_final_message(
     flags = set(record.get("flags") or [])
     if disposition == "TRANSFER_COLLISION_CENTER":
         return (
-            "Because the vehicle may not be safe to drive or you asked for help, "
-            "I will route this to the collision team now."
+            "No problem at all. Since the vehicle may not be safe to drive - "
+            "or you'd just rather talk with a person - let me get you "
+            "straight through to our collision team."
         )
     if disposition == "TRANSFER_GLASS_DEPARTMENT":
         return (
-            "It sounds like glass-only damage, so I will route this to the "
-            "glass department."
+            "That sounds like glass-only damage, and our glass team takes "
+            "care of those directly - let me get this over to them for you."
         )
     if disposition == "DECLINED_VEHICLE_YEAR":
         return (
-            "I appreciate you calling. Unfortunately, our collision centers handle "
-            "vehicles 2012 and newer. Thanks for thinking of Birchwood."
+            "I really appreciate you calling. Unfortunately, our collision "
+            "centers are only able to take vehicles from 2012 and newer. "
+            "Thanks so much for thinking of Birchwood."
         )
     if disposition == "DECLINED_REBUILT_SALVAGE":
         return (
-            "Thanks for letting me know. Our collision centers aren't able to "
-            "service rebuilt or salvage title vehicles. I appreciate you calling."
+            "Thanks for letting me know. Unfortunately, our collision "
+            "centers aren't able to service rebuilt or salvage title "
+            "vehicles. I really appreciate you calling Birchwood."
         )
     if "private_pay" in flags:
         return (
-            "No problem - I have it marked as private pay. "
+            "No problem at all - I've noted the repair as out of pocket. "
             + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
         )
     if "missing_claim_number" in flags:
         return (
-            "That's okay. I'll note that the claim number is still needed so "
-            "the team can follow up."
+            "That's no problem at all - I've noted that the claim number is "
+            "still to come, and your advisor will grab it when they call "
+            "you back. Thanks so much for calling Birchwood, and take care."
         )
     if disposition == "INCOMPLETE_CALLBACK_NEEDED":
         return (
-            "Thanks. I have recorded the details I have and marked this for a "
-            "callback to confirm the missing information."
+            "Thanks so much. I've saved everything you've told me, and one "
+            "of our service advisors will call you back to fill in the last "
+            "couple of details. Thanks for calling Birchwood, and take care."
         )
     if disposition == "HUMAN_REVIEW":
         return (
-            "Thanks. I have marked this for staff review because a few details "
-            "need confirmation."
+            "Thank you. I've passed this along for our team to double-check "
+            "a few details, and someone will follow up with you shortly. "
+            "Thanks for calling Birchwood."
         )
     if "readback_correction" in flags:
         return (
-            "Thanks - I've noted your correction for the team to review. "
-            + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
+            "Thanks - I've noted that correction for your advisor to "
+            "double-check. " + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
         )
     return BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
 

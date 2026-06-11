@@ -138,7 +138,10 @@ def test_demo_materials_reflect_refined_birchwood_voice_ux():
 
     assert "take your time" in text
     assert "press 0" in text
-    assert "main details noted" in text
+    # Voice pass: Birchwood service-center greeting + advisor readback/close.
+    assert "thank you for calling birchwood automotive group" in text
+    assert "recorded for training and quality purposes" in text
+    assert "make sure i've got everything right" in text
     assert "doesn't confirm coverage, pricing, or an appointment yet" in text
 
 

@@ -1,8 +1,8 @@
 # BC_004 Vehicle Year Decline
 
-ORCA: Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions so the right person can follow up.
+ORCA: Thank you for calling Birchwood Automotive Group. This call may be recorded for training and quality purposes. I'm here to help get your vehicle taken care of after your accident. And if you'd rather speak with one of our team right away, just say transfer or press 0.
 
-ORCA: First, is your vehicle safe to drive right now?
+ORCA: Thank you. And is your vehicle safe to drive right now?
 
 Caller: Yes.
 
@@ -14,4 +14,4 @@ ORCA: What year is the vehicle?
 
 Caller: It is a 2010 Mazda.
 
-ORCA: I appreciate you calling. Unfortunately, our collision centers handle vehicles 2012 and newer. Thanks for thinking of Birchwood.
+ORCA: I really appreciate you calling. Unfortunately, our collision centers are only able to take vehicles from 2012 and newer. Thanks so much for thinking of Birchwood.
