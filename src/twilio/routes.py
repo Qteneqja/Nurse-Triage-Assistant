@@ -2128,6 +2128,7 @@ async def handle_thinking(
                         session_id=session_id,
                         session=session,
                     )
+                _maybe_schedule_enrichment(background_tasks, session)
             twiml = await generate_twiml_say_and_hangup(
                 spoken_message,
                 session=session,
@@ -2157,6 +2158,7 @@ async def handle_thinking(
                         session_id=session_id,
                         session=session,
                     )
+                _maybe_schedule_enrichment(background_tasks, session)
             if _is_healthcare_session(session):
                 twiml = await generate_twiml_handoff(spoken_message, session=session)
             else:
@@ -2187,6 +2189,38 @@ async def handle_thinking(
             "Sorry, we encountered an error. Please try again later."
         )
         return Response(content=error_twiml, media_type="application/xml")
+
+
+def _maybe_schedule_enrichment(
+    background_tasks: BackgroundTasks,
+    session: OrchestratorSession | None,
+) -> None:
+    """Schedule shadow-mode post-call enrichment (PR enrichment-shadow).
+
+    Strictly off the call path: only fires when ENRICHMENT_ENABLED is true
+    and the session's vertical qualifies; the scheduled pipeline itself
+    fails closed and never modifies the source record. With the master
+    flag off, this returns before importing anything.
+    """
+    try:
+        if session is None or not getattr(config, "ENRICHMENT_ENABLED", False):
+            return
+        from src.enrichment.pipeline import (
+            enrichment_enabled_for,
+            run_enrichment_for_session,
+        )
+
+        if not enrichment_enabled_for(session):
+            return
+        background_tasks.add_task(run_enrichment_for_session, session.session_id)
+        logger.info(
+            "[TWILIO] Scheduled shadow enrichment for session %s",
+            session.session_id,
+        )
+    except Exception:
+        logger.warning(
+            "[TWILIO] Enrichment scheduling failed (non-fatal)", exc_info=True
+        )
 
 
 def _typing_redirect_twiml() -> str:

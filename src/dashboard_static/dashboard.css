@@ -555,3 +555,8 @@ td {
   cursor: pointer;
 }
 .login-error { color: #b42318; font-size: 13px; min-height: 18px; }
+
+/* Enrichment shadow-mode preview */
+.preview-banner {
+  background: #6d28d9;
+}

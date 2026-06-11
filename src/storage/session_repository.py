@@ -106,6 +106,22 @@ class SessionRepository:
         """Return the status audit trail for a session, newest first."""
         return self._backend.get_record_status_events(session_id)
 
+    def save_enrichment_result(self, result: dict[str, Any]) -> None:
+        """Persist a post-call enrichment output (shadow mode)."""
+        self._backend.save_enrichment_result(result)
+
+    def get_enrichment_results(self, session_id: str) -> list[dict[str, Any]]:
+        """Return enrichment outputs for a session, newest first."""
+        return self._backend.get_enrichment_results(session_id)
+
+    def list_enrichment_results(
+        self,
+        limit: int = 200,
+        feature: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return recent enrichment outputs across sessions (admin view)."""
+        return self._backend.list_enrichment_results(limit=limit, feature=feature)
+
     def list_organizations(self) -> list[Any]:
         """Return organization records for read-only admin views."""
         return self._backend.list_organizations()

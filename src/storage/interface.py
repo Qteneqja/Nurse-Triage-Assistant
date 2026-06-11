@@ -88,6 +88,26 @@ class StorageInterface(abc.ABC):
         """Return the status audit trail for a session, newest first."""
         return []
 
+    def save_enrichment_result(self, result: dict[str, Any]) -> None:
+        """Persist a post-call enrichment output (shadow mode).
+
+        Default is a logged no-op: enrichment is best-effort and must never
+        fail a pipeline because a backend lacks support.
+        """
+        return None
+
+    def get_enrichment_results(self, session_id: str) -> list[dict[str, Any]]:
+        """Return enrichment outputs for a session, newest first."""
+        return []
+
+    def list_enrichment_results(
+        self,
+        limit: int = 200,
+        feature: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return recent enrichment outputs across sessions (admin view)."""
+        return []
+
     def list_organizations(self) -> list[Any]:
         """Return tenant organization records for read-only admin views."""
         return []

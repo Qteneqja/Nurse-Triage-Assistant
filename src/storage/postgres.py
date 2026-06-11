@@ -311,6 +311,71 @@ class PostgresStorage(StorageInterface):
                 for row in result.scalars().all()
             ]
 
+    def save_enrichment_result(self, result: dict[str, Any]) -> None:
+        """Persist a post-call enrichment output (shadow mode)."""
+        from src.storage.models import EnrichmentResultModel
+
+        with self._SessionFactory() as db:
+            db.add(
+                EnrichmentResultModel(
+                    session_id=result["session_id"],
+                    call_sid=result.get("call_sid"),
+                    feature=result["feature"],
+                    status=result["status"],
+                    pii_mode=result.get("pii_mode", "redact"),
+                    provider=result.get("provider", "unknown"),
+                    model=result.get("model"),
+                    payload_json=result.get("payload") or {},
+                    tokens_map_json=result.get("tokens_map") or {},
+                )
+            )
+            db.commit()
+
+    @staticmethod
+    def _enrichment_row(row: Any) -> dict[str, Any]:
+        return {
+            "enrichment_id": row.id,
+            "session_id": row.session_id,
+            "call_sid": row.call_sid,
+            "feature": row.feature,
+            "status": row.status,
+            "pii_mode": row.pii_mode,
+            "provider": row.provider,
+            "model": row.model,
+            "payload": row.payload_json or {},
+            "tokens_map": row.tokens_map_json or {},
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+
+    def get_enrichment_results(self, session_id: str) -> list[dict[str, Any]]:
+        """Return enrichment outputs for a session, newest first."""
+        from src.storage.models import EnrichmentResultModel
+
+        with self._SessionFactory() as db:
+            result = db.execute(
+                select(EnrichmentResultModel)
+                .where(EnrichmentResultModel.session_id == session_id)
+                .order_by(EnrichmentResultModel.created_at.desc())
+            )
+            return [self._enrichment_row(row) for row in result.scalars().all()]
+
+    def list_enrichment_results(
+        self,
+        limit: int = 200,
+        feature: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return recent enrichment outputs across sessions (admin view)."""
+        from src.storage.models import EnrichmentResultModel
+
+        with self._SessionFactory() as db:
+            query = select(EnrichmentResultModel).order_by(
+                EnrichmentResultModel.created_at.desc()
+            )
+            if feature:
+                query = query.where(EnrichmentResultModel.feature == feature)
+            result = db.execute(query.limit(limit))
+            return [self._enrichment_row(row) for row in result.scalars().all()]
+
     def list_organizations(self) -> list[Any]:
         """Return organization rows for admin/dashboard read models."""
         with self._SessionFactory() as db:

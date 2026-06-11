@@ -598,6 +598,7 @@ async def dashboard_login(
 @page_router.get("/dashboard/sessions/{session_id}", include_in_schema=False)
 @page_router.get("/dashboard/records", include_in_schema=False)
 @page_router.get("/dashboard/records/{session_id}", include_in_schema=False)
+@page_router.get("/dashboard/enrichment", include_in_schema=False)
 @page_router.get("/dashboard/actions", include_in_schema=False)
 async def dashboard_shell(request: Request):
     """Serve the dashboard shell; browsers without a token go to /login.

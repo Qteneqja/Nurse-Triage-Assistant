@@ -590,3 +590,42 @@ class RecordStatusEventModel(Base):
             f"<RecordStatusEvent session={self.session_id} "
             f"status={self.status} actor={self.actor}>"
         )
+
+
+class EnrichmentResultModel(Base):
+    """Post-call enrichment output (shadow mode) — separate from the record.
+
+    One row per (session, feature) run. The source call record is never
+    modified by enrichment; deleting this table loses only enrichment.
+    """
+
+    __tablename__ = "enrichment_results"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    call_sid: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    feature: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    pii_mode: Mapped[str] = mapped_column(String(10), nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    tokens_map_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<EnrichmentResult session={self.session_id} "
+            f"feature={self.feature} status={self.status}>"
+        )

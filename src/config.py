@@ -184,6 +184,50 @@ if _workflow_phone_routes_raw.strip():
 # logged without affecting built-in workflows.
 EXTRA_WORKFLOW_DEFINITIONS_DIR: str = os.getenv("EXTRA_WORKFLOW_DEFINITIONS_DIR", "")
 
+# ---------------------------------------------------------------------------
+# Post-call enrichment layer (shadow mode — OFF the live call path)
+# ---------------------------------------------------------------------------
+
+# Master switch. Default false: zero enrichment code paths execute and zero
+# tokens are spent. The live call flow is identical with this on or off —
+# enrichment runs async AFTER finalize and fails closed/silent.
+ENRICHMENT_ENABLED: bool = _env_flag("ENRICHMENT_ENABLED", "false")
+
+# Provider for enrichment LLM calls (provider-agnostic interface; the live
+# Birchwood call flow uses NO LLM regardless of this setting).
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "deepseek")
+
+# PII handling for text sent to the enrichment provider:
+#   redact (default): names/phones/emails/addresses/plates/claim refs are
+#     tokenized before leaving the system; results re-associate locally.
+#   raw: full transcript text is sent — requires a completed privacy review
+#     (docs/ENRICHMENT_DATA_FLOW.md); a startup warning is logged.
+ENRICHMENT_PII_MODE: str = os.getenv("ENRICHMENT_PII_MODE", "redact").lower()
+if ENRICHMENT_PII_MODE not in ("redact", "raw"):
+    logger.error(
+        "[CONFIG] ENRICHMENT_PII_MODE must be 'redact' or 'raw' — "
+        "falling back to 'redact'"
+    )
+    ENRICHMENT_PII_MODE = "redact"
+if ENRICHMENT_ENABLED and ENRICHMENT_PII_MODE == "raw":
+    logger.warning(
+        "[CONFIG] ENRICHMENT_PII_MODE=raw — UNREDACTED caller PII will be "
+        "sent to the LLM provider (%s). Confirm the privacy review in "
+        "docs/ENRICHMENT_DATA_FLOW.md is complete before pilot use.",
+        LLM_PROVIDER,
+    )
+
+# Per-feature flags (only consulted when ENRICHMENT_ENABLED is true).
+ENRICH_NORMALIZE: bool = _env_flag("ENRICH_NORMALIZE", "true")
+ENRICH_SUMMARY: bool = _env_flag("ENRICH_SUMMARY", "true")
+ENRICH_QA: bool = _env_flag("ENRICH_QA", "true")
+ENRICH_FOLLOWUP: bool = _env_flag("ENRICH_FOLLOWUP", "true")
+ENRICH_ROUTING: bool = _env_flag("ENRICH_ROUTING", "true")
+ENRICH_INSIGHTS: bool = _env_flag("ENRICH_INSIGHTS", "true")
+# Below this many enriched calls the insights view reports
+# "insufficient data" instead of presenting noise as signal.
+ENRICH_INSIGHTS_MIN_CALLS: int = int(os.getenv("ENRICH_INSIGHTS_MIN_CALLS", "30"))
+
 # Default route bootstrap inputs.
 DEFAULT_ORGANIZATION_NAME: str = os.getenv(
     "DEFAULT_ORGANIZATION_NAME", "Default Healthcare Organization"

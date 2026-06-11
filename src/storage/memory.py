@@ -31,6 +31,7 @@ class InMemoryOrchestratorStorage(StorageInterface):
         self._expiry: Dict[str, datetime] = {}  # session_id -> expiry time
         self._extractions: Dict[str, list[Any]] = {}
         self._record_status_events: Dict[str, list[dict[str, Any]]] = {}
+        self._enrichment_results: list[dict[str, Any]] = []
         self._cleanup_task: asyncio.Task | None = None
 
     def start_cleanup(self) -> None:
@@ -182,6 +183,30 @@ class InMemoryOrchestratorStorage(StorageInterface):
         events = list(self._record_status_events.get(session_id, []))
         events.sort(key=lambda e: e["created_at"], reverse=True)
         return events
+
+    def save_enrichment_result(self, result: dict[str, Any]) -> None:
+        row = dict(result)
+        row.setdefault("enrichment_id", str(uuid.uuid4()))
+        row.setdefault("created_at", datetime.now(UTC).isoformat())
+        self._enrichment_results.append(row)
+
+    def get_enrichment_results(self, session_id: str) -> list[dict[str, Any]]:
+        rows = [
+            r for r in self._enrichment_results if r.get("session_id") == session_id
+        ]
+        rows.sort(key=lambda r: r["created_at"], reverse=True)
+        return rows
+
+    def list_enrichment_results(
+        self,
+        limit: int = 200,
+        feature: str | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = list(self._enrichment_results)
+        if feature:
+            rows = [r for r in rows if r.get("feature") == feature]
+        rows.sort(key=lambda r: r["created_at"], reverse=True)
+        return rows[:limit]
 
     def list_organizations(self) -> list[Any]:
         """Return organization-like rows inferred from in-memory sessions."""
