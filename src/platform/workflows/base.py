@@ -53,3 +53,34 @@ class BaseWorkflow(ABC):
     def get_scripted_intake_definition(self) -> ScriptedIntakeDefinition | None:
         """Return optional voice scripted-intake stages for this workflow."""
         return None
+
+    def prefill_from_narrative(
+        self,
+        session: Any,
+        stage: Any,
+        narrative: str,
+    ) -> dict[str, Any]:
+        """Extract field values from a completed narrative answer.
+
+        Returned keys are recorded into the scripted-intake fields (without
+        overwriting values already present) so later stages can be skipped.
+        Deterministic only — implementations must not call an LLM here.
+        """
+        return {}
+
+    def on_field_recorded(
+        self,
+        session: Any,
+        stage: Any,
+        value: Any,
+    ) -> dict[str, Any]:
+        """React to a recorded scripted field with additional prefills.
+
+        Lets a workflow resolve conditional stages deterministically (e.g.
+        'paying privately' also answers the claim-number question).
+        """
+        return {}
+
+    def build_dynamic_prompt(self, session: Any, stage: Any) -> str | None:
+        """Build a session-aware prompt for stages marked dynamic_prompt."""
+        return None

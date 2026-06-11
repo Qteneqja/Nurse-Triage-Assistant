@@ -51,6 +51,10 @@ class ScriptedStageDefinition(BaseModel):
     # caller signals completion (or a hard cap is reached). Only meaningful
     # for narrative free-text stages; short fields must leave this False.
     multi_segment: bool = False
+    # When True, the voice channel asks the workflow to build this stage's
+    # prompt from session state (workflow.build_dynamic_prompt) — used for
+    # confirmation readbacks. The static prompt is the fallback.
+    dynamic_prompt: bool = False
 
     @model_validator(mode="after")
     def _sync_legacy_and_generic_fields(self) -> "ScriptedStageDefinition":
