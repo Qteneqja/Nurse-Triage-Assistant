@@ -1256,6 +1256,87 @@ def _advance_scripted_intake(
     return next_stage
 
 
+def _merge_prefilled_fields(
+    session: OrchestratorSession,
+    fills: dict,
+    *,
+    overwrite: bool,
+) -> None:
+    """Merge workflow-provided field values into the scripted intake.
+
+    Narrative prefills never overwrite an answer the caller already gave;
+    on_field_recorded fills do (the workflow is normalizing its own field).
+    """
+    if not fills:
+        return
+    scripted = session.channel_metadata.setdefault("scripted_intake", {})
+    fields = scripted.setdefault("fields", {})
+    for key, value in fills.items():
+        if not overwrite and fields.get(key) not in (None, "", []):
+            continue
+        fields[key] = value
+        if hasattr(session.intake_state, key):
+            setattr(session.intake_state, key, value)
+
+
+def _apply_narrative_prefill(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+    narrative: str,
+) -> None:
+    """Let the workflow prefill fields from a completed narrative (PR 2)."""
+    try:
+        workflow = _get_workflow_for_session(session)
+        fills = workflow.prefill_from_narrative(session, stage, narrative) or {}
+    except Exception:
+        logger.warning("[TWILIO] Narrative prefill failed (non-fatal)", exc_info=True)
+        return
+    if fills:
+        _merge_prefilled_fields(session, fills, overwrite=False)
+        logger.info(
+            "[TWILIO] Narrative prefilled %s field(s): %s",
+            len(fills),
+            sorted(fills),
+        )
+
+
+def _apply_on_field_recorded_hook(
+    session: OrchestratorSession,
+    stage: ScriptedStageDefinition,
+    value,
+) -> None:
+    """Let the workflow react to a recorded field (conditional skips etc.)."""
+    try:
+        workflow = _get_workflow_for_session(session)
+        extra = workflow.on_field_recorded(session, stage, value) or {}
+    except Exception:
+        logger.warning(
+            "[TWILIO] on_field_recorded hook failed (non-fatal)", exc_info=True
+        )
+        return
+    _merge_prefilled_fields(session, extra, overwrite=True)
+
+
+def _stage_prompt_for_session(
+    session: OrchestratorSession | None,
+    stage: ScriptedStageDefinition,
+) -> str:
+    """Stage prompt, letting dynamic stages (readbacks) build from state."""
+    if session is not None and getattr(stage, "dynamic_prompt", False):
+        try:
+            dynamic = _get_workflow_for_session(session).build_dynamic_prompt(
+                session, stage
+            )
+            if dynamic:
+                return dynamic
+        except Exception:
+            logger.warning(
+                "[TWILIO] Dynamic prompt build failed — using static prompt",
+                exc_info=True,
+            )
+    return _stage_prompt(stage)
+
+
 def _scripted_stage_already_filled(
     session: OrchestratorSession,
     stage: ScriptedStageDefinition,
@@ -1298,9 +1379,11 @@ async def _handle_scripted_stage_response(
             mask_phi(speech_text[:80]),
         )
         _record_scripted_field(session, stage, speech_text.strip())
+        _apply_on_field_recorded_hook(session, stage, speech_text.strip())
     else:
         if parsed_value is not None:
             _record_scripted_field(session, stage, parsed_value)
+            _apply_on_field_recorded_hook(session, stage, parsed_value)
 
     next_stage = _advance_scripted_intake(session, intake, stage)
     return next_stage, None
@@ -1318,8 +1401,11 @@ async def _prompt_for_scripted_stage_with_session(
 ) -> str:
     if session is not None:
         _record_scripted_prompt_metadata(session, stage)
+    prompt = _stage_prompt_for_session(session, stage)
+    if preamble:
+        prompt = f"{preamble} {prompt}"
     return await generate_twiml_gather(
-        _compose_stage_prompt(stage, preamble=preamble),
+        prompt,
         "/api/v1/voice/gather",
         timeout=stage.timeout_seconds,
         hints=stage.hints,
@@ -1695,6 +1781,7 @@ async def handle_gather(
             if narrative_done_text:
                 SpeechResult = narrative_done_text
                 narrative_completed_by_silence = True
+                _apply_narrative_prefill(session, scripted_stage, narrative_done_text)
                 logger.info(
                     "[TWILIO] Narrative completed by silence for %s (%s chars)",
                     CallSid,
@@ -1770,12 +1857,18 @@ async def handle_gather(
                     )
                     return _respond(twiml)
                 SpeechResult = ingest.joined_text or SpeechResult
+                _apply_narrative_prefill(session, scripted_stage, SpeechResult)
             next_stage, reprompt = await _handle_scripted_stage_response(
                 session,
                 intake,
                 scripted_stage,
                 SpeechResult,
             )
+            # An affirmative answer to the direct injury question ("yes")
+            # carries no injury keywords — the advisory keys off the
+            # recorded injuries_state instead.
+            if injury_advisory is None:
+                injury_advisory = stability.injury_advisory_for_recorded_state(session)
             if reprompt:
                 repo.persist_session(session)
                 twiml = await generate_twiml_gather(
@@ -1788,7 +1881,7 @@ async def handle_gather(
                 )
                 return _respond(twiml)
             if next_stage is not None:
-                next_question = _stage_prompt(next_stage)
+                next_question = _stage_prompt_for_session(session, next_stage)
                 session.conversation.append(
                     ConversationTurn(role="assistant", text=next_question)
                 )
