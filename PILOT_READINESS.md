@@ -3,7 +3,44 @@
 <!-- Date Created: 2026-03-02 -->
 <!-- Task: 1 — Git History Verification + Pilot Gate -->
 
+## Birchwood Pilot Gate (PR 5 — 2026-06-11)
+
+The authoritative checklist for the Birchwood Collision Intake pilot.
+Each item is ✅ done, ⏳ operator-pending, or explicitly waived with
+rationale.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Security close-out: gitleaks CI blocking, history rewrite **executed** (2026-06-10), secret scanning + push protection | ✅ / ⏳ branch-protection freeze for pilot window (below) |
+| 2 | Runtime stability (PR 1): idempotent webhooks, silence cap, fail-closed errors, long-story capture — 1C regression pack green | ✅ |
+| 3 | Conversation experience (PR 2): narrative-first, gap-fill, readback, summaries; simulator green | ✅ |
+| 4 | Workflow engine (PR 3): spec-defined Birchwood, hard-wired injury safety, reserved healthcare ids | ✅ |
+| 5 | Dashboard (PR 4): records list/detail, status workflow + audit, browser sign-in fixed | ✅ |
+| 6 | Staging posture: postgres ✅, Twilio signature 403 ✅, dashboard auth 401 ✅, rate limit 429s ✅ (probed 2026-06-11) | ✅ |
+| 7 | ENVIRONMENT/APP_ENV values + JSON log stream visually confirmed on staging | ⏳ operator |
+| 8 | Sentry DSN set, test event seen, 4 alert rules created + verified firing | ⏳ operator |
+| 9 | Alembic 004 applied to staging (status buttons work) | ⏳ operator (one click verifies) |
+| 10 | **Final validation pack executed — zero open critical defects** ([docs/STAGING_VALIDATION_PR5_FINAL.md](docs/STAGING_VALIDATION_PR5_FINAL.md), 35 calls; supersedes the deferred PR 1 pack) | ⏳ operator (places calls) → assistant analyzes |
+| 11 | Cost per call measured; pricing doc updated | ⏳ depends on #10 |
+| 12 | Pilot docs complete + cross-linked: runbook, escalation, limitations, success metrics, failure modes, one-pager, pricing, rollback | ✅ |
+| 13 | Twilio fallback URL (static TwiML Bin) configured on the Birchwood number | ⏳ operator |
+| 14 | Healthcare invariant: Phase 1 safety + red-flag suites + evals green on every PR; prompts/flow diff-clean throughout PRs 1–5 | ✅ |
+| 15 | Version tag + CHANGELOG | ✅ CHANGELOG; tag on merge (command in PR summary) |
+| 16 | Branch protection freeze on `main` for the pilot window | ⏳ operator ([docs/GITHUB_SECURITY_SETUP.md](docs/GITHUB_SECURITY_SETUP.md)) |
+
+**Waived for pilot (with rationale):** per-user dashboard auth (shared
+token + audited actor names is pilot-grade and documented); insurance
+narrative-first migration (not free, FNOL not the pilot target);
+LLM provider abstraction (no LLM in the Birchwood flow; required before
+any future healthcare pilot — noted in limitations doc).
+
+---
+
 ## Git History Assessment
+
+> **2026-06-10 update:** the history rewrite below was EXECUTED and
+> verified (see [docs/HISTORY_REWRITE_PROCEDURE.md](docs/HISTORY_REWRITE_PROCEDURE.md));
+> the original assessment is retained for the record.
 
 ### Findings
 
