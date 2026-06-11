@@ -210,6 +210,8 @@ def _complete_intake(**overrides) -> AutomotiveCollisionIntake:
         is_drivable=True,
         damage_type="rear bumper body damage",
         incident_description="Rear-ended at a stop light. No one was hurt.",
+        incident_datetime="yesterday evening",
+        incident_location="Pembina at Stafford",
         filing_insurance_claim=True,
         claim_number="CLM-1234",
         preferred_collision_center="BIRCHWOOD_COLLISION_LOCATION_1",

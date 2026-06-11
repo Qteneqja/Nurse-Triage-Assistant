@@ -52,6 +52,8 @@ def _scripted_fields(**overrides) -> dict:
         "license_plate": "ABC123",
         "incident_description": "Hit a pole in a parking lot.",
         "incident_datetime": "2026-05-17 14:00",
+        "incident_location": "parking lot on Demo Street",
+        "injuries_state": "denied",
         "filing_insurance_claim": "yes",
         "claim_number": "CLM-2026-12345",
         "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_1",
@@ -147,12 +149,18 @@ def test_scripted_intake_definition_exists():
     intake = BirchwoodCollisionIntakeWorkflow().get_scripted_intake_definition()
 
     assert intake.intro_text
+    # PR 2: narrative-first — the story comes before any structured question,
+    # then the injury check (Invariant 3), then targeted vehicle gap-fill.
     assert [stage.field_name for stage in intake.stages[:4]] == [
+        "incident_description",
+        "injuries_state",
         "is_drivable",
         "damage_type",
-        "vehicle_year",
-        "rebuilt_salvage_status",
     ]
+    # The readback confirmation closes the scripted flow.
+    assert intake.stages[-2].field_name == "confirmation_ack"
+    assert intake.stages[-2].dynamic_prompt is True
+    assert intake.stages[-1].field_name == "correction_note"
     assert "ORCA" in intake.intro_text
     assert "Birchwood Collision" in intake.intro_text
 
@@ -249,12 +257,13 @@ async def test_filing_insurance_without_claim_number_flags_callback_needed():
 
 
 @pytest.mark.asyncio
-async def test_missing_license_plate_flags_callback_needed():
+async def test_missing_license_plate_is_optional_and_does_not_flag_callback():
+    # PR 2: the plate is optional — captured when offered, never a reason to
+    # mark an otherwise-complete intake incomplete.
     result = await _run_case(license_plate="")
 
-    assert result.recommended_disposition == "INCOMPLETE_CALLBACK_NEEDED"
-    assert "missing_license_plate" in _record(result)["flags"]
-    assert _record(result)["callback_needed"] is True
+    assert result.recommended_disposition == "COMPLETED_INTAKE"
+    assert "missing_license_plate" not in _record(result)["flags"]
 
 
 @pytest.mark.asyncio
@@ -380,7 +389,7 @@ async def test_completed_intake_uses_warm_non_promissory_closing():
     result = await _run_case()
 
     combined = result.assistant_text.lower()
-    assert "main details noted" in combined
+    assert "here's what happens next" in combined
     assert "doesn't confirm coverage, pricing, or an appointment yet" in combined
 
 

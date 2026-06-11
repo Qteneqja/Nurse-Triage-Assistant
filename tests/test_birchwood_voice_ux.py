@@ -87,8 +87,8 @@ async def test_birchwood_prompting_records_narrative_prompt_metadata():
     from src.twilio import routes as twilio_routes
 
     intake = BirchwoodCollisionIntakeWorkflow().get_scripted_intake_definition()
-    license_plate_stage = next(
-        stage for stage in intake.stages if stage.field_name == "license_plate"
+    incident_stage = next(
+        stage for stage in intake.stages if stage.field_name == "incident_description"
     )
 
     with (
@@ -112,26 +112,18 @@ async def test_birchwood_prompting_records_narrative_prompt_metadata():
                 workflow_version="v1",
             ),
         )
-        session.channel_metadata["stage"] = license_plate_stage.stage_id
-        session.channel_metadata["scripted_intake"] = {
-            "workflow_id": BIRCHWOOD_COLLISION_WORKFLOW_ID,
-            "current_index": intake.stages.index(license_plate_stage),
-            "current_stage_id": license_plate_stage.stage_id,
-            "fields": {},
-            "attempts": {},
-            "completed": False,
-        }
+        # PR 2: the narrative is the FIRST stage — its prompt and metadata
+        # come from the initial scripted TwiML at call start.
+        twiml = await twilio_routes._generate_initial_scripted_twiml(
+            session,
+            intake.intro_text,
+            incident_stage,
+            "/api/v1/voice/gather",
+        )
         repo.persist_session(session)
 
-        response = await twilio_routes.handle_gather(
-            SimpleNamespace(headers={}),
-            BackgroundTasks(),
-            CallSid="CA-BIRCHWOOD-NARRATIVE-PROMPT",
-            SpeechResult="ABC123",
-        )
-
     stored = repo.load_session_by_call("CA-BIRCHWOOD-NARRATIVE-PROMPT")
-    body = response.body.decode().lower()
+    body = twiml.lower()
     prompt_metadata = stored.channel_metadata["scripted_intake"]["last_prompt_metadata"]
 
     assert "take your time" in body
@@ -198,7 +190,7 @@ async def test_birchwood_narrative_response_adds_brief_ack_before_next_question(
         )
         first_body = response.body.decode().lower()
         assert "go on, i'm listening" in first_body
-        assert "when did this happen" not in first_body
+        assert "was anyone hurt" not in first_body
 
         # Completion cue: brief ack, then the next scripted question.
         response = await twilio_routes.handle_gather(
@@ -217,7 +209,8 @@ async def test_birchwood_narrative_response_adds_brief_ack_before_next_question(
 
     body = response.body.decode().lower()
     assert "got it. i noted that." in body
-    assert "when did this happen" in body
+    # PR 2: the injury check (Invariant 3) is the first gap-fill question.
+    assert "was anyone hurt" in body
 
 
 @pytest.mark.asyncio

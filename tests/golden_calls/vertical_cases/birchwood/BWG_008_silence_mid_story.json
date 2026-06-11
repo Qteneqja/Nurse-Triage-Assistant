@@ -16,6 +16,7 @@
     "vehicle_model": "Corolla",
     "license_plate": "DEMO 123",
     "incident_datetime": "last Tuesday evening",
+    "incident_location": "Pembina Highway at Bishop Grandin",
     "filing_insurance_claim": "yes filing a claim with MPI",
     "claim_number": "MPI-445-221",
     "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_2",

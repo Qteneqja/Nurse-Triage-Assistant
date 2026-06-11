@@ -15,6 +15,7 @@
     "vehicle_make": "Toyota",
     "vehicle_model": "Corolla",
     "incident_datetime": "last Tuesday evening",
+    "incident_location": "Pembina Highway at Bishop Grandin",
     "filing_insurance_claim": "yes filing a claim with MPI",
     "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_2",
     "incident_description": "Hail damage across the hood and roof. Nobody was hurt."

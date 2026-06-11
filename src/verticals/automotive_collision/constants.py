@@ -11,18 +11,40 @@ BIRCHWOOD_COLLISION_PHONE_PLACEHOLDER = "+15555550140"
 
 BIRCHWOOD_COLLISION_OUTPUT_TYPE = "AUTOMOTIVE_COLLISION_INTAKE"
 
+# PR 2: required = what the shop needs before a callback is useful, asked
+# via targeted gap-fill only when the caller's story didn't already answer
+# it. Email/address moved to optional (captured when offered, never
+# interrogated); incident datetime/location and the injury state are now
+# first-class requirements.
 BIRCHWOOD_COLLISION_REQUIRED_FIELDS = [
     "caller_name",
     "phone",
-    "email",
-    "address",
     "vehicle_year",
     "vehicle_make",
     "vehicle_model",
     "is_drivable",
     "damage_type",
     "incident_description",
+    "incident_datetime",
+    "incident_location",
+    "injuries_state",
     "filing_insurance_claim",
+]
+
+# Optional fields: captured opportunistically (narrative extraction or
+# volunteered), never asked one-by-one during gap-fill.
+BIRCHWOOD_COLLISION_OPTIONAL_FIELDS = [
+    "email",
+    "address",
+    "license_plate",
+    "other_parties",
+    "police_report_filed",
+    "photos_available",
+    "insurance_provider",
+    "claim_number",
+    "preferred_collision_center",
+    "preferred_timing",
+    "urgency",
 ]
 
 BIRCHWOOD_COLLISION_OUTCOMES = [

@@ -24,7 +24,10 @@
   "is_luxury": true,
   "is_vw": false,
   "is_rebuilt_or_salvage": false,
-  "flags": ["luxury_auto_assigned"],
+  "flags": [
+    "luxury_auto_assigned",
+    "injuries_denied"
+  ],
   "missing_information": [],
   "recommended_routing": "COMPLETED_INTAKE",
   "transfer_department": null,
@@ -37,5 +40,9 @@
     "Staff must confirm appointments and repair acceptance."
   ],
   "confidence": 0.88,
-  "human_review_required": false
+  "human_review_required": false,
+  "injuries_state": "denied",
+  "incident_datetime": "DEMO_INCIDENT_DATETIME",
+  "incident_location": "DEMO_INCIDENT_LOCATION",
+  "confirmation_ack": "yes"
 }

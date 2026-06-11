@@ -24,8 +24,14 @@
   "is_luxury": false,
   "is_vw": true,
   "is_rebuilt_or_salvage": false,
-  "flags": ["vw_location_choice", "callback_needed"],
-  "missing_information": ["preferred_collision_center"],
+  "flags": [
+    "vw_location_choice",
+    "callback_needed",
+    "injuries_denied"
+  ],
+  "missing_information": [
+    "preferred_collision_center"
+  ],
   "recommended_routing": "INCOMPLETE_CALLBACK_NEEDED",
   "transfer_department": null,
   "decline_reason": null,
@@ -37,5 +43,9 @@
     "Staff must confirm appointments and repair acceptance."
   ],
   "confidence": 0.72,
-  "human_review_required": false
+  "human_review_required": false,
+  "injuries_state": "denied",
+  "incident_datetime": "DEMO_INCIDENT_DATETIME",
+  "incident_location": "DEMO_INCIDENT_LOCATION",
+  "confirmation_ack": "yes"
 }

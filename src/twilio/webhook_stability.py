@@ -312,6 +312,32 @@ def injury_advisory_if_needed(
     return INJURY_SAFETY_ADVISORY
 
 
+def injury_advisory_for_recorded_state(
+    session: OrchestratorSession,
+) -> str | None:
+    """Advisory keyed off the recorded injuries_state field (PR 2).
+
+    A plain "yes" to the direct injury question carries no injury keywords,
+    so the text scan never fires — the recorded, workflow-normalized state
+    is the trigger instead. Same once-per-call guarantee.
+    """
+    if _is_healthcare_workflow(session):
+        return None
+    state = _state(session)
+    if state.get("injury_advisory_given"):
+        return None
+    fields = (session.channel_metadata.get("scripted_intake") or {}).get("fields") or {}
+    if fields.get("injuries_state") != "reported":
+        return None
+    state["injury_advisory_given"] = True
+    logger.warning(
+        "[TWILIO] Injury reported via direct question on call %s — advisory "
+        "issued, record flagged",
+        session.call_sid,
+    )
+    return INJURY_SAFETY_ADVISORY
+
+
 def injury_advisory_already_given(session: OrchestratorSession) -> bool:
     return bool(_state(session).get("injury_advisory_given"))
 
