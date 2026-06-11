@@ -9,7 +9,6 @@ from typing import Any
 
 import src.config as config
 from src.orchestrator.schemas import OrchestratorSession
-from src.platform.workflows.base import BaseWorkflow
 from src.platform.workflows.schemas import (
     ScriptedIntakeDefinition,
     ScriptedStageDefinition,
@@ -19,6 +18,7 @@ from src.platform.workflows.schemas import (
     WorkflowInput,
     WorkflowTurnResult,
 )
+from src.platform.workflows.spec_workflow import SpecDrivenWorkflow
 from src.safety.injury_detection import scan_for_injuries
 from src.verticals.automotive_collision.constants import (
     AUTOMOTIVE_COLLISION_VERTICAL,
@@ -52,8 +52,21 @@ from src.verticals.automotive_collision.schemas import (
 )
 
 
-class BirchwoodCollisionIntakeWorkflow(BaseWorkflow):
-    """Deterministic Birchwood-targeted collision intake workflow powered by ORCA."""
+class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
+    """Deterministic Birchwood-targeted collision intake workflow powered by ORCA.
+
+    Runs on the spec-driven engine (PR 3): the complete declarative
+    definition lives in ``build_birchwood_spec()`` and the vertical's rich
+    behaviors are registered as named hooks. The overrides below keep the
+    Birchwood record/message shapes byte-identical to the pre-engine
+    implementation; the platform safety overlay applies above this class
+    either way.
+    """
+
+    def __init__(self) -> None:
+        from src.verticals.automotive_collision.spec import build_birchwood_spec
+
+        super().__init__(build_birchwood_spec())
 
     def get_definition(self) -> WorkflowDefinition:
         return WorkflowDefinition(
@@ -189,56 +202,7 @@ class BirchwoodCollisionIntakeWorkflow(BaseWorkflow):
     def get_extraction_schema(self) -> dict[str, Any] | None:
         return {
             "schema_version": "automotive_collision_birchwood_extraction_v1",
-            "entities": [
-                "workflow_id",
-                "vertical",
-                "powered_by",
-                "client_target",
-                "status",
-                "caller_name",
-                "phone",
-                "email",
-                "address",
-                "vehicle_year",
-                "vehicle_make",
-                "vehicle_model",
-                "license_plate",
-                "is_drivable",
-                "damage_type",
-                "glass_only",
-                "body_damage",
-                "incident_description",
-                "incident_datetime",
-                "incident_location",
-                "injuries_state",
-                "other_parties",
-                "police_report_filed",
-                "photos_available",
-                "filing_insurance_claim",
-                "insurance_provider",
-                "claim_number",
-                "private_pay",
-                "preferred_collision_center",
-                "preferred_timing",
-                "urgency",
-                "confirmation_ack",
-                "correction_note",
-                "plain_summary",
-                "shop_summary",
-                "is_luxury",
-                "is_vw",
-                "is_rebuilt_or_salvage",
-                "flags",
-                "missing_information",
-                "recommended_routing",
-                "transfer_department",
-                "decline_reason",
-                "callback_needed",
-                "transcript_summary",
-                "disclaimers_given",
-                "confidence",
-                "human_review_required",
-            ],
+            "entities": list(BIRCHWOOD_EXTRACTION_ENTITIES),
         }
 
     def get_scripted_intake_definition(self) -> ScriptedIntakeDefinition:
@@ -254,38 +218,7 @@ class BirchwoodCollisionIntakeWorkflow(BaseWorkflow):
         """
         return ScriptedIntakeDefinition(
             intro_text=BIRCHWOOD_COLLISION_INTRO,
-            stages=[
-                _stage("INCIDENT_DESCRIPTION", "incident_description", "free_text"),
-                _stage("INJURY_CHECK", "injuries_state", "text"),
-                _stage("DRIVABILITY_CHECK", "is_drivable", "text"),
-                _stage("DAMAGE_TYPE", "damage_type", "free_text"),
-                _stage("VEHICLE_YEAR", "vehicle_year", "integer"),
-                _stage("VEHICLE_MAKE", "vehicle_make", "text"),
-                _stage("VEHICLE_MODEL", "vehicle_model", "text"),
-                _stage("REBUILT_SALVAGE_STATUS", "rebuilt_salvage_status", "text"),
-                _stage(
-                    "INCIDENT_DATETIME",
-                    "incident_datetime",
-                    "text",
-                ),
-                _stage("INCIDENT_LOCATION", "incident_location", "text"),
-                _stage("FILING_INSURANCE_CLAIM", "filing_insurance_claim", "text"),
-                _stage("CLAIM_NUMBER", "claim_number", "text", required=False),
-                _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
-                _stage("PHONE", "phone", "phone", sensitivity="pii"),
-                _stage(
-                    "CONFIRMATION",
-                    "confirmation_ack",
-                    "text",
-                    dynamic_prompt=True,
-                ),
-                _stage(
-                    "CORRECTION_NOTE",
-                    "correction_note",
-                    "free_text",
-                    required=False,
-                ),
-            ],
+            stages=_scripted_stage_definitions(),
         )
 
     # ------------------------------------------------------------------
@@ -427,6 +360,84 @@ class BirchwoodCollisionIntakeWorkflow(BaseWorkflow):
         )
 
 
+# Shared with the WorkflowSpec (src/verticals/automotive_collision/spec.py).
+BIRCHWOOD_EXTRACTION_ENTITIES: list[str] = [
+    "workflow_id",
+    "vertical",
+    "powered_by",
+    "client_target",
+    "status",
+    "caller_name",
+    "phone",
+    "email",
+    "address",
+    "vehicle_year",
+    "vehicle_make",
+    "vehicle_model",
+    "license_plate",
+    "is_drivable",
+    "damage_type",
+    "glass_only",
+    "body_damage",
+    "incident_description",
+    "incident_datetime",
+    "incident_location",
+    "injuries_state",
+    "other_parties",
+    "police_report_filed",
+    "photos_available",
+    "filing_insurance_claim",
+    "insurance_provider",
+    "claim_number",
+    "private_pay",
+    "preferred_collision_center",
+    "preferred_timing",
+    "urgency",
+    "confirmation_ack",
+    "correction_note",
+    "plain_summary",
+    "shop_summary",
+    "is_luxury",
+    "is_vw",
+    "is_rebuilt_or_salvage",
+    "flags",
+    "missing_information",
+    "recommended_routing",
+    "transfer_department",
+    "decline_reason",
+    "callback_needed",
+    "transcript_summary",
+    "disclaimers_given",
+    "confidence",
+    "human_review_required",
+]
+
+
+def _scripted_stage_definitions() -> list[ScriptedStageDefinition]:
+    """Birchwood stage list — shared by the workflow and its WorkflowSpec.
+
+    Built at call time because voice timeouts/profiles read live config.
+    """
+    return [
+        _stage("INCIDENT_DESCRIPTION", "incident_description", "free_text"),
+        _stage("INJURY_CHECK", "injuries_state", "text"),
+        _stage("DRIVABILITY_CHECK", "is_drivable", "text"),
+        _stage("DAMAGE_TYPE", "damage_type", "free_text"),
+        _stage("VEHICLE_YEAR", "vehicle_year", "integer"),
+        _stage("VEHICLE_MAKE", "vehicle_make", "text"),
+        _stage("VEHICLE_MODEL", "vehicle_model", "text"),
+        _stage("REBUILT_SALVAGE_STATUS", "rebuilt_salvage_status", "text"),
+        _stage("INCIDENT_DATETIME", "incident_datetime", "text"),
+        _stage("INCIDENT_LOCATION", "incident_location", "text"),
+        _stage("FILING_INSURANCE_CLAIM", "filing_insurance_claim", "text"),
+        _stage("CLAIM_NUMBER", "claim_number", "text", required=False),
+        _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
+        _stage("PHONE", "phone", "phone", sensitivity="pii"),
+        _stage("CONFIRMATION", "confirmation_ack", "text", dynamic_prompt=True),
+        _stage("CORRECTION_NOTE", "correction_note", "free_text", required=False),
+    ]
+
+
 def _stage(
     stage_id: str,
     field_name: str,
@@ -513,7 +524,10 @@ def _speech_settings_for_stage(field_name: str) -> tuple[str, int, str]:
 
 def _intake_from_session(session: OrchestratorSession) -> AutomotiveCollisionIntake:
     scripted = session.channel_metadata.get("scripted_intake") or {}
-    fields = scripted.get("fields") or {}
+    return _intake_from_fields(scripted.get("fields") or {})
+
+
+def _intake_from_fields(fields: dict) -> AutomotiveCollisionIntake:
     vehicle_year_raw = _clean(
         fields.get("vehicle_year_raw") or fields.get("vehicle_year")
     )
