@@ -31,8 +31,12 @@ def test_birchwood_intro_and_narrative_prompt_are_warm_and_non_clinical():
     intro = (intake.intro_text or "").lower()
     prompt = (incident_stage.prompt_text or incident_stage.prompt).lower()
 
-    assert "thanks for calling birchwood collision" in intro
+    # Voice pass: Birchwood Automotive Group service-center greeting with
+    # the recording notice, pivoting straight into warm intake.
+    assert "thank you for calling birchwood automotive group" in intro
+    assert "recorded for training and quality purposes" in intro
     assert "press 0" in intro
+    assert "next available representative" not in intro  # we ARE the intake
     assert "take your time" in prompt
     assert "what happened" in prompt
     for forbidden in ["patient", "symptom", "symptoms", "nurse", "clinical", "sbar"]:
@@ -268,7 +272,7 @@ async def test_birchwood_press_zero_during_scripted_intake_transfers_immediately
 
     body = response.body.decode().lower()
     stored = repo.load_session_by_call("CA-BIRCHWOOD-PRESS-ZERO")
-    assert "route this to the collision team" in body
+    assert "straight through to our collision team" in body
     assert stored.is_finalized is True
     assert stored.channel_metadata["workflow_final_result"]["final_disposition"] == (
         "TRANSFER_COLLISION_CENTER"
@@ -330,7 +334,7 @@ async def test_birchwood_spoken_transfer_during_scripted_intake_transfers_immedi
 
     body = response.body.decode().lower()
     stored = repo.load_session_by_call("CA-BIRCHWOOD-SPEECH-TRANSFER")
-    assert "route this to the collision team" in body
+    assert "straight through to our collision team" in body
     assert stored.is_finalized is True
 
 

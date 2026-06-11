@@ -4,7 +4,7 @@
 
 ORCA is our voice AI intake platform. For Birchwood, this demo shows an automotive collision intake workflow that answers overflow or after-hours calls, qualifies the repair lead, applies Birchwood-specific routing rules, and creates a structured intake record for staff follow-up.
 
-The Birchwood call flow now uses a warmer voice profile, lets callers take their time on the collision-story question, and keeps press 0 available for a transfer.
+The call flow speaks in Birchwood Automotive Group's service-center voice: a branded greeting with the recording notice, a warm service-advisor tone throughout, callers can take their time on the collision-story question, and press 0 always reaches a person.
 
 ## How the Conversation Works (PR 2 - narrative-first)
 
@@ -16,8 +16,8 @@ prefills every field the story already answered (vehicle, when, where,
 drivability, damage, police report, photos, insurance path, claim number,
 injuries), and ORCA asks ONLY the required fields that are still missing.
 A rich story gets about four follow-up questions; a one-line story gets the
-full gap-fill. Every call ends with a readback confirmation ("Let me make
-sure I got this right...") and a next-steps close. If anyone is hurt, ORCA
+full gap-fill. Every call ends with a readback confirmation ("Let me just make
+sure I've got everything right...") and a next-steps close. If anyone is hurt, ORCA
 immediately advises seeking medical attention or 9 1 1, flags the record,
 and forces human review - on every routing outcome, including declines.
 

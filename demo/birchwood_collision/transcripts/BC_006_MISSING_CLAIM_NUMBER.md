@@ -1,6 +1,6 @@
 # BC_006 Missing Claim Number Callback
 
-ORCA: Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions, and you can press 0 anytime to speak with someone.
+ORCA: Thank you for calling Birchwood Automotive Group. This call may be recorded for training and quality purposes. I'm here to help get your vehicle taken care of after your accident. And if you'd rather speak with one of our team right away, just say transfer or press 0.
 
 ORCA: Are you going through insurance for this repair, or will this be private pay?
 
