@@ -81,6 +81,20 @@ but never interrogated. Run the offline conversation simulator with
 `python -m scripts.simulate_birchwood_call`. Healthcare prompts and flow
 remain untouched.
 
+PR 3 puts Birchwood on a declarative workflow engine: a complete
+`WorkflowSpec` (greeting, stages, required/optional fields, extraction,
+completion rules, fallback, summary templates, dashboard fields,
+recommended actions) interpreted by `SpecDrivenWorkflow`, with
+vertical-specific behavior plugged in via named, code-registered hooks.
+A new workflow needs ONE JSON definition file plus config
+(`EXTRA_WORKFLOW_DEFINITIONS_DIR` + `WORKFLOW_PHONE_ROUTES`) — no core code.
+Safety is hard-wired beneath the workflow layer: the engine forces the
+injury branch (flags, human review, one spoken 9-1-1 advisory) on every
+non-clinical result no matter what a definition declares, and
+`healthcare_triage_v1` / the healthcare vertical are reserved — specs
+cannot claim or replace them. See
+[docs/WORKFLOW_ENGINE.md](docs/WORKFLOW_ENGINE.md).
+
 ## Architecture
 
 ```

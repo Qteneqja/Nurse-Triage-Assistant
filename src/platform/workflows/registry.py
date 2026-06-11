@@ -21,6 +21,20 @@ class WorkflowRegistry:
 
     def register(self, workflow: BaseWorkflow, *, make_default: bool = True) -> None:
         definition = workflow.get_definition()
+        # Reserved workflows (the healthcare safety stack) can never be
+        # replaced once registered — a spec or plugin that tries is refused.
+        from src.platform.workflows.spec import RESERVED_WORKFLOW_IDS
+
+        existing = self._workflows.get(definition.workflow_id)
+        if (
+            definition.workflow_id in RESERVED_WORKFLOW_IDS
+            and existing is not None
+            and type(existing) is not type(workflow)
+        ):
+            raise ValueError(
+                f"Workflow id '{definition.workflow_id}' is reserved and "
+                "already registered — it cannot be replaced."
+            )
         self._workflows[definition.workflow_id] = workflow
         if make_default or definition.vertical not in self._defaults_by_vertical:
             self._defaults_by_vertical[definition.vertical] = definition.workflow_id
@@ -101,5 +115,14 @@ def ensure_default_workflows_registered() -> WorkflowRegistry:
                 BirchwoodCollisionIntakeWorkflow(),
                 make_default=False,
             )
+            # Spec-defined workflows: built-in definitions/ directory plus
+            # the operator-configured EXTRA_WORKFLOW_DEFINITIONS_DIR. A bad
+            # definition file is skipped with an error — it can never block
+            # the built-in workflows from starting.
+            from src.platform.workflows.spec_loader import (
+                register_spec_definitions,
+            )
+
+            register_spec_definitions(registry)
             _defaults_registered = True
     return registry

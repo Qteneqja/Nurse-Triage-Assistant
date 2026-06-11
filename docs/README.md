@@ -31,6 +31,7 @@ Root-level documents remain in place for compatibility with existing links.
 
 ## Platform And Vertical Notes
 
+- [Workflow engine: spec-defined workflows](WORKFLOW_ENGINE.md) — schema, routing config, hard-wired safety
 - [Insurance FNOL vertical](insurance_fnol_vertical.md)
 - [Dashboard shell](phase12_dashboard_shell.md)
 - [Phase 12 dashboard](../PHASE_12_DASHBOARD.md)

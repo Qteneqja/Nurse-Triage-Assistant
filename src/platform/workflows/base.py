@@ -54,6 +54,15 @@ class BaseWorkflow(ABC):
         """Return optional voice scripted-intake stages for this workflow."""
         return None
 
+    def get_spec(self) -> Any | None:
+        """Return the declarative WorkflowSpec, when the workflow has one.
+
+        Healthcare intentionally returns None for the pilot: it stays on its
+        proven code path and is exposed uniformly through get_definition()
+        only (engine migration is post-pilot with its own re-validation).
+        """
+        return None
+
     def prefill_from_narrative(
         self,
         session: Any,

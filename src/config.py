@@ -12,6 +12,7 @@ APP_ENV selects the environment profile:
 
 from __future__ import annotations
 
+import json
 import os
 import logging
 import warnings
@@ -161,6 +162,27 @@ ENABLE_WORKFLOW_HINT_ROUTE: bool = _env_flag(
     "ENABLE_WORKFLOW_HINT_ROUTE",
     "false" if ENVIRONMENT == "production" else "true",
 )
+
+# Generic config-driven phone routing (PR 3): JSON object mapping an E.164
+# number to a registered workflow_id, e.g.
+#   WORKFLOW_PHONE_ROUTES={"+15555550150": "towing_followup_v1"}
+# Checked before the legacy per-vertical phone number env vars.
+WORKFLOW_PHONE_ROUTES: dict[str, str] = {}
+_workflow_phone_routes_raw = os.getenv("WORKFLOW_PHONE_ROUTES", "")
+if _workflow_phone_routes_raw.strip():
+    try:
+        _parsed_routes = json.loads(_workflow_phone_routes_raw)
+        if isinstance(_parsed_routes, dict):
+            WORKFLOW_PHONE_ROUTES = {str(k): str(v) for k, v in _parsed_routes.items()}
+        else:
+            logger.error("[CONFIG] WORKFLOW_PHONE_ROUTES must be a JSON object")
+    except json.JSONDecodeError:
+        logger.error("[CONFIG] WORKFLOW_PHONE_ROUTES is not valid JSON — ignored")
+
+# Operator drop-in directory for spec-defined workflows (PR 3). Each *.json
+# file is validated against WorkflowSpec; invalid files are rejected and
+# logged without affecting built-in workflows.
+EXTRA_WORKFLOW_DEFINITIONS_DIR: str = os.getenv("EXTRA_WORKFLOW_DEFINITIONS_DIR", "")
 
 # Default route bootstrap inputs.
 DEFAULT_ORGANIZATION_NAME: str = os.getenv(
