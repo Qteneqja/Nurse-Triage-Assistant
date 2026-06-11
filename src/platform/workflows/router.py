@@ -97,7 +97,16 @@ class WorkflowRouteResolver:
 
 
 class WorkflowEngine:
-    """Thin dispatcher from route/context to a registered workflow."""
+    """Dispatcher from route/context to a registered workflow.
+
+    The engine applies the platform safety overlay AFTER every workflow
+    turn/finalize: the injury safety branch for non-clinical verticals is
+    hard-wired here, beneath the workflow layer, so no workflow definition
+    (malicious, buggy, or misconfigured) can disable or weaken it.
+    Healthcare results pass through untouched — its safety stack lives in
+    the orchestrator and is not reachable from workflow definitions at all
+    (reserved IDs).
+    """
 
     async def handle_turn(
         self,
@@ -106,7 +115,8 @@ class WorkflowEngine:
     ) -> WorkflowTurnResult:
         registry = ensure_default_workflows_registered()
         workflow = registry.get(context.workflow_id)
-        return await workflow.handle_turn(context, workflow_input)
+        result = await workflow.handle_turn(context, workflow_input)
+        return _enforce_turn_safety_overlay(context, workflow_input, result)
 
     async def finalize(
         self,
@@ -115,7 +125,106 @@ class WorkflowEngine:
     ) -> WorkflowFinalResult:
         registry = ensure_default_workflows_registered()
         workflow = registry.get(context.workflow_id)
-        return await workflow.finalize(context, session_state)
+        result = await workflow.finalize(context, session_state)
+        return _enforce_final_safety_overlay(context, session_state, result)
+
+
+PLATFORM_INJURY_RULE_ID = "platform:injury_safety_branch"
+
+
+def _caller_text_for_safety_scan(
+    workflow_input_text: str,
+    session_state: dict,
+) -> str:
+    """Caller-authored text from this turn plus the stored conversation."""
+    parts = [workflow_input_text or ""]
+    conversation = (session_state or {}).get("conversation") or []
+    for turn in conversation:
+        if isinstance(turn, dict) and turn.get("role") == "caller":
+            parts.append(str(turn.get("text") or ""))
+    scripted = ((session_state or {}).get("channel_metadata") or {}).get(
+        "scripted_intake"
+    ) or {}
+    for value in (scripted.get("fields") or {}).values():
+        if isinstance(value, str):
+            parts.append(value)
+    return " ".join(p for p in parts if p)
+
+
+def _enforce_turn_safety_overlay(
+    context: WorkflowContext,
+    workflow_input: WorkflowInput,
+    result: WorkflowTurnResult,
+) -> WorkflowTurnResult:
+    if context.vertical == "healthcare":
+        return result
+    from src.safety.injury_detection import (
+        INJURY_SAFETY_ADVISORY,
+        scan_for_injuries,
+    )
+
+    text = _caller_text_for_safety_scan(workflow_input.user_text, result.updated_state)
+    scan = scan_for_injuries(text)
+    if not scan.mentioned:
+        return result
+
+    record = (
+        (result.updated_state.get("channel_metadata") or {})
+        .get("workflow_final_result", {})
+        .get("structured_output", {})
+        .get("intake_record")
+    )
+    if isinstance(record, dict):
+        flags = list(record.get("flags") or [])
+        if "injuries_reported" not in flags:
+            record["flags"] = ["injuries_reported", *flags]
+        record["human_review_required"] = True
+    if PLATFORM_INJURY_RULE_ID not in result.rules_triggered:
+        result.rules_triggered = [*result.rules_triggered, PLATFORM_INJURY_RULE_ID]
+        result.safety_events = [
+            *result.safety_events,
+            {"rule_id": PLATFORM_INJURY_RULE_ID, "flag": "injuries_reported"},
+        ]
+    # Speak the advisory at most once per call: the voice channel marks
+    # webhook_stability.injury_advisory_given when it has already been said.
+    stability_state = (result.updated_state.get("channel_metadata") or {}).setdefault(
+        "webhook_stability", {}
+    )
+    if (
+        not stability_state.get("injury_advisory_given")
+        and "9 1 1" not in result.assistant_text
+    ):
+        result.assistant_text = f"{INJURY_SAFETY_ADVISORY} {result.assistant_text}"
+        stability_state["injury_advisory_given"] = True
+    return result
+
+
+def _enforce_final_safety_overlay(
+    context: WorkflowContext,
+    session_state: dict,
+    result: WorkflowFinalResult,
+) -> WorkflowFinalResult:
+    if context.vertical == "healthcare":
+        return result
+    from src.safety.injury_detection import scan_for_injuries
+
+    text = _caller_text_for_safety_scan("", session_state)
+    scan = scan_for_injuries(text)
+    if not scan.mentioned:
+        return result
+    record = result.structured_output.get("intake_record")
+    if isinstance(record, dict):
+        flags = list(record.get("flags") or [])
+        if "injuries_reported" not in flags:
+            record["flags"] = ["injuries_reported", *flags]
+        record["human_review_required"] = True
+    if PLATFORM_INJURY_RULE_ID not in result.rules_triggered:
+        result.rules_triggered = [*result.rules_triggered, PLATFORM_INJURY_RULE_ID]
+        result.safety_events = [
+            *result.safety_events,
+            {"rule_id": PLATFORM_INJURY_RULE_ID, "flag": "injuries_reported"},
+        ]
+    return result
 
 
 _route_resolver: WorkflowRouteResolver | None = None
@@ -209,11 +318,54 @@ def _configured_phone_number_route(
     if not called_phone_number:
         return None
 
+    # Generic config-driven routing (PR 3): WORKFLOW_PHONE_ROUTES maps an
+    # E.164 number to any registered workflow_id — adding a vertical needs
+    # config + a registered workflow, never core code changes.
+    generic_route = _generic_configured_workflow_route(called_phone_number)
+    if generic_route is not None:
+        return generic_route
+
     insurance_route = _insurance_phone_number_route(called_phone_number)
     if insurance_route is not None:
         return insurance_route
 
     return _birchwood_collision_phone_number_route(called_phone_number)
+
+
+def _generic_configured_workflow_route(
+    called_phone_number: str,
+) -> ResolvedWorkflowRoute | None:
+    routes = getattr(config, "WORKFLOW_PHONE_ROUTES", None) or {}
+    workflow_id = None
+    for number, candidate in routes.items():
+        if _normalize_phone(number) == called_phone_number:
+            workflow_id = str(candidate)
+            break
+    if workflow_id is None:
+        return None
+    try:
+        definition = (
+            ensure_default_workflows_registered().get(workflow_id).get_definition()
+        )
+    except Exception:
+        logger.error(
+            "[Routing] WORKFLOW_PHONE_ROUTES references unknown workflow "
+            "'%s' — ignoring the route",
+            workflow_id,
+        )
+        return None
+    return ResolvedWorkflowRoute(
+        vertical_key=definition.vertical,
+        workflow_id=definition.workflow_id,
+        workflow_version=definition.version,
+        config_json={"route_type": "workflow_phone_routes"},
+        fallback_used=False,
+        audit_metadata={
+            "routing_source": "configured_phone_number",
+            "configured_key": "WORKFLOW_PHONE_ROUTES",
+            "called_phone_number_masked": _mask_phone(called_phone_number),
+        },
+    )
 
 
 def _insurance_phone_number_route(
