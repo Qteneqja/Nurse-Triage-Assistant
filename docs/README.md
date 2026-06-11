@@ -23,6 +23,7 @@ Root-level documents remain in place for compatibility with existing links.
 
 ## Pilot Readiness
 
+- [PR 1 staging validation pack](STAGING_VALIDATION_PR1.md) — 30-call runtime-stability validation (Birchwood-weighted)
 - [Pilot readiness](../PILOT_READINESS.md)
 - [Pilot escalation workflow](../PILOT_ESCALATION_WORKFLOW.md)
 - [Pilot success metrics](../PILOT_SUCCESS_METRICS.md)

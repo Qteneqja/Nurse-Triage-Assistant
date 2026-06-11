@@ -44,6 +44,8 @@ reports/*
 !reports/.gitkeep
 eval_reports/*
 !eval_reports/.gitkeep
+# Templates are tracked; filled-in results stay local (may reference calls)
+!eval_reports/*_TEMPLATE.md
 
 # DeepEval local caches and telemetry artifacts
 .deepeval/

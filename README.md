@@ -48,6 +48,22 @@ target account: Birchwood Collision Intake powered by ORCA. The workflow ID is
 `birchwood_collision_intake_v1`, and the fake local route placeholder is
 `BIRCHWOOD_COLLISION_PHONE_NUMBER=+15555550140`.
 
+PR 1 (pilot readiness) hardens the voice runtime: duplicate Twilio webhooks
+replay idempotently instead of double-processing; repeated caller silence
+closes the call fail-safe with the record flagged incomplete; storage or
+workflow failures mid-call end with a vertical-appropriate apology and a
+callback promise (healthcare wording unchanged); and Birchwood's
+incident-description stage uses multi-segment narrative capture
+(`src/twilio/webhook_stability.py`) so long collision stories are never cut
+off — the assistant says "go on, I'm listening" across natural pauses and
+joins the segments into one narrative. A deterministic injury safety branch
+(`src/safety/injury_detection.py`) advises 911/medical attention once and
+flags the record (`injuries_reported`, forced human review) whenever a
+non-clinical caller mentions injuries — on every routing outcome, including
+declines. Vertical golden calls live in `tests/golden_calls/vertical_cases/`
+(10 Birchwood + 3 insurance) alongside the 30 healthcare cases; the live
+staging pack is [docs/STAGING_VALIDATION_PR1.md](docs/STAGING_VALIDATION_PR1.md).
+
 ## Architecture
 
 ```
