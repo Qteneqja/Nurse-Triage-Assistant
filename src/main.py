@@ -195,6 +195,15 @@ app.include_router(
     tags=["Dashboard"],
 )
 app.include_router(dashboard_page_router, tags=["Dashboard"])
+# Shadow-mode enrichment admin view: auth-gated AND 404s entirely unless
+# ENRICHMENT_ENABLED=true. Never part of the customer-facing pilot surface.
+from src.api.enrichment_admin import router as enrichment_admin_router  # noqa: E402
+
+app.include_router(
+    enrichment_admin_router,
+    prefix="/api/v1/enrichment",
+    tags=["Enrichment (preview)"],
+)
 app.mount(
     "/dashboard/static",
     StaticFiles(directory=Path(__file__).resolve().parent / "dashboard_static"),

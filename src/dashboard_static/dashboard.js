@@ -442,8 +442,8 @@ async function renderActions() {
 // Intake records (PR 4) — the collision shop's working queue
 // ---------------------------------------------------------------------------
 
-async function dashApi(path, options = {}) {
-  const response = await fetch(`/api/v1/dashboard${path}`, {
+async function dashApi(path, options = {}, base = "/api/v1/dashboard") {
+  const response = await fetch(`${base}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -694,11 +694,71 @@ async function renderRecordDetail() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Enrichment preview (shadow mode) — internal upsell demo view
+// ---------------------------------------------------------------------------
+
+function enrichmentCard(row) {
+  const payload = row.rendered_drafts
+    ? { ...row.payload, ...row.rendered_drafts }
+    : row.payload;
+  return `
+    <div class="turn">
+      <div class="turn-meta">
+        ${badge(row.feature)}
+        ${badge(row.status, row.status === "completed" ? "" : "urgent")}
+        <span>${escapeHtml(formatTime(row.created_at))}</span>
+        <span class="muted">session ${escapeHtml(row.session_id)}</span>
+        <span class="muted">pii: ${escapeHtml(row.pii_mode)}</span>
+      </div>
+      ${jsonBlock(payload)}
+    </div>
+  `;
+}
+
+async function renderEnrichment() {
+  setTitle("Enrichment (preview)");
+  content.innerHTML = '<div class="panel"><div class="panel-body">Loading enrichment preview...</div></div>';
+  let recent;
+  let insights;
+  try {
+    [recent, insights] = await Promise.all([
+      dashApi("/recent?limit=50", {}, "/api/v1/enrichment"),
+      dashApi("/insights", {}, "/api/v1/enrichment"),
+    ]);
+  } catch (error) {
+    content.innerHTML = `
+      <section class="empty-state">
+        <h2>Enrichment preview</h2>
+        <p class="muted">${escapeHtml(error.message)} — enrichment is likely disabled (ENRICHMENT_ENABLED=false).</p>
+      </section>
+    `;
+    return;
+  }
+  const agg = insights.insights || {};
+  const insightsBody = agg.status === "ok"
+    ? jsonBlock(agg)
+    : `<p class="muted">Insufficient data for reliable insights: ${escapeHtml(agg.detail || "")} (sample size ${escapeHtml(agg.sample_size)})</p>`;
+  content.innerHTML = `
+    <div class="injury-banner preview-banner">
+      ENRICHMENT PREVIEW — shadow mode. Nothing here is part of the core pilot record; drafts require human approval and are never auto-sent.
+    </div>
+    ${panel(`Aggregate insights (sample: ${escapeHtml(agg.sample_size ?? 0)} calls)`, insightsBody)}
+    ${panel(`Recent enrichment outputs (${escapeHtml(recent.count)})`, `
+      <div class="turn-list">
+        ${(recent.results || []).map(enrichmentCard).join("") || '<p class="muted">No enrichment outputs yet.</p>'}
+      </div>
+    `)}
+  `;
+}
+
 async function route() {
   try {
     const path = window.location.pathname.replace("/dashboard/calls", "/dashboard/sessions");
     if (path === "/dashboard/actions") {
       await renderActions();
+    } else if (path === "/dashboard/enrichment") {
+      await renderEnrichment();
     } else if (path.startsWith("/dashboard/records/")) {
       await renderRecordDetail();
     } else if (path === "/dashboard/records") {
