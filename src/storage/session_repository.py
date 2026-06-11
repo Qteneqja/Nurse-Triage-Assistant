@@ -92,6 +92,20 @@ class SessionRepository:
         """Return post-call extraction records for a session."""
         return self._backend.get_session_extractions(session_id)
 
+    def append_record_status_event(
+        self,
+        session_id: str,
+        status: str,
+        actor: str,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Append a dashboard intake-record status change (audit event)."""
+        return self._backend.append_record_status_event(session_id, status, actor, note)
+
+    def get_record_status_events(self, session_id: str) -> list[dict[str, Any]]:
+        """Return the status audit trail for a session, newest first."""
+        return self._backend.get_record_status_events(session_id)
+
     def list_organizations(self) -> list[Any]:
         """Return organization records for read-only admin views."""
         return self._backend.list_organizations()

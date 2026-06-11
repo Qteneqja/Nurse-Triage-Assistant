@@ -68,6 +68,26 @@ class StorageInterface(abc.ABC):
         """Return persisted extraction records for a session."""
         return []
 
+    def append_record_status_event(
+        self,
+        session_id: str,
+        status: str,
+        actor: str,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Append an intake-record status change (PR 4 dashboard workflow).
+
+        Every change is an immutable audit event (timestamp + actor); the
+        record's current status is the latest event. Backends that do not
+        support persistence raise NotImplementedError so callers fail loudly
+        rather than silently dropping an audit trail.
+        """
+        raise NotImplementedError("record status events are not supported")
+
+    def get_record_status_events(self, session_id: str) -> list[dict[str, Any]]:
+        """Return the status audit trail for a session, newest first."""
+        return []
+
     def list_organizations(self) -> list[Any]:
         """Return tenant organization records for read-only admin views."""
         return []

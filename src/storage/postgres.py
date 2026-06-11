@@ -257,6 +257,60 @@ class PostgresStorage(StorageInterface):
             )
             return list(result.scalars().all())
 
+    def append_record_status_event(
+        self,
+        session_id: str,
+        status: str,
+        actor: str,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Append an immutable dashboard status-change audit event (PR 4)."""
+        from src.storage.models import RecordStatusEventModel
+
+        with self._SessionFactory() as db:
+            event = RecordStatusEventModel(
+                session_id=session_id,
+                status=status,
+                actor=actor,
+                note=note,
+            )
+            db.add(event)
+            db.commit()
+            return {
+                "event_id": event.id,
+                "session_id": event.session_id,
+                "status": event.status,
+                "actor": event.actor,
+                "note": event.note,
+                "created_at": event.created_at.isoformat()
+                if event.created_at
+                else None,
+            }
+
+    def get_record_status_events(self, session_id: str) -> list[dict[str, Any]]:
+        """Return the status audit trail for a session, newest first."""
+        from src.storage.models import RecordStatusEventModel
+
+        with self._SessionFactory() as db:
+            result = db.execute(
+                select(RecordStatusEventModel)
+                .where(RecordStatusEventModel.session_id == session_id)
+                .order_by(RecordStatusEventModel.created_at.desc())
+            )
+            return [
+                {
+                    "event_id": row.id,
+                    "session_id": row.session_id,
+                    "status": row.status,
+                    "actor": row.actor,
+                    "note": row.note,
+                    "created_at": row.created_at.isoformat()
+                    if row.created_at
+                    else None,
+                }
+                for row in result.scalars().all()
+            ]
+
     def list_organizations(self) -> list[Any]:
         """Return organization rows for admin/dashboard read models."""
         with self._SessionFactory() as db:
