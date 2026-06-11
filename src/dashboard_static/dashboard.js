@@ -5,7 +5,12 @@ const tokenSave = document.getElementById("token-save");
 
 tokenInput.value = localStorage.getItem("dashboardAdminToken") || "";
 tokenSave.addEventListener("click", () => {
-  localStorage.setItem("dashboardAdminToken", tokenInput.value.trim());
+  const token = tokenInput.value.trim();
+  localStorage.setItem("dashboardAdminToken", token);
+  // The shell page gate accepts this cookie on full page loads (filters,
+  // direct links); data endpoints still require the header.
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `dashboard_token=${encodeURIComponent(token)}; path=/; SameSite=Strict${secure}`;
   route();
 });
 

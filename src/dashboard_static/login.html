@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard sign-in</title>
+    <link rel="stylesheet" href="/dashboard/static/dashboard.css" />
+    <style>
+      .login-wrap {
+        max-width: 420px;
+        margin: 12vh auto;
+        padding: 32px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+      }
+      .login-wrap h1 { font-size: 20px; margin: 0 0 4px; }
+      .login-wrap p { color: #667085; font-size: 14px; margin: 0 0 20px; }
+      .login-wrap label { display: block; font-size: 13px; margin-bottom: 6px; }
+      .login-wrap input {
+        width: 100%; padding: 10px 12px; margin-bottom: 16px;
+        border: 1px solid #d0d5dd; border-radius: 8px; box-sizing: border-box;
+      }
+      .login-wrap button {
+        width: 100%; padding: 10px; border: 0; border-radius: 8px;
+        background: #1d4ed8; color: #fff; font-weight: 600; cursor: pointer;
+      }
+      .login-error { color: #b42318; font-size: 13px; min-height: 18px; }
+    </style>
+  </head>
+  <body>
+    <div class="login-wrap">
+      <h1>Voice Decision Support Platform</h1>
+      <p>Enter the dashboard admin token to continue.</p>
+      <label for="login-token">Admin token</label>
+      <input id="login-token" type="password" autocomplete="off" autofocus />
+      <p class="login-error" id="login-error"></p>
+      <button id="login-submit" type="button">Sign in</button>
+    </div>
+    <script>
+      const tokenField = document.getElementById("login-token");
+      const errorEl = document.getElementById("login-error");
+      async function signIn() {
+        const token = tokenField.value.trim();
+        if (!token) {
+          errorEl.textContent = "Token is required.";
+          return;
+        }
+        // Validate against a data endpoint before storing anything.
+        const check = await fetch("/api/v1/dashboard/records?limit=1", {
+          headers: { "X-Dashboard-Token": token },
+        });
+        if (check.status === 401 || check.status === 403) {
+          errorEl.textContent = "That token was rejected. Check the value in your deployment config.";
+          return;
+        }
+        localStorage.setItem("dashboardAdminToken", token);
+        const secure = window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `dashboard_token=${encodeURIComponent(token)}; path=/; SameSite=Strict${secure}`;
+        window.location.href = "/dashboard/records";
+      }
+      document.getElementById("login-submit").addEventListener("click", signIn);
+      tokenField.addEventListener("keydown", (e) => { if (e.key === "Enter") signIn(); });
+    </script>
+  </body>
+</html>
