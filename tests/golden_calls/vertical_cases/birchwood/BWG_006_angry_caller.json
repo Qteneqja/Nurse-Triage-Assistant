@@ -1,0 +1,29 @@
+{
+  "case_id": "BWG_006_angry_caller",
+  "description": "Angry but uninjured caller - frustration must not trip injury or transfer rules.",
+  "vertical": "automotive_collision",
+  "severity": "high",
+  "scripted_fields": {
+    "is_drivable": "yes it's safe to drive",
+    "damage_type": "rear bumper and trunk body damage",
+    "vehicle_year": 2021,
+    "rebuilt_salvage_status": "no never",
+    "caller_name": "Jordan Sample",
+    "phone": "+12045550123",
+    "email": "jordan@example.com",
+    "address": "55 Demo Street Winnipeg",
+    "vehicle_make": "Toyota",
+    "vehicle_model": "Corolla",
+    "license_plate": "DEMO 123",
+    "incident_datetime": "last Tuesday evening",
+    "filing_insurance_claim": "yes filing a claim with MPI",
+    "claim_number": "MPI-445-221",
+    "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_2",
+    "incident_description": "I am so angry, this is ridiculous, the other driver was a total idiot and now my whole week is ruined. The rear door and quarter panel are smashed in. Nobody was hurt but I am absolutely furious."
+  },
+  "expected_outcome": "COMPLETED_INTAKE",
+  "expected_flags_absent": [
+    "injuries_reported",
+    "caller_requested_transfer"
+  ]
+}

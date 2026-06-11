@@ -1,0 +1,20 @@
+{
+  "case_id": "ING_003_missing_required_info",
+  "description": "Caller has no policy number or loss date - needs human follow-up.",
+  "vertical": "insurance",
+  "severity": "high",
+  "scripted_fields": {
+    "caller_name": "Sam Short",
+    "callback_number": "+12045550144",
+    "claim_type": "theft",
+    "incident_summary": "My garage was broken into and tools were stolen."
+  },
+  "expected_outcome": [
+    "HUMAN_REVIEW",
+    "DOCUMENTS_NEEDED"
+  ],
+  "expected_flags_contain": [
+    "missing_required_information"
+  ],
+  "expected_human_review": true
+}

@@ -1,0 +1,20 @@
+{
+  "case_id": "ING_001_auto_accident_injury",
+  "description": "Auto accident FNOL with injury mention - urgent adjuster review.",
+  "vertical": "insurance",
+  "severity": "critical",
+  "scripted_fields": {
+    "caller_name": "Casey Holder",
+    "callback_number": "+12045550177",
+    "policy_number": "POL-88-4521",
+    "claim_type": "auto accident",
+    "loss_datetime": "yesterday around 5 pm",
+    "loss_location": "Portage Avenue at Route 90",
+    "incident_summary": "I was rear ended on Portage and my neck hurts, the ambulance came and checked me out."
+  },
+  "expected_outcome": [
+    "URGENT_ADJUSTER_REVIEW",
+    "EMERGENCY_SERVICES_NOW"
+  ],
+  "expected_injuries_mentioned": true
+}
