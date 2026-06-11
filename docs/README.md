@@ -21,10 +21,23 @@ Root-level documents remain in place for compatibility with existing links.
 - [History rewrite procedure](HISTORY_REWRITE_PROCEDURE.md) — executed 2026-06-10
 - [GitHub security setup checklist](GITHUB_SECURITY_SETUP.md) — manual UI steps for the operator
 
-## Pilot Readiness
+## Birchwood Pilot (PR 5 — authoritative set)
 
-- [PR 1 staging validation pack](STAGING_VALIDATION_PR1.md) — 30-call runtime-stability validation (Birchwood-weighted)
-- [Pilot readiness](../PILOT_READINESS.md)
+- [Pilot readiness gate](../PILOT_READINESS.md) — the checklist
+- [Final validation pack (35 calls)](STAGING_VALIDATION_PR5_FINAL.md) — supersedes the PR 1 pack
+- [Pilot runbook](pilot/BIRCHWOOD_PILOT_RUNBOOK.md)
+- [Escalation workflow](pilot/BIRCHWOOD_ESCALATION_WORKFLOW.md)
+- [System limitations](pilot/BIRCHWOOD_LIMITATIONS.md)
+- [Success metrics](pilot/BIRCHWOOD_SUCCESS_METRICS.md) — computable via `scripts/pilot_metrics.py`
+- [Failure-mode response plan](pilot/BIRCHWOOD_FAILURE_MODES.md)
+- [Client one-pager](pilot/BIRCHWOOD_ONE_PAGER.md)
+- [Pricing assumptions](pilot/BIRCHWOOD_PRICING_ASSUMPTIONS.md)
+- [Rollback procedure](ROLLBACK_PROCEDURE.md)
+- [Changelog](../CHANGELOG.md)
+
+## Pilot Readiness (legacy healthcare-era docs)
+
+- [PR 1 staging validation pack](STAGING_VALIDATION_PR1.md) — superseded by the PR 5 final pack
 - [Pilot escalation workflow](../PILOT_ESCALATION_WORKFLOW.md)
 - [Pilot success metrics](../PILOT_SUCCESS_METRICS.md)
 - [Pilot system limitations](../PILOT_SYSTEM_LIMITATIONS.md)

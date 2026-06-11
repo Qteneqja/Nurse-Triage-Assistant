@@ -110,6 +110,18 @@ contact fields are shown on non-healthcare records so staff can call back
 `python -m scripts.seed_dashboard_demo`; walkthrough in
 [docs/DASHBOARD_RECORDS.md](docs/DASHBOARD_RECORDS.md).
 
+PR 5 locks the Birchwood pilot: staging posture verified (Postgres,
+Twilio signature validation, dashboard auth, rate limiting), an Azure
+Container Apps rollback procedure, the final 35-call Birchwood-weighted
+validation pack, and the complete pilot document suite under
+`docs/pilot/` — runbook, escalation workflow, limitations, success
+metrics (computable from stored data via `scripts/pilot_metrics.py`),
+failure-mode response plan, client one-pager, and pricing assumptions
+(the Birchwood flow is deterministic: zero LLM cost per call). The gate
+checklist lives in [PILOT_READINESS.md](PILOT_READINESS.md); remaining
+items are operator actions (live calls, Sentry alerts, Twilio fallback
+URL, branch-protection freeze).
+
 ## Architecture
 
 ```
