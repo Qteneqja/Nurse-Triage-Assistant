@@ -95,6 +95,21 @@ non-clinical result no matter what a definition declares, and
 cannot claim or replace them. See
 [docs/WORKFLOW_ENGINE.md](docs/WORKFLOW_ENGINE.md).
 
+PR 4 ships the dashboard MVP around the intake record: a records list at
+`/dashboard/records` with injury-flagged and urgent records pinned to the
+top, filters (status, vertical, date, injury/urgent), and a record detail
+view with the shop summary, caller narrative, transcript, and the
+collision data. The shop advances each record through
+new -> contacted -> scheduled -> completed (plus escalated, the automatic
+default for injury/urgent records); every status change is the dashboard's
+one write operation and is audit-logged with actor + timestamp
+(`record_status_events`, Alembic 004). Pilot-grade auth (shared token),
+global rate limiting, opaque ids in URLs, and masked free text — structured
+contact fields are shown on non-healthcare records so staff can call back
+(`DASHBOARD_RECORDS_SHOW_CONTACT`). Seed demo data with
+`python -m scripts.seed_dashboard_demo`; walkthrough in
+[docs/DASHBOARD_RECORDS.md](docs/DASHBOARD_RECORDS.md).
+
 ## Architecture
 
 ```

@@ -106,19 +106,29 @@ def _strip_twiml(twiml: str) -> str:
     return twiml
 
 
-async def _simulate(scenario_name: str) -> dict:
+async def _simulate(
+    scenario_name: str,
+    *,
+    patch_storage: bool = True,
+    call_sid: str | None = None,
+) -> dict:
+    import contextlib
+
     import src.config  # noqa: F401 — ensure config loads before patching
 
-    with (
-        patch("src.config.STORAGE_BACKEND", "memory"),
-        patch("src.config.ENVIRONMENT", "development"),
-        patch("src.config.APP_ENV", "development"),
-        patch("src.config.DATABASE_URL", None),
+    stack = contextlib.ExitStack()
+    if patch_storage:
+        stack.enter_context(patch("src.config.STORAGE_BACKEND", "memory"))
+        stack.enter_context(patch("src.config.ENVIRONMENT", "development"))
+        stack.enter_context(patch("src.config.APP_ENV", "development"))
+        stack.enter_context(patch("src.config.DATABASE_URL", None))
+    stack.enter_context(
         patch(
             "src.twilio.routes.text_to_speech_url",
             new=AsyncMock(return_value=None),
-        ),
-    ):
+        )
+    )
+    with stack:
         from fastapi import BackgroundTasks
 
         from src.platform.workflows.router import reset_workflow_route_resolver
@@ -143,7 +153,7 @@ async def _simulate(scenario_name: str) -> dict:
         repo = get_session_repository()
 
         scenario = SCENARIOS[scenario_name]
-        call_sid = f"CA-SIM-{scenario_name.upper()}"
+        call_sid = call_sid or f"CA-SIM-{scenario_name.upper()}"
         workflow = BirchwoodCollisionIntakeWorkflow()
         intake = workflow.get_scripted_intake_definition()
         first = intake.stages[0]
@@ -233,9 +243,16 @@ async def _simulate(scenario_name: str) -> dict:
         }
 
 
-def simulate(scenario_name: str) -> dict:
-    """Synchronous wrapper used by tests and the CLI."""
-    return asyncio.run(_simulate(scenario_name))
+def simulate(
+    scenario_name: str,
+    *,
+    patch_storage: bool = True,
+    call_sid: str | None = None,
+) -> dict:
+    """Synchronous wrapper used by tests, the CLI, and the seed script."""
+    return asyncio.run(
+        _simulate(scenario_name, patch_storage=patch_storage, call_sid=call_sid)
+    )
 
 
 def _print_result(result: dict) -> None:

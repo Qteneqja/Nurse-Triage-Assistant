@@ -557,3 +557,36 @@ class ConversationExtractionModel(Base):
 
     def __repr__(self) -> str:
         return f"<ConversationExtraction session={self.session_id} workflow={self.workflow_id}>"
+
+
+class RecordStatusEventModel(Base):
+    """Dashboard intake-record status change (PR 4) — immutable audit event.
+
+    The record's current status is the newest event for the session;
+    sessions with no events derive a default ('escalated' for injury/urgent
+    records, otherwise 'new') in the dashboard layer.
+    """
+
+    __tablename__ = "record_status_events"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("triage_sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    actor: Mapped[str] = mapped_column(String(120), nullable=False)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<RecordStatusEvent session={self.session_id} "
+            f"status={self.status} actor={self.actor}>"
+        )

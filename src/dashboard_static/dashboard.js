@@ -433,11 +433,271 @@ async function renderActions() {
   wireActionButtons();
 }
 
+// ---------------------------------------------------------------------------
+// Intake records (PR 4) — the collision shop's working queue
+// ---------------------------------------------------------------------------
+
+async function dashApi(path, options = {}) {
+  const response = await fetch(`/api/v1/dashboard${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...tokenHeaders(),
+      ...(options.headers || {}),
+    },
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.detail || `Dashboard request failed (${response.status})`);
+  }
+  return response.json();
+}
+
+function actorName() {
+  return localStorage.getItem("dashboardActorName") || "";
+}
+
+function recordBadges(record) {
+  const parts = [];
+  if (record.injury_flagged) parts.push(badge("INJURY", "urgent"));
+  if (record.urgent && !record.injury_flagged) parts.push(badge("URGENT", "urgent"));
+  parts.push(badge(record.record_status));
+  return parts.join(" ");
+}
+
+function recordsTable(records) {
+  if (!records.length) {
+    return `
+      <div class="empty-state">
+        <h3>No intake records found</h3>
+        <p class="muted">Records appear here after calls complete.</p>
+      </div>
+    `;
+  }
+  const rows = records
+    .map(
+      (record) => `
+        <tr class="${record.urgency_rank > 0 ? "record-flagged" : ""}">
+          <td>${recordBadges(record)}</td>
+          <td>${escapeHtml(formatTime(record.created_at))}</td>
+          <td>${escapeHtml(record.vehicle || record.vertical_key || "unknown")}</td>
+          <td>${escapeHtml(record.contact?.caller_name ?? "n/a")}<br />
+              <span class="muted">${escapeHtml(record.contact?.phone ?? "")}</span></td>
+          <td>${badge(record.disposition || "unknown")}</td>
+          <td>${escapeHtml(record.recommended_action || "")}</td>
+          <td>
+            <a class="button secondary" href="/dashboard/records/${encodeURIComponent(record.session_id)}">
+              Open
+            </a>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Flags / status</th>
+            <th>Time</th>
+            <th>Vehicle</th>
+            <th>Customer</th>
+            <th>Disposition</th>
+            <th>Recommended action</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function renderRecords() {
+  setTitle("Intake records");
+  const params = new URLSearchParams(window.location.search);
+  const query = new URLSearchParams();
+  for (const key of ["record_status", "vertical_key", "date_from", "date_to"]) {
+    const value = params.get(key);
+    if (value) query.set(key, value);
+  }
+  if (params.get("injury_flagged")) query.set("injury_flagged", "true");
+  if (params.get("urgent_only")) query.set("urgent_only", "true");
+
+  content.innerHTML = '<div class="panel"><div class="panel-body">Loading records...</div></div>';
+  const data = await dashApi(`/records?${query.toString()}`);
+  const statusValue = params.get("record_status") || "";
+  content.innerHTML = `
+    <section class="panel">
+      <div class="panel-header"><h2>Intake records (${escapeHtml(data.total_matched)})</h2></div>
+      <div class="panel-body">
+        <form class="filters" id="record-filters">
+          <label>Status
+            <select name="record_status">
+              <option value="">All</option>
+              ${data.statuses
+                .map(
+                  (status) =>
+                    `<option value="${status}" ${statusValue === status ? "selected" : ""}>${status}</option>`,
+                )
+                .join("")}
+            </select>
+          </label>
+          <label>Vertical
+            <select name="vertical_key">
+              <option value="">All</option>
+              <option value="automotive_collision" ${params.get("vertical_key") === "automotive_collision" ? "selected" : ""}>Collision (Birchwood)</option>
+              <option value="insurance" ${params.get("vertical_key") === "insurance" ? "selected" : ""}>Insurance</option>
+              <option value="healthcare" ${params.get("vertical_key") === "healthcare" ? "selected" : ""}>Healthcare</option>
+            </select>
+          </label>
+          <label>From <input type="date" name="date_from" value="${escapeHtml(params.get("date_from") || "")}" /></label>
+          <label>To <input type="date" name="date_to" value="${escapeHtml(params.get("date_to") || "")}" /></label>
+          <label class="checkbox"><input type="checkbox" name="injury_flagged" ${params.get("injury_flagged") ? "checked" : ""}/> Injury only</label>
+          <label class="checkbox"><input type="checkbox" name="urgent_only" ${params.get("urgent_only") ? "checked" : ""}/> Urgent only</label>
+          <button class="button" type="submit">Apply</button>
+        </form>
+      </div>
+      ${recordsTable(data.records || [])}
+    </section>
+  `;
+  document.getElementById("record-filters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const next = new URLSearchParams();
+    for (const [key, value] of form.entries()) {
+      if (String(value).trim() && value !== "on") next.set(key, String(value).trim());
+      if (value === "on") next.set(key, "true");
+    }
+    window.location.href = `/dashboard/records?${next.toString()}`;
+  });
+}
+
+function statusButtons(detail) {
+  return `
+    <div class="status-buttons">
+      <label>Your name
+        <input id="actor-input" value="${escapeHtml(actorName())}" placeholder="e.g. front-desk" />
+      </label>
+      ${detail.statuses
+        .map(
+          (status) => `
+            <button class="button ${detail.record_status === status ? "secondary" : ""}"
+                    data-status="${status}" ${detail.record_status === status ? "disabled" : ""}>
+              ${status}
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function statusHistory(history) {
+  if (!history.length) {
+    return '<p class="muted">No status changes yet (derived status shown).</p>';
+  }
+  return `
+    <div class="turn-list">
+      ${history
+        .map(
+          (event) => `
+            <div class="turn">
+              <div class="turn-meta">
+                ${badge(event.status)}
+                <span>${escapeHtml(formatTime(event.created_at))}</span>
+                <span>by ${escapeHtml(event.actor)}</span>
+              </div>
+              ${event.note ? `<p>${escapeHtml(event.note)}</p>` : ""}
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+async function renderRecordDetail() {
+  const sessionId = decodeURIComponent(window.location.pathname.split("/").pop());
+  setTitle("Intake record");
+  content.innerHTML = '<div class="panel"><div class="panel-body">Loading record...</div></div>';
+  const detail = await dashApi(`/records/${encodeURIComponent(sessionId)}`);
+  const record = detail.record || {};
+  const intake = detail.intake_record || {};
+  const banner = record.injury_flagged
+    ? '<div class="injury-banner">INJURY REPORTED — caller was advised to seek medical attention / 9-1-1. Review before contact.</div>'
+    : record.urgent
+      ? '<div class="injury-banner urgent-banner">URGENT — review and act promptly.</div>'
+      : "";
+
+  content.innerHTML = `
+    ${banner}
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>${escapeHtml(record.vehicle || record.vertical_key || sessionId)}</h2>
+          <p class="muted">
+            ${escapeHtml(formatTime(record.created_at))}
+            ${recordBadges(record)}
+          </p>
+        </div>
+        <a class="button secondary" href="/dashboard/records">Back to records</a>
+      </div>
+      <div class="panel-body kv-grid">
+        ${kv("Customer", record.contact?.caller_name)}
+        ${kv("Callback", record.contact?.phone)}
+        ${kv("Disposition", record.disposition)}
+        ${kv("Recommended action", record.recommended_action)}
+        ${kv("Missing info", (record.missing_information || []).join(", ") || "none")}
+        ${kv("Flags", (record.flags || []).join(", ") || "none")}
+      </div>
+      <div class="panel-body">${statusButtons(detail)}</div>
+    </section>
+    <div class="detail-grid">
+      <div class="content">
+        ${panel("Shop summary", `<pre class="json-block">${escapeHtml(detail.shop_summary || "n/a")}</pre>`)}
+        ${panel("Caller narrative", `<p>${escapeHtml(detail.narrative || "No narrative captured.")}</p>`)}
+        ${panel("Transcript", turnsList(detail.turns || []))}
+      </div>
+      <div class="content">
+        ${panel("Status history (audit log)", statusHistory(detail.status_history || []))}
+        ${panel("Full intake record", jsonBlock(intake))}
+        ${panel("Safety events", jsonBlock(detail.safety_events))}
+      </div>
+    </div>
+  `;
+
+  document.getElementById("actor-input").addEventListener("change", (event) => {
+    localStorage.setItem("dashboardActorName", event.target.value.trim());
+  });
+  document.querySelectorAll("[data-status]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const actor = (document.getElementById("actor-input").value || "").trim();
+      if (!actor) {
+        alert("Enter your name first — every status change is audit-logged.");
+        return;
+      }
+      localStorage.setItem("dashboardActorName", actor);
+      button.disabled = true;
+      await dashApi(`/records/${encodeURIComponent(sessionId)}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status: button.dataset.status, actor }),
+      });
+      await renderRecordDetail();
+    });
+  });
+}
+
 async function route() {
   try {
     const path = window.location.pathname.replace("/dashboard/calls", "/dashboard/sessions");
     if (path === "/dashboard/actions") {
       await renderActions();
+    } else if (path.startsWith("/dashboard/records/")) {
+      await renderRecordDetail();
+    } else if (path === "/dashboard/records") {
+      await renderRecords();
     } else if (path.startsWith("/dashboard/sessions/")) {
       await renderDetail();
     } else if (path === "/dashboard/sessions") {

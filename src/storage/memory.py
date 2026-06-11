@@ -30,6 +30,7 @@ class InMemoryOrchestratorStorage(StorageInterface):
         self._call_index: Dict[str, str] = {}  # CallSid -> session_id
         self._expiry: Dict[str, datetime] = {}  # session_id -> expiry time
         self._extractions: Dict[str, list[Any]] = {}
+        self._record_status_events: Dict[str, list[dict[str, Any]]] = {}
         self._cleanup_task: asyncio.Task | None = None
 
     def start_cleanup(self) -> None:
@@ -158,6 +159,29 @@ class InMemoryOrchestratorStorage(StorageInterface):
     def get_session_extractions(self, session_id: str) -> list[Any]:
         """Return saved extraction results for a session."""
         return self.get_extractions(session_id)
+
+    def append_record_status_event(
+        self,
+        session_id: str,
+        status: str,
+        actor: str,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "status": status,
+            "actor": actor,
+            "note": note,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        self._record_status_events.setdefault(session_id, []).append(event)
+        return event
+
+    def get_record_status_events(self, session_id: str) -> list[dict[str, Any]]:
+        events = list(self._record_status_events.get(session_id, []))
+        events.sort(key=lambda e: e["created_at"], reverse=True)
+        return events
 
     def list_organizations(self) -> list[Any]:
         """Return organization-like rows inferred from in-memory sessions."""
