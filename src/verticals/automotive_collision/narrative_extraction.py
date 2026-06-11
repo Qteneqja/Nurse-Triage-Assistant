@@ -249,7 +249,10 @@ def extract_from_narrative(narrative: str | None) -> NarrativePrefill:
         fill("incident_datetime", m.group(0), m.group(0))
     m = _LOCATION.search(text)
     if m:
-        fill("incident_location", m.group(0), m.group(0))
+        # Strip the leading preposition so downstream phrasing composes
+        # cleanly ("around Pembina and Stafford", not "around at Pembina...").
+        location = re.sub(r"^(?:at|on|in|near)\s+", "", m.group(0), flags=re.IGNORECASE)
+        fill("incident_location", location, m.group(0))
 
     # Police report / photos / other parties.
     m = _NO_POLICE.search(text)
