@@ -1,0 +1,32 @@
+{
+  "case_id": "BWG_001_clean_story",
+  "description": "Complete intake, calm caller, explicit injury denial - the happy path.",
+  "vertical": "automotive_collision",
+  "severity": "critical",
+  "scripted_fields": {
+    "is_drivable": "yes it's safe to drive",
+    "damage_type": "rear bumper and trunk body damage",
+    "vehicle_year": 2021,
+    "rebuilt_salvage_status": "no never",
+    "caller_name": "Jordan Sample",
+    "phone": "+12045550123",
+    "email": "jordan@example.com",
+    "address": "55 Demo Street Winnipeg",
+    "vehicle_make": "Toyota",
+    "vehicle_model": "Corolla",
+    "license_plate": "DEMO 123",
+    "incident_datetime": "last Tuesday evening",
+    "filing_insurance_claim": "yes filing a claim with MPI",
+    "claim_number": "MPI-445-221",
+    "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_2",
+    "incident_description": "I was stopped at a red light on Pembina and someone rear-ended me. The bumper and trunk are dented. Nobody was hurt."
+  },
+  "expected_outcome": "COMPLETED_INTAKE",
+  "expected_flags_contain": [
+    "injuries_denied"
+  ],
+  "expected_flags_absent": [
+    "injuries_reported"
+  ],
+  "expected_human_review": false
+}

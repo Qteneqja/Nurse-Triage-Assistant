@@ -188,11 +188,31 @@ async def test_birchwood_narrative_response_adds_brief_ack_before_next_question(
         }
         repo.persist_session(session)
 
+        # First narrative segment: the assistant keeps listening instead of
+        # cutting the caller off (PR 1 multi-segment narrative capture).
         response = await twilio_routes.handle_gather(
             SimpleNamespace(headers={}),
             BackgroundTasks(),
             CallSid="CA-BIRCHWOOD-NARRATIVE-ACK",
             SpeechResult="Someone hit the rear quarter panel while I was parked.",
+        )
+        first_body = response.body.decode().lower()
+        assert "go on, i'm listening" in first_body
+        assert "when did this happen" not in first_body
+
+        # Completion cue: brief ack, then the next scripted question.
+        response = await twilio_routes.handle_gather(
+            SimpleNamespace(headers={}),
+            BackgroundTasks(),
+            CallSid="CA-BIRCHWOOD-NARRATIVE-ACK",
+            SpeechResult="that's everything",
+        )
+
+        stored = repo.load_session_by_call("CA-BIRCHWOOD-NARRATIVE-ACK")
+        fields = stored.channel_metadata["scripted_intake"]["fields"]
+        assert (
+            fields["incident_description"]
+            == "Someone hit the rear quarter panel while I was parked."
         )
 
     body = response.body.decode().lower()

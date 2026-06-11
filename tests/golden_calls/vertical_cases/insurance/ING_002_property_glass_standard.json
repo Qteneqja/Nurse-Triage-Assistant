@@ -1,0 +1,17 @@
+{
+  "case_id": "ING_002_property_glass_standard",
+  "description": "Routine property glass damage FNOL, no urgency - standard claim intake.",
+  "vertical": "insurance",
+  "severity": "high",
+  "scripted_fields": {
+    "caller_name": "Casey Holder",
+    "callback_number": "+12045550177",
+    "policy_number": "POL-88-4521",
+    "claim_type": "property glass damage",
+    "loss_datetime": "yesterday around 5 pm",
+    "loss_location": "my house on Demo Street",
+    "incident_summary": "A baseball cracked the back window of the house. The window is boarded up and the property is secure, no injuries."
+  },
+  "expected_outcome": "STANDARD_CLAIM_INTAKE",
+  "expected_injuries_mentioned": false
+}

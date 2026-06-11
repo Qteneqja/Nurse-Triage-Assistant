@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 import src.config as config
+from src.safety.injury_detection import scan_for_injuries
 from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_DEFAULT_LOCATIONS,
     BIRCHWOOD_COLLISION_DEFAULT_LUXURY_BRANDS,
@@ -18,12 +19,38 @@ from src.verticals.automotive_collision.schemas import (
     AutomotiveCollisionIntake,
 )
 
+INJURY_SAFETY_RULE_ID = "automotive_collision:injury_safety_branch"
+
 
 def classify_collision_intake(
     intake: AutomotiveCollisionIntake,
     dynamic_text: str = "",
 ) -> AutomotiveCollisionAssessment:
-    """Classify a Birchwood collision intake with offline deterministic rules."""
+    """Classify a Birchwood collision intake with offline deterministic rules.
+
+    The injury safety branch (Invariant 3) is applied as an overlay AFTER the
+    routing gates so it cannot be bypassed by any routing outcome: every
+    assessment — transfer, decline, completed — carries the injury flag and
+    forces human review when injuries are mentioned and not explicitly denied.
+    """
+    assessment = _classify_collision_intake_base(intake, dynamic_text)
+    scan = scan_for_injuries(_combined_text(intake, dynamic_text))
+    if scan.mentioned:
+        assessment.flags = _dedupe(["injuries_reported", *assessment.flags])
+        assessment.rules_triggered = _dedupe(
+            [*assessment.rules_triggered, INJURY_SAFETY_RULE_ID]
+        )
+        assessment.human_review_required = True
+    elif scan.denied:
+        assessment.flags = _dedupe([*assessment.flags, "injuries_denied"])
+    return assessment
+
+
+def _classify_collision_intake_base(
+    intake: AutomotiveCollisionIntake,
+    dynamic_text: str = "",
+) -> AutomotiveCollisionAssessment:
+    """Routing gates only — injury overlay is applied by the public wrapper."""
 
     text = _combined_text(intake, dynamic_text)
     flags = _context_flags(intake, text)

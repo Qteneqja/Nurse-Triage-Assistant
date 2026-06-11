@@ -1,0 +1,31 @@
+{
+  "case_id": "BWG_003_undrivable_vehicle",
+  "description": "Vehicle not safe to drive - transfer to collision team.",
+  "vertical": "automotive_collision",
+  "severity": "critical",
+  "scripted_fields": {
+    "is_drivable": "no it can't be driven, it needs a tow",
+    "damage_type": "rear bumper and trunk body damage",
+    "vehicle_year": 2021,
+    "rebuilt_salvage_status": "no never",
+    "caller_name": "Jordan Sample",
+    "phone": "+12045550123",
+    "email": "jordan@example.com",
+    "address": "55 Demo Street Winnipeg",
+    "vehicle_make": "Toyota",
+    "vehicle_model": "Corolla",
+    "license_plate": "DEMO 123",
+    "incident_datetime": "last Tuesday evening",
+    "filing_insurance_claim": "yes filing a claim with MPI",
+    "claim_number": "MPI-445-221",
+    "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_2",
+    "incident_description": "Front end is crushed, the wheel is bent under. Nobody was hurt."
+  },
+  "expected_outcome": "TRANSFER_COLLISION_CENTER",
+  "expected_flags_contain": [
+    "non_drivable_transfer"
+  ],
+  "expected_flags_absent": [
+    "injuries_reported"
+  ]
+}

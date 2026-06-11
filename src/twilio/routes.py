@@ -35,9 +35,11 @@ from src.platform.workflows.schemas import (
     WorkflowInput,
     WorkflowTurnResult,
 )
+from src.safety.injury_detection import INJURY_SAFETY_ADVISORY
 from src.safety.phi_masking import mask_phi
 from src.config import STORE_PHI
 from src.security.twilio_signature import validate_twilio_signature
+from src.twilio import webhook_stability as stability
 from src.utils.report_naming import (
     generate_report_filename,
     generate_report_path,
@@ -1337,12 +1339,37 @@ async def handle_incoming_call(
     and start scripted intake.
     """
     try:
+        if not isinstance(To, str):
+            To = None
         logger.info(f"[TWILIO] Incoming call: {CallSid}")
 
         ensure_default_workflows_registered()
         route = get_workflow_route_resolver().resolve(called_phone_number=To)
 
         repo = get_session_repository()
+
+        # Idempotency: a redelivered /incoming webhook for a call we already
+        # set up must not create a second session. Replay the original
+        # greeting; if it predates replay support, re-gather without losing
+        # the existing session state.
+        existing = repo.load_session_by_call(CallSid)
+        if existing is not None and not existing.is_finalized:
+            logger.warning(
+                "[TWILIO] Duplicate /incoming for active call %s "
+                "(session %s) — replaying greeting",
+                CallSid,
+                existing.session_id,
+            )
+            replay = stability.replay_incoming_twiml(existing)
+            if replay is None:
+                replay = await generate_twiml_gather(
+                    "Sorry, let's continue. Could you repeat your last answer?",
+                    "/api/v1/voice/gather",
+                    timeout=8,
+                    speech_timeout="auto",
+                    session=existing,
+                )
+            return Response(content=replay, media_type="application/xml")
 
         if _shared_vertical_menu_enabled_for(To):
             session = repo.create_session(call_sid=CallSid, workflow_route=route)
@@ -1355,8 +1382,9 @@ async def handle_incoming_call(
             session.conversation.append(
                 ConversationTurn(role="assistant", text=_SHARED_VERTICAL_MENU_PROMPT)
             )
-            repo.persist_session(session)
             twiml = await _generate_vertical_menu_twiml()
+            stability.remember_incoming_twiml(session, twiml)
+            repo.persist_session(session)
             logger.info(
                 "[TWILIO] Shared-number vertical menu started for session %s",
                 session.session_id,
@@ -1426,6 +1454,8 @@ async def handle_incoming_call(
                 session=session,
             )
 
+        stability.remember_incoming_twiml(session, twiml)
+        repo.persist_session(session)
         logger.info(f"[TWILIO] Session {session.session_id} started for call {CallSid}")
         return Response(content=twiml, media_type="application/xml")
 
@@ -1532,11 +1562,14 @@ async def handle_gather(
     """
     Handle Twilio <Gather> results — all state in OrchestratorSession via SessionRepository.
     """
+    session: OrchestratorSession | None = None
     try:
         if not isinstance(SpeechResult, str):
             SpeechResult = None
         if not isinstance(Digits, str):
             Digits = None
+        if not isinstance(To, str):
+            To = None
 
         logger.info(
             f"[TWILIO] Gather from {CallSid}: speech_len={len(SpeechResult) if SpeechResult else 0}"
@@ -1574,6 +1607,38 @@ async def handle_gather(
 
         session_id = session.session_id
 
+        # Duplicate webhook suppression: a redelivered POST with input we
+        # already incorporated replays the previous response instead of
+        # mutating state twice.
+        input_fingerprint = stability.gather_input_fingerprint(
+            CallSid, SpeechResult, Digits
+        )
+        duplicate_twiml = stability.duplicate_gather_replay(
+            session, input_fingerprint, SpeechResult
+        )
+        if duplicate_twiml is not None:
+            logger.warning(
+                "[TWILIO] Duplicate gather webhook for %s suppressed — "
+                "replaying previous response",
+                CallSid,
+            )
+            return Response(content=duplicate_twiml, media_type="application/xml")
+        stability.note_gather_input(session, input_fingerprint)
+
+        def _respond(twiml: str, *, remember: bool = True) -> Response:
+            """Persist response replay state so a redelivery is idempotent."""
+            if remember:
+                try:
+                    stability.remember_gather_twiml(session, twiml)
+                    repo.persist_session(session)
+                except Exception as remember_exc:
+                    logger.warning(
+                        "[TWILIO] Could not persist response replay state for %s: %s",
+                        CallSid,
+                        type(remember_exc).__name__,
+                    )
+            return Response(content=twiml, media_type="application/xml")
+
         if session.channel_metadata.get("stage") == STAGE_VERTICAL_MENU:
             choice = _parse_vertical_menu_choice(SpeechResult, Digits)
             if choice is None:
@@ -1584,7 +1649,7 @@ async def handle_gather(
                 menu_state["attempts"] = int(menu_state.get("attempts", 0)) + 1
                 repo.persist_session(session)
                 twiml = await _generate_vertical_menu_twiml(reprompt=True)
-                return Response(content=twiml, media_type="application/xml")
+                return _respond(twiml)
 
             selected_text = SpeechResult.strip() if SpeechResult else Digits or choice
             session.conversation.append(
@@ -1595,7 +1660,7 @@ async def handle_gather(
                 repo=repo,
                 selected_vertical=choice,
             )
-            return Response(content=twiml, media_type="application/xml")
+            return _respond(twiml)
 
         if _is_birchwood_scripted_transfer_request(session, SpeechResult, Digits):
             requested_text = Digits if Digits == "0" else (SpeechResult or "transfer")
@@ -1618,25 +1683,93 @@ async def handle_gather(
         # Speak EXACTLY one apology sentence and re-run the same stage question
         # already embedded in the next <Gather>.  Do NOT append the stage
         # question here — that would double-prompt the caller.
+        narrative_completed_by_silence = False
         if not SpeechResult or SpeechResult.strip() == "":
-            logger.warning(f"[TWILIO] Empty speech result from {CallSid}")
-            twiml = await generate_twiml_gather(
-                "Sorry, I didn't catch that. Can you please repeat your answer?",
-                "/api/v1/voice/gather",
-                timeout=scripted_stage.timeout_seconds if scripted_stage else 6,
-                hints=scripted_stage.hints if scripted_stage else None,
-                speech_timeout=scripted_stage.speech_timeout if scripted_stage else "3",
-                session=session,
-            )
-            return Response(content=twiml, media_type="application/xml")
+            # Silence during an in-progress narrative means the caller has
+            # finished the story — complete the field instead of reprompting.
+            narrative_done_text = None
+            if stability.stage_is_multi_segment(scripted_stage):
+                narrative_done_text = stability.complete_narrative_on_silence(
+                    session, scripted_stage
+                )
+            if narrative_done_text:
+                SpeechResult = narrative_done_text
+                narrative_completed_by_silence = True
+                logger.info(
+                    "[TWILIO] Narrative completed by silence for %s (%s chars)",
+                    CallSid,
+                    len(narrative_done_text),
+                )
+            else:
+                logger.warning(f"[TWILIO] Empty speech result from {CallSid}")
+                strikes = stability.record_silence(session)
+                if strikes >= stability.MAX_CONSECUTIVE_SILENCE:
+                    return await _close_silent_call(
+                        session=session,
+                        repo=repo,
+                        background_tasks=background_tasks,
+                        respond=_respond,
+                    )
+                twiml = await generate_twiml_gather(
+                    "Sorry, I didn't catch that. Can you please repeat your answer?",
+                    "/api/v1/voice/gather",
+                    timeout=scripted_stage.timeout_seconds if scripted_stage else 6,
+                    hints=scripted_stage.hints if scripted_stage else None,
+                    speech_timeout=scripted_stage.speech_timeout
+                    if scripted_stage
+                    else "3",
+                    session=session,
+                )
+                return _respond(twiml)
+        else:
+            stability.reset_silence(session)
 
-        # Store patient's answer in conversation
-        session.conversation.append(
-            ConversationTurn(role="caller", text=SpeechResult.strip())
+        # Store patient's answer in conversation. A narrative completed by
+        # silence is already in the conversation segment-by-segment.
+        if not narrative_completed_by_silence:
+            session.conversation.append(
+                ConversationTurn(role="caller", text=SpeechResult.strip())
+            )
+
+        # Injury safety branch (Invariant 3): deterministic, non-clinical
+        # verticals only, spoken at most once per call. Healthcare returns
+        # None here and is untouched. Only computed when a scripted prompt
+        # will actually carry it — marking it on the DYNAMIC path would
+        # swallow it, because the final-turn advisory is prepended by
+        # /thinking from the flagged workflow result instead.
+        injury_advisory = (
+            stability.injury_advisory_if_needed(session, SpeechResult)
+            if scripted_stage is not None
+            else None
         )
 
         logger.info(f"[TWILIO] Session {session_id} current stage: {current_stage}")
         if intake is not None and scripted_stage is not None:
+            # Multi-segment narrative capture: keep listening and appending
+            # segments until the caller signals they are done (or a hard cap
+            # is hit). Only narrative stages opt in via multi_segment.
+            if (
+                stability.stage_is_multi_segment(scripted_stage)
+                and not narrative_completed_by_silence
+            ):
+                ingest = stability.narrative_ingest(
+                    session,
+                    scripted_stage,
+                    SpeechResult,
+                )
+                if not ingest.completed:
+                    repo.persist_session(session)
+                    twiml = await generate_twiml_gather(
+                        stability.join_preamble(
+                            injury_advisory, ingest.continuation_prompt
+                        ),
+                        "/api/v1/voice/gather",
+                        timeout=scripted_stage.timeout_seconds,
+                        speech_timeout=scripted_stage.speech_timeout,
+                        session=session,
+                    )
+                    return _respond(twiml)
+                SpeechResult = ingest.joined_text or SpeechResult
             next_stage, reprompt = await _handle_scripted_stage_response(
                 session,
                 intake,
@@ -1646,14 +1779,14 @@ async def handle_gather(
             if reprompt:
                 repo.persist_session(session)
                 twiml = await generate_twiml_gather(
-                    reprompt,
+                    stability.join_preamble(injury_advisory, reprompt),
                     "/api/v1/voice/gather",
                     timeout=scripted_stage.timeout_seconds,
                     hints=scripted_stage.hints,
                     speech_timeout=scripted_stage.speech_timeout,
                     session=session,
                 )
-                return Response(content=twiml, media_type="application/xml")
+                return _respond(twiml)
             if next_stage is not None:
                 next_question = _stage_prompt(next_stage)
                 session.conversation.append(
@@ -1663,9 +1796,12 @@ async def handle_gather(
                 twiml = await _prompt_for_scripted_stage_with_session(
                     session,
                     next_stage,
-                    preamble=_scripted_stage_acknowledgement(scripted_stage),
+                    preamble=stability.join_preamble(
+                        injury_advisory,
+                        _scripted_stage_acknowledgement(scripted_stage),
+                    ),
                 )
-                return Response(content=twiml, media_type="application/xml")
+                return _respond(twiml)
 
             logger.info(f"[TWILIO] Session {session_id} entering DYNAMIC stage")
             repo.persist_session(session)
@@ -1685,7 +1821,7 @@ async def handle_gather(
                     timeout=8,
                     speech_timeout="auto",
                 )
-                return Response(content=twiml, media_type="application/xml")
+                return _respond(twiml)
 
         # DYNAMIC stage — multi-agent orchestrator
         if session.channel_metadata.get("stage") == STAGE_DYNAMIC:
@@ -1723,32 +1859,38 @@ async def handle_gather(
                 r.persist_session(updated_session)
                 return res, updated_session
 
+            # A turn already in flight for this call means this POST is a
+            # duplicate or a premature re-gather — rejoin the wait loop
+            # instead of double-processing the same input.
+            pending_existing = _pending_turns.get(CallSid)
+            if pending_existing is not None and not pending_existing[0].done():
+                logger.warning(
+                    "[TWILIO] Gather for %s while a workflow turn is in "
+                    "flight — rejoining the wait loop",
+                    CallSid,
+                )
+                return Response(
+                    content=_typing_redirect_twiml(),
+                    media_type="application/xml",
+                )
+
             task = asyncio.create_task(_run_turn(session, speech_text))
             _pending_turns[CallSid] = (task, session)
             logger.info(f"[TWILIO] Started background orchestrator for {CallSid}")
 
             # Return typing sounds → poll via /thinking
-            typing_url = "/api/v1/voice/audio/typing.wav"
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Play>{typing_url}</Play>
-    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
-</Response>"""
-            return Response(content=twiml, media_type="application/xml")
+            return _respond(_typing_redirect_twiml())
 
         # Should not reach here
         logger.error(f"[TWILIO] Unexpected state for session {session_id}")
         twiml = await generate_twiml_say_and_hangup(
             "Thank you for answering our questions. All information has been securely recorded and will be passed on to a nurse for review. A nurse will contact you promptly. If your symptoms worsen, please go to the emergency room or call emergency services."
         )
-        return Response(content=twiml, media_type="application/xml")
+        return _respond(twiml)
 
     except Exception as e:
         logger.error(f"[TWILIO] Error in gather: {e}", exc_info=True)
-        error_twiml = await generate_twiml_say_and_hangup(
-            "Sorry, we encountered an error. Please try again later."
-        )
-        return Response(content=error_twiml, media_type="application/xml")
+        return await _fail_closed_response(session, reason="gather_error")
 
 
 # ---------------------------------------------------------------------------
@@ -1800,9 +1942,17 @@ async def handle_thinking(
         # ── Task complete — deliver the result ────────────────────────────
         del _pending_turns[CallSid]
 
-        # Check for exceptions
+        # Check for exceptions — fail closed either way. Healthcare keeps its
+        # original wording; non-clinical verticals promise a callback and the
+        # record is flagged incomplete.
         if task.cancelled():
             logger.error(f"[TWILIO] Orchestrator task cancelled for {CallSid}")
+            if not _is_healthcare_session(
+                session_obj if isinstance(session_obj, OrchestratorSession) else None
+            ):
+                return await _fail_closed_response(
+                    session_obj, reason="workflow_task_cancelled"
+                )
             twiml = await generate_twiml_say_and_hangup(
                 "I'm sorry, something went wrong. Please call back and we'll help you."
             )
@@ -1813,6 +1963,12 @@ async def handle_thinking(
             logger.error(
                 f"[TWILIO] Orchestrator task failed for {CallSid}: {exc}", exc_info=exc
             )
+            if not _is_healthcare_session(
+                session_obj if isinstance(session_obj, OrchestratorSession) else None
+            ):
+                return await _fail_closed_response(
+                    session_obj, reason="workflow_task_failed"
+                )
             twiml = await generate_twiml_say_and_hangup(
                 "I'm sorry, something went wrong. Please call back and we'll help you."
             )
@@ -1829,6 +1985,19 @@ async def handle_thinking(
             result = task_result
         action = result["action"]
         spoken_message = result["message"]
+
+        # Injury safety branch (Invariant 3): if the final workflow result
+        # flagged injuries but the advisory was never spoken (e.g. the
+        # mention arrived in the last utterance), prepend it now. Healthcare
+        # never enters this path.
+        if (
+            isinstance(session_obj, OrchestratorSession)
+            and not _is_healthcare_session(session_obj)
+            and not stability.injury_advisory_already_given(session_obj)
+            and "injuries_reported" in _workflow_result_flags(session_obj)
+        ):
+            spoken_message = f"{INJURY_SAFETY_ADVISORY} {spoken_message}"
+            stability.mark_injury_advisory_given(session_obj)
 
         # Use the in-memory session object from the completed task.
         # Do NOT reload from DB — persist_session() already changed the
@@ -1925,6 +2094,116 @@ async def handle_thinking(
             "Sorry, we encountered an error. Please try again later."
         )
         return Response(content=error_twiml, media_type="application/xml")
+
+
+def _typing_redirect_twiml() -> str:
+    """TwiML that plays typing sounds and polls /thinking."""
+    typing_url = "/api/v1/voice/audio/typing.wav"
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{typing_url}</Play>
+    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
+</Response>"""
+
+
+async def _close_silent_call(
+    *,
+    session: OrchestratorSession,
+    repo,
+    background_tasks: BackgroundTasks,
+    respond,
+):
+    """Fail-safe close after repeated silence: capture, flag, say goodbye.
+
+    The record is finalized with what we have so far and flagged incomplete;
+    a report is still generated so the call is reviewable.
+    """
+    logger.warning(
+        "[TWILIO] %s consecutive silent gathers for call %s — closing fail-safe",
+        stability.MAX_CONSECUTIVE_SILENCE,
+        session.call_sid,
+    )
+    session.is_finalized = True
+    if not session.finalization_reason:
+        session.finalization_reason = "caller_silence"
+    session.channel_metadata["finalization_reason"] = session.finalization_reason
+    stability.flag_incomplete(session, "caller_silence")
+    try:
+        repo.persist_session(session)
+    except Exception:
+        logger.error(
+            "[TWILIO] Persist failed while closing silent call %s",
+            session.call_sid,
+            exc_info=True,
+        )
+    if _is_healthcare_session(session):
+        background_tasks.add_task(
+            _generate_orchestrator_report_background,
+            session_id=session.session_id,
+            orch_session=session,
+            session_metadata=_build_session_metadata(session),
+        )
+    else:
+        background_tasks.add_task(
+            _generate_platform_report_background,
+            session_id=session.session_id,
+            session=session,
+        )
+    twiml = await generate_twiml_say_and_hangup(
+        stability.silence_close_message(session),
+        session=session,
+    )
+    return respond(twiml)
+
+
+async def _fail_closed_response(
+    session: OrchestratorSession | None,
+    *,
+    reason: str,
+) -> Response:
+    """Terminal fail-closed response: apologize, flag the record, never crash.
+
+    Healthcare keeps its pre-PR1 wording and session state untouched
+    (Invariant 1); non-clinical verticals promise a callback and the session
+    is finalized + flagged incomplete so the record surfaces for follow-up.
+    """
+    message = stability.fail_closed_error_message(session)
+    if session is not None and not _is_healthcare_session(session):
+        try:
+            session.is_finalized = True
+            if not session.finalization_reason:
+                session.finalization_reason = "system_error_fail_closed"
+            session.channel_metadata["finalization_reason"] = (
+                session.finalization_reason
+            )
+            stability.flag_incomplete(session, reason)
+            get_session_repository().persist_session(session)
+        except Exception:
+            logger.critical(
+                "[TWILIO] Fail-closed flagging could not be persisted for "
+                "call %s — record may be missing the incomplete flag",
+                session.call_sid,
+                exc_info=True,
+            )
+    try:
+        twiml = await generate_twiml_say_and_hangup(message, session=session)
+    except Exception:
+        # Absolute last resort: static TwiML with no TTS dependency.
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n<Response>\n'
+            f'    <Say voice="{_TTS_VOICE}">{saxutils.escape(message)}</Say>\n'
+            "    <Hangup/>\n</Response>"
+        )
+    return Response(content=twiml, media_type="application/xml")
+
+
+def _workflow_result_flags(session: OrchestratorSession | None) -> list[str]:
+    """Flags from the stored workflow final result (e.g. injuries_reported)."""
+    if session is None:
+        return []
+    wf = session.channel_metadata.get("workflow_final_result") or {}
+    record = (wf.get("structured_output") or {}).get("intake_record") or {}
+    return list(record.get("flags") or [])
 
 
 def _is_healthcare_session(session: OrchestratorSession | None) -> bool:

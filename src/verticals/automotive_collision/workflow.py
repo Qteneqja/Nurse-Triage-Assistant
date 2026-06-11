@@ -323,6 +323,9 @@ def _stage(
         speech_profile=speech_profile,
         timeout_seconds=timeout_seconds,
         speech_timeout=speech_timeout,
+        # Narrative stages keep listening across utterances so a caller
+        # telling a long collision story is never cut off mid-thought.
+        multi_segment=(speech_profile == "narrative"),
     )
 
 
