@@ -453,7 +453,9 @@ async function dashApi(path, options = {}, base = "/api/v1/dashboard") {
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
-    throw new Error(detail.detail || `Dashboard request failed (${response.status})`);
+    const error = new Error(detail.detail || `Dashboard request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -720,30 +722,38 @@ async function renderEnrichment() {
   setTitle("Enrichment (preview)");
   content.innerHTML = '<div class="panel"><div class="panel-body">Loading enrichment preview...</div></div>';
   let recent;
-  let insights;
   try {
-    [recent, insights] = await Promise.all([
-      dashApi("/recent?limit=50", {}, "/api/v1/enrichment"),
-      dashApi("/insights", {}, "/api/v1/enrichment"),
-    ]);
+    recent = await dashApi("/recent?limit=50", {}, "/api/v1/enrichment");
   } catch (error) {
+    const explanation = error.status === 404
+      ? "Enrichment is disabled on this server (ENRICHMENT_ENABLED=false)."
+      : `The enrichment API failed (HTTP ${escapeHtml(error.status ?? "?")}): ${escapeHtml(error.message)}. Check the server logs.`;
     content.innerHTML = `
       <section class="empty-state">
         <h2>Enrichment preview</h2>
-        <p class="muted">${escapeHtml(error.message)} — enrichment is likely disabled (ENRICHMENT_ENABLED=false).</p>
+        <p class="muted">${explanation}</p>
       </section>
     `;
     return;
   }
-  const agg = insights.insights || {};
-  const insightsBody = agg.status === "ok"
-    ? jsonBlock(agg)
-    : `<p class="muted">Insufficient data for reliable insights: ${escapeHtml(agg.detail || "")} (sample size ${escapeHtml(agg.sample_size)})</p>`;
+  // Insights failing must not hide the per-call results.
+  let insightsBody;
+  let sampleLabel = "?";
+  try {
+    const insights = await dashApi("/insights", {}, "/api/v1/enrichment");
+    const agg = insights.insights || {};
+    sampleLabel = agg.sample_size ?? 0;
+    insightsBody = agg.status === "ok"
+      ? jsonBlock(agg)
+      : `<p class="muted">Insufficient data for reliable insights: ${escapeHtml(agg.detail || "")} (sample size ${escapeHtml(agg.sample_size)})</p>`;
+  } catch (error) {
+    insightsBody = `<p class="muted">Insights unavailable (HTTP ${escapeHtml(error.status ?? "?")}): ${escapeHtml(error.message)}</p>`;
+  }
   content.innerHTML = `
     <div class="injury-banner preview-banner">
       ENRICHMENT PREVIEW — shadow mode. Nothing here is part of the core pilot record; drafts require human approval and are never auto-sent.
     </div>
-    ${panel(`Aggregate insights (sample: ${escapeHtml(agg.sample_size ?? 0)} calls)`, insightsBody)}
+    ${panel(`Aggregate insights (sample: ${escapeHtml(sampleLabel)} calls)`, insightsBody)}
     ${panel(`Recent enrichment outputs (${escapeHtml(recent.count)})`, `
       <div class="turn-list">
         ${(recent.results || []).map(enrichmentCard).join("") || '<p class="muted">No enrichment outputs yet.</p>'}

@@ -27,7 +27,7 @@ class InsightsCommentary(BaseModel):
 
 def compute_insights(sessions: list[Any]) -> dict[str, Any]:
     """Deterministic aggregates over finalized Birchwood sessions."""
-    from scripts.pilot_metrics import compute_metrics, _record_of
+    from src.pilot.metrics import compute_metrics, _record_of
 
     min_calls = int(getattr(config, "ENRICH_INSIGHTS_MIN_CALLS", 30))
     sample = len(sessions)
