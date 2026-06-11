@@ -523,3 +523,35 @@ td {
   align-items: center;
   gap: 6px;
 }
+
+/* PR 4.2 — login page (external CSS: CSP is style-src 'self') */
+.login-wrap {
+  max-width: 420px;
+  margin: 12vh auto;
+  padding: 32px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+}
+.login-wrap h1 { font-size: 20px; margin: 0 0 4px; }
+.login-wrap p { color: #667085; font-size: 14px; margin: 0 0 20px; }
+.login-wrap label { display: block; font-size: 13px; margin-bottom: 6px; }
+.login-wrap input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.login-wrap button {
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.login-error { color: #b42318; font-size: 13px; min-height: 18px; }
