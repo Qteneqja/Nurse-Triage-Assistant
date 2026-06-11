@@ -1,8 +1,9 @@
-"""Dashboard/admin API and static shell routes for Phase 12."""
+"""Dashboard/admin API and static shell routes for Phase 12 + PR 4 records."""
 
 from __future__ import annotations
 
 import hmac
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -15,6 +16,8 @@ import src.config as config
 from src.api.dashboard_privacy import mask_dashboard_payload, safe_display_value
 from src.orchestrator.schemas import OrchestratorSession
 from src.storage.session_repository import get_session_repository
+
+logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parents[1] / "dashboard_static"
 _INDEX_FILE = _STATIC_DIR / "index.html"
@@ -228,6 +231,341 @@ async def get_dashboard_call_extraction(session_id: str) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Intake records (PR 4) — what the shop actually works from
+# ---------------------------------------------------------------------------
+
+RECORD_STATUSES = ["new", "contacted", "scheduled", "completed", "escalated"]
+
+_URGENT_DISPOSITIONS = {
+    "ER_NOW",
+    "URGENT",
+    "EMERGENCY",
+    "EMERGENCY_SERVICES_NOW",
+    "URGENT_ADJUSTER_REVIEW",
+    "TRANSFER_COLLISION_CENTER",
+    "SAME_DAY",
+}
+
+_CONTACT_KEYS = ("caller_name", "phone", "email", "address")
+
+
+class RecordStatusUpdate(BaseModel):
+    """One write operation: a status change, audited with actor + timestamp."""
+
+    status: Literal["new", "contacted", "scheduled", "completed", "escalated"]
+    actor: str = Field(min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+def _records_show_contact() -> bool:
+    return bool(getattr(config, "DASHBOARD_RECORDS_SHOW_CONTACT", True))
+
+
+def _intake_record_dict(session: OrchestratorSession) -> dict[str, Any]:
+    final_result = _final_result(session) or {}
+    structured = final_result.get("structured_output") or {}
+    record = structured.get("intake_record")
+    return record if isinstance(record, dict) else {}
+
+
+def _display_fields_for_workflow(workflow_id: str | None) -> list[str]:
+    if not workflow_id:
+        return []
+    try:
+        from src.platform.workflows.registry import (
+            ensure_default_workflows_registered,
+        )
+
+        spec = ensure_default_workflows_registered().get(workflow_id).get_spec()
+    except Exception:
+        return []
+    if spec is None:
+        return []
+    return list(spec.dashboard_display_fields)
+
+
+def _record_status(repo: Any, session: OrchestratorSession) -> dict[str, Any]:
+    try:
+        events = repo.get_record_status_events(session.session_id)
+    except Exception:
+        events = []
+    injury_flagged, urgent = _record_prominence(session)
+    if events:
+        current = events[0]["status"]
+    else:
+        current = "escalated" if (injury_flagged or urgent) else "new"
+    return {
+        "status": current,
+        "status_derived": not events,
+        "history": events,
+    }
+
+
+def _record_prominence(session: OrchestratorSession) -> tuple[bool, bool]:
+    """(injury_flagged, urgent) — these records pin to the top of the list."""
+    record = _intake_record_dict(session)
+    flags = [str(f) for f in (record.get("flags") or [])]
+    injury_flagged = "injuries_reported" in flags
+    disposition = (_disposition(session, _final_result(session)) or "").upper()
+    urgent = disposition in _URGENT_DISPOSITIONS
+    return injury_flagged, urgent
+
+
+def _record_row(repo: Any, session: OrchestratorSession) -> dict[str, Any]:
+    final_result = _final_result(session) or {}
+    record = _intake_record_dict(session)
+    injury_flagged, urgent = _record_prominence(session)
+    status_info = _record_status(repo, session)
+    vertical = _vertical_key(session)
+    show_contact = _records_show_contact() and vertical != "healthcare"
+
+    vehicle = " ".join(
+        str(part)
+        for part in (
+            record.get("vehicle_year"),
+            record.get("vehicle_make"),
+            record.get("vehicle_model"),
+        )
+        if part
+    )
+    contact = {
+        "caller_name": record.get("caller_name"),
+        "phone": record.get("phone"),
+    }
+    if not show_contact:
+        contact = mask_dashboard_payload(contact)
+
+    return {
+        "session_id": session.session_id,
+        "created_at": _isoformat(session.created_at),
+        "vertical_key": vertical,
+        "workflow_id": session.workflow_id,
+        "record_status": status_info["status"],
+        "status_derived": status_info["status_derived"],
+        "injury_flagged": injury_flagged,
+        "urgent": urgent,
+        "urgency_rank": (2 if injury_flagged else 0) + (1 if urgent else 0),
+        "disposition": _disposition(session, final_result),
+        "vehicle": vehicle or None,
+        "contact": contact,
+        "summary": _summary_text(session, final_result),
+        "flags": [str(f) for f in (record.get("flags") or [])],
+        "missing_information": record.get("missing_information") or [],
+        "recommended_action": record.get("recommended_action")
+        or _recommended_action_from_spec(session, final_result),
+        "human_review_required": bool(record.get("human_review_required")),
+        "callback_needed": bool(record.get("callback_needed")),
+        "is_finalized": session.is_finalized,
+    }
+
+
+def _recommended_action_from_spec(
+    session: OrchestratorSession,
+    final_result: dict[str, Any] | None,
+) -> str | None:
+    disposition = _disposition(session, final_result)
+    if not disposition or not session.workflow_id:
+        return None
+    try:
+        from src.platform.workflows.registry import (
+            ensure_default_workflows_registered,
+        )
+
+        spec = ensure_default_workflows_registered().get(session.workflow_id).get_spec()
+    except Exception:
+        return None
+    if spec is None:
+        return None
+    return spec.recommended_actions.get(str(disposition))
+
+
+def _record_payload(session: OrchestratorSession) -> dict[str, Any]:
+    """Full intake record for the detail view.
+
+    PII policy: free text is always masked (mask_phi catches stray digits in
+    narratives), but for non-healthcare verticals the structured CONTACT
+    fields are restored so staff can actually call the customer back — that
+    is the dashboard's purpose, behind the auth gate. Healthcare records
+    remain fully masked exactly as in Phase 12.
+    """
+    record = _intake_record_dict(session)
+    vertical = _vertical_key(session)
+    masked = mask_dashboard_payload(dict(record))
+    if _records_show_contact() and vertical != "healthcare":
+        for key in _CONTACT_KEYS:
+            if key in record:
+                masked[key] = record[key]
+        customer = record.get("customer")
+        if isinstance(customer, dict):
+            masked["customer"] = dict(customer)
+        for key in ("plain_summary", "shop_summary"):
+            if record.get(key):
+                masked[key] = record[key]
+    return masked
+
+
+def _parse_date(value: str | None, *, field: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} must be an ISO date/datetime",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _created_at_utc(session: OrchestratorSession) -> datetime | None:
+    value = session.created_at
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+@api_router.get("/records")
+async def list_intake_records(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    vertical_key: str | None = None,
+    workflow_id: str | None = None,
+    record_status: str | None = Query(default=None),
+    injury_flagged: bool | None = Query(default=None),
+    urgent_only: bool = Query(default=False),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+) -> dict[str, Any]:
+    if record_status is not None and record_status not in RECORD_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"record_status must be one of {RECORD_STATUSES}",
+        )
+    from_dt = _parse_date(date_from, field="date_from")
+    to_dt = _parse_date(date_to, field="date_to")
+
+    repo = get_session_repository()
+    sessions = repo.list_recent_sessions(
+        limit=500,
+        vertical_key=vertical_key,
+        workflow_id=workflow_id,
+    )
+    rows = [_record_row(repo, session) for session in sessions]
+
+    if record_status is not None:
+        rows = [r for r in rows if r["record_status"] == record_status]
+    if injury_flagged is not None:
+        rows = [r for r in rows if r["injury_flagged"] is injury_flagged]
+    if urgent_only:
+        rows = [r for r in rows if r["urgent"] or r["injury_flagged"]]
+    if from_dt or to_dt:
+        by_id = {s.session_id: s for s in sessions}
+        filtered = []
+        for row in rows:
+            created = _created_at_utc(by_id[row["session_id"]])
+            if created is None:
+                continue
+            if from_dt and created < from_dt:
+                continue
+            if to_dt and created > to_dt:
+                continue
+            filtered.append(row)
+        rows = filtered
+
+    # Injury-flagged and urgent records pin to the top, newest first within
+    # each band.
+    rows.sort(
+        key=lambda r: (r["urgency_rank"], r["created_at"] or ""),
+        reverse=True,
+    )
+    total = len(rows)
+    page = rows[offset : offset + limit]
+    return {
+        "count": len(page),
+        "total_matched": total,
+        "limit": limit,
+        "offset": offset,
+        "statuses": RECORD_STATUSES,
+        "records": page,
+    }
+
+
+@api_router.get("/records/{session_id}")
+async def get_intake_record(session_id: str) -> dict[str, Any]:
+    repo = get_session_repository()
+    session = repo.load_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Record not found")
+    row = _record_row(repo, session)
+    status_info = _record_status(repo, session)
+    record = _intake_record_dict(session)
+    payload = _record_payload(session)
+    display_fields = _display_fields_for_workflow(session.workflow_id)
+    return {
+        "record": row,
+        "intake_record": payload,
+        "dashboard_display_fields": display_fields,
+        "record_status": status_info["status"],
+        "status_derived": status_info["status_derived"],
+        "status_history": status_info["history"],
+        "statuses": RECORD_STATUSES,
+        "shop_summary": payload.get("shop_summary"),
+        "plain_summary": payload.get("plain_summary"),
+        "narrative": mask_dashboard_payload(
+            record.get("incident_description")
+            or record.get("fields", {}).get("incident_description")
+        ),
+        "turns": _safe_turns(repo, session),
+        "rules_triggered": _rules_triggered(session, _final_result(session)),
+        "safety_events": mask_dashboard_payload(
+            _safety_events(session, _final_result(session))
+        ),
+        "audit": {
+            "finalization_reason": session.finalization_reason,
+            "decision_trace_count": len(session.decision_trace),
+            "turn_count": session.turn_count,
+        },
+    }
+
+
+@api_router.post("/records/{session_id}/status")
+async def update_intake_record_status(
+    session_id: str,
+    update: RecordStatusUpdate,
+) -> dict[str, Any]:
+    repo = get_session_repository()
+    session = repo.load_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Record not found")
+    try:
+        event = repo.append_record_status_event(
+            session_id=session_id,
+            status=update.status,
+            actor=update.actor.strip(),
+            note=update.note,
+        )
+    except NotImplementedError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail="Storage backend does not support record status events",
+        ) from exc
+    # Audit log line — status/actor/session only, never caller PII.
+    logger.info(
+        "[DASHBOARD] Record status change session=%s status=%s actor=%s",
+        session_id,
+        update.status,
+        update.actor.strip(),
+    )
+    return {
+        "session_id": session_id,
+        "record_status": update.status,
+        "event": event,
+    }
+
+
 @api_router.get("/actions")
 async def list_dashboard_actions() -> dict[str, Any]:
     actions: list[ProposedAction] = []
@@ -244,6 +582,8 @@ async def list_dashboard_actions() -> dict[str, Any]:
 @page_router.get("/dashboard/calls/{session_id}", include_in_schema=False)
 @page_router.get("/dashboard/sessions", include_in_schema=False)
 @page_router.get("/dashboard/sessions/{session_id}", include_in_schema=False)
+@page_router.get("/dashboard/records", include_in_schema=False)
+@page_router.get("/dashboard/records/{session_id}", include_in_schema=False)
 @page_router.get("/dashboard/actions", include_in_schema=False)
 async def dashboard_shell(
     _: None = Depends(require_dashboard_shell_access),

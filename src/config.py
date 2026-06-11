@@ -321,6 +321,13 @@ DASHBOARD_ADMIN_TOKEN: str = os.getenv("DASHBOARD_ADMIN_TOKEN") or os.getenv(
 DASHBOARD_ADMIN_TOKEN_MIN_LENGTH: int = int(
     os.getenv("DASHBOARD_ADMIN_TOKEN_MIN_LENGTH", "32")
 )
+# PR 4: the records views exist so staff can call customers back — structured
+# contact fields (name/phone/email/address) on NON-healthcare records are
+# shown behind the auth gate. Set false to mask them like everything else.
+# Healthcare records are always fully masked regardless of this flag.
+DASHBOARD_RECORDS_SHOW_CONTACT: bool = _env_flag(
+    "DASHBOARD_RECORDS_SHOW_CONTACT", "true"
+)
 
 # CORS — restrict in production; allow all in development
 CORS_ALLOWED_ORIGINS: list[str] = [
