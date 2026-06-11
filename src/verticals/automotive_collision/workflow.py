@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -18,6 +19,7 @@ from src.platform.workflows.schemas import (
     WorkflowInput,
     WorkflowTurnResult,
 )
+from src.safety.injury_detection import scan_for_injuries
 from src.verticals.automotive_collision.constants import (
     AUTOMOTIVE_COLLISION_VERTICAL,
     BIRCHWOOD_COLLISION_CLIENT_TARGET,
@@ -30,8 +32,12 @@ from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_WORKFLOW_ID,
     BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
 )
+from src.verticals.automotive_collision.narrative_extraction import (
+    extract_from_narrative,
+)
 from src.verticals.automotive_collision.prompts import (
     BIRCHWOOD_COLLISION_INTRO,
+    BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE,
     BIRCHWOOD_COLLISION_PROMPTS,
 )
 from src.verticals.automotive_collision.rules import (
@@ -202,10 +208,23 @@ class BirchwoodCollisionIntakeWorkflow(BaseWorkflow):
                 "glass_only",
                 "body_damage",
                 "incident_description",
+                "incident_datetime",
+                "incident_location",
+                "injuries_state",
+                "other_parties",
+                "police_report_filed",
+                "photos_available",
                 "filing_insurance_claim",
+                "insurance_provider",
                 "claim_number",
                 "private_pay",
                 "preferred_collision_center",
+                "preferred_timing",
+                "urgency",
+                "confirmation_ack",
+                "correction_note",
+                "plain_summary",
+                "shop_summary",
                 "is_luxury",
                 "is_vw",
                 "is_rebuilt_or_salvage",
@@ -223,38 +242,147 @@ class BirchwoodCollisionIntakeWorkflow(BaseWorkflow):
         }
 
     def get_scripted_intake_definition(self) -> ScriptedIntakeDefinition:
+        """Narrative-first conversation (PR 2).
+
+        The caller tells the whole story first; deterministic extraction
+        prefills every field the story answered, and the remaining stages
+        are skipped automatically when already filled — so the follow-ups
+        are targeted gap-fill of REQUIRED fields only. Optional details
+        (email, plate, photos, police report, other parties, preferred
+        location/timing) are captured opportunistically from the story and
+        never interrogated one-by-one.
+        """
         return ScriptedIntakeDefinition(
             intro_text=BIRCHWOOD_COLLISION_INTRO,
             stages=[
+                _stage("INCIDENT_DESCRIPTION", "incident_description", "free_text"),
+                _stage("INJURY_CHECK", "injuries_state", "text"),
                 _stage("DRIVABILITY_CHECK", "is_drivable", "text"),
                 _stage("DAMAGE_TYPE", "damage_type", "free_text"),
                 _stage("VEHICLE_YEAR", "vehicle_year", "integer"),
-                _stage("REBUILT_SALVAGE_STATUS", "rebuilt_salvage_status", "text"),
-                _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
-                _stage("PHONE", "phone", "phone", sensitivity="pii"),
-                _stage("EMAIL", "email", "text", sensitivity="pii"),
-                _stage("ADDRESS", "address", "text", sensitivity="pii"),
                 _stage("VEHICLE_MAKE", "vehicle_make", "text"),
                 _stage("VEHICLE_MODEL", "vehicle_model", "text"),
-                _stage("LICENSE_PLATE", "license_plate", "text", required=False),
-                _stage("INCIDENT_DESCRIPTION", "incident_description", "free_text"),
+                _stage("REBUILT_SALVAGE_STATUS", "rebuilt_salvage_status", "text"),
                 _stage(
-                    "INCIDENT_DATETIME", "incident_datetime", "text", required=False
+                    "INCIDENT_DATETIME",
+                    "incident_datetime",
+                    "text",
                 ),
+                _stage("INCIDENT_LOCATION", "incident_location", "text"),
                 _stage("FILING_INSURANCE_CLAIM", "filing_insurance_claim", "text"),
                 _stage("CLAIM_NUMBER", "claim_number", "text", required=False),
+                _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
+                _stage("PHONE", "phone", "phone", sensitivity="pii"),
                 _stage(
-                    "PREFERRED_COLLISION_CENTER",
-                    "preferred_collision_center",
+                    "CONFIRMATION",
+                    "confirmation_ack",
                     "text",
+                    dynamic_prompt=True,
+                ),
+                _stage(
+                    "CORRECTION_NOTE",
+                    "correction_note",
+                    "free_text",
                     required=False,
-                    hints=(
-                        "BIRCHWOOD_COLLISION_LOCATION_1,"
-                        "BIRCHWOOD_COLLISION_LOCATION_2,"
-                        "BIRCHWOOD_COLLISION_LOCATION_3"
-                    ),
                 ),
             ],
+        )
+
+    # ------------------------------------------------------------------
+    # PR 2 conversation hooks (deterministic — no LLM anywhere)
+    # ------------------------------------------------------------------
+
+    def prefill_from_narrative(
+        self,
+        session: OrchestratorSession,
+        stage: ScriptedStageDefinition,
+        narrative: str,
+    ) -> dict[str, Any]:
+        if stage.field_name != "incident_description":
+            return {}
+        prefill = extract_from_narrative(narrative)
+        if prefill.audit:
+            session.channel_metadata["narrative_extraction"] = {
+                "schema": "birchwood_narrative_extraction_v1",
+                "prefilled": prefill.audit,
+            }
+        return prefill.fields
+
+    def on_field_recorded(
+        self,
+        session: OrchestratorSession,
+        stage: ScriptedStageDefinition,
+        value: Any,
+    ) -> dict[str, Any]:
+        field = stage.field_name
+        if field == "injuries_state":
+            return {"injuries_state": _normalize_injuries_answer(value)}
+        if field == "filing_insurance_claim":
+            parsed = (
+                value
+                if isinstance(value, bool)
+                else parse_intake_bool(str(value or ""), kind="insurance")
+            )
+            if parsed is False:
+                # Private pay deterministically answers the claim questions.
+                return {
+                    "insurance_provider": "private pay",
+                    "claim_number": "none",
+                }
+        if field == "confirmation_ack":
+            normalized = _normalize_yes_no_answer(value)
+            extra: dict[str, Any] = {"confirmation_ack": normalized}
+            if normalized == "yes":
+                # Confirmed readback — skip the correction stage.
+                extra["correction_note"] = "none"
+            return extra
+        return {}
+
+    def build_dynamic_prompt(
+        self,
+        session: OrchestratorSession,
+        stage: ScriptedStageDefinition,
+    ) -> str | None:
+        if stage.field_name != "confirmation_ack":
+            return None
+        intake = _intake_from_session(session)
+        parts: list[str] = []
+        vehicle = " ".join(
+            str(p)
+            for p in [intake.vehicle_year, intake.vehicle_make, intake.vehicle_model]
+            if p
+        )
+        if vehicle:
+            parts.append(f"a {vehicle}")
+        if intake.is_drivable is True:
+            parts.append("still safe to drive")
+        elif intake.is_drivable is False:
+            parts.append("not safe to drive")
+        if intake.damage_type:
+            parts.append(f"damage to the {intake.damage_type}")
+        if intake.incident_datetime:
+            parts.append(f"it happened {intake.incident_datetime}")
+        if intake.incident_location:
+            parts.append(f"around {intake.incident_location}")
+        if intake.filing_insurance_claim is True:
+            claim = (
+                f" with claim number {intake.claim_number}"
+                if intake.claim_number
+                else ", claim number to follow"
+            )
+            provider = intake.insurance_provider or "insurance"
+            parts.append(f"going through {provider}{claim}")
+        elif intake.filing_insurance_claim is False:
+            parts.append("paying privately")
+        contact = " ".join(
+            p for p in [intake.caller_name or "", intake.phone or ""] if p
+        ).strip()
+        if contact:
+            parts.append(f"and the team should call {contact}")
+        summary = "; ".join(parts) if parts else "the details you gave me"
+        return (
+            "Thanks, I have the main details noted. Let me make sure I got "
+            f"this right: {summary}. Did I get all of that right?"
         )
 
     def _load_session(
@@ -307,6 +435,7 @@ def _stage(
     required: bool = True,
     sensitivity: str | None = None,
     hints: str | None = None,
+    dynamic_prompt: bool = False,
 ) -> ScriptedStageDefinition:
     speech_profile, timeout_seconds, speech_timeout = _speech_settings_for_stage(
         field_name=field_name,
@@ -326,7 +455,42 @@ def _stage(
         # Narrative stages keep listening across utterances so a caller
         # telling a long collision story is never cut off mid-thought.
         multi_segment=(speech_profile == "narrative"),
+        dynamic_prompt=dynamic_prompt,
     )
+
+
+def _normalize_injuries_answer(value: Any) -> str:
+    """Map a spoken injury answer to 'reported' | 'denied' (fail closed)."""
+    if isinstance(value, str) and value in ("reported", "denied"):
+        return value
+    text = str(value or "").strip().lower()
+    scan = scan_for_injuries(text)
+    if scan.mentioned:
+        return "reported"
+    if scan.denied:
+        return "denied"
+    if re.search(r"\b(no|nope|nobody|no one|none|negative|we're good)\b", text):
+        return "denied"
+    if re.search(r"\b(yes|yeah|yep|a (?:little|bit)|kind of|sort of)\b", text):
+        return "reported"
+    # Unclear answer to a direct injury question — fail closed.
+    return "reported"
+
+
+def _normalize_yes_no_answer(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    # Negations first — "no, that's not right" must never read as "yes".
+    if re.search(
+        r"\b(no|nope|nah|not (?:quite|right|correct)|wrong|incorrect)\b", text
+    ):
+        return "no"
+    if re.search(
+        r"\b(yes|yeah|yep|correct|exactly|perfect"
+        r"|that'?s right|sounds right|you got it|all (?:right|good))\b",
+        text,
+    ):
+        return "yes"
+    return text or "unclear"
 
 
 def _speech_settings_for_stage(field_name: str) -> tuple[str, int, str]:
@@ -382,13 +546,23 @@ def _intake_from_session(session: OrchestratorSession) -> AutomotiveCollisionInt
         body_damage=_coalesce_bool(fields.get("body_damage"), damage_profile["body"]),
         incident_description=_clean(fields.get("incident_description")),
         incident_datetime=_clean(fields.get("incident_datetime")),
+        incident_location=_clean(fields.get("incident_location")),
+        injuries_state=_clean(fields.get("injuries_state")),
+        other_parties=_clean(fields.get("other_parties")),
+        police_report_filed=_clean(fields.get("police_report_filed")),
+        photos_available=_clean(fields.get("photos_available")),
         filing_insurance_claim=_coalesce_bool(
             fields.get("filing_insurance_claim"),
             parse_intake_bool(insurance_raw, kind="insurance"),
         ),
         insurance_claim_raw=insurance_raw,
+        insurance_provider=_clean(fields.get("insurance_provider")),
         claim_number=_claim_number(fields.get("claim_number")),
         preferred_collision_center=_clean(fields.get("preferred_collision_center")),
+        preferred_timing=_clean(fields.get("preferred_timing")),
+        urgency=_clean(fields.get("urgency")),
+        confirmation_ack=_clean(fields.get("confirmation_ack")),
+        correction_note=_clean(fields.get("correction_note")),
         is_rebuilt_or_salvage=_coalesce_bool(
             fields.get("is_rebuilt_or_salvage"),
             parse_intake_bool(rebuilt_raw, kind="rebuilt"),
@@ -437,12 +611,18 @@ def _intake_record(
             "is_drivable": intake.is_drivable,
             "description": intake.incident_description,
             "incident_datetime": intake.incident_datetime,
+            "incident_location": intake.incident_location,
+            "injuries_state": intake.injuries_state,
+            "other_parties": intake.other_parties,
+            "police_report_filed": intake.police_report_filed,
+            "photos_available": intake.photos_available,
             "glass_only": bool(intake.glass_only),
             "body_damage": bool(intake.body_damage),
         },
         insurance={
             "filing_claim": intake.filing_insurance_claim,
             "filing_insurance_claim": intake.filing_insurance_claim,
+            "insurance_provider": intake.insurance_provider,
             "claim_number": intake.claim_number,
             "private_pay": assessment.private_pay,
         },
@@ -471,10 +651,21 @@ def _intake_record(
         glass_only=bool(intake.glass_only),
         body_damage=bool(intake.body_damage),
         incident_description=intake.incident_description,
+        incident_datetime=intake.incident_datetime,
+        incident_location=intake.incident_location,
+        injuries_state=intake.injuries_state,
+        other_parties=intake.other_parties,
+        police_report_filed=intake.police_report_filed,
+        photos_available=intake.photos_available,
         filing_insurance_claim=intake.filing_insurance_claim,
+        insurance_provider=intake.insurance_provider,
         claim_number=intake.claim_number,
         private_pay=assessment.private_pay,
         preferred_collision_center=assessment.preferred_collision_center,
+        preferred_timing=intake.preferred_timing,
+        urgency=intake.urgency,
+        confirmation_ack=intake.confirmation_ack,
+        correction_note=_clean_correction(intake.correction_note),
         available_collision_centers=assessment.available_collision_centers,
         is_luxury=assessment.is_luxury,
         is_vw=assessment.is_vw,
@@ -484,10 +675,107 @@ def _intake_record(
         decline_reason=assessment.decline_reason,
         callback_needed=assessment.callback_needed,
         transcript_summary=_transcript_summary(intake, assessment),
+        plain_summary=_plain_summary(intake, assessment),
+        shop_summary=_shop_summary(intake, assessment),
         disclaimers_given=assessment.disclaimers_given,
         confidence=assessment.confidence,
         human_review_required=assessment.human_review_required,
     )
+
+
+def _clean_correction(value: str | None) -> str | None:
+    if not value or value.strip().lower() in {"none", "n/a", "no"}:
+        return None
+    return value.strip()
+
+
+def _plain_summary(
+    intake: AutomotiveCollisionIntake,
+    assessment: AutomotiveCollisionAssessment,
+) -> str:
+    """Plain-language recap suitable for reading to the caller."""
+    vehicle = " ".join(
+        str(p)
+        for p in [intake.vehicle_year, intake.vehicle_make, intake.vehicle_model]
+        if p
+    )
+    bits = [f"We recorded your collision details for the {vehicle or 'vehicle'}."]
+    if intake.injuries_state == "reported":
+        bits.append(
+            "You mentioned someone may be hurt - please get medical attention "
+            "or call 9 1 1 if needed; the team has been alerted."
+        )
+    if intake.is_drivable is False:
+        bits.append("The vehicle is not safe to drive.")
+    if intake.filing_insurance_claim is True:
+        provider = intake.insurance_provider or "your insurer"
+        bits.append(f"You're going through {provider}.")
+    elif intake.filing_insurance_claim is False:
+        bits.append("You're paying privately.")
+    if intake.phone:
+        bits.append(f"The Birchwood team will call you back at {intake.phone}.")
+    else:
+        bits.append("The Birchwood team will follow up with you.")
+    bits.append(
+        "This doesn't confirm coverage, pricing, or an appointment yet - "
+        "the team will confirm next steps."
+    )
+    return " ".join(bits)
+
+
+def _shop_summary(
+    intake: AutomotiveCollisionIntake,
+    assessment: AutomotiveCollisionAssessment,
+) -> str:
+    """Shop-facing handoff — the Birchwood analogue of SBAR."""
+    vehicle = " ".join(
+        str(p)
+        for p in [intake.vehicle_year, intake.vehicle_make, intake.vehicle_model]
+        if p
+    )
+    situation = (
+        f"SITUATION: {intake.incident_description or 'No narrative captured.'}"
+        f" When: {intake.incident_datetime or 'unknown'}."
+        f" Where: {intake.incident_location or 'unknown'}."
+        f" Injuries: {intake.injuries_state or 'unknown'}."
+        f" Other parties: {intake.other_parties or 'not stated'}."
+        f" Police report: {intake.police_report_filed or 'not stated'}."
+    )
+    vehicle_line = (
+        f"VEHICLE: {vehicle or 'unknown'}."
+        f" Drivable: {_yn(intake.is_drivable)}."
+        f" Damage: {intake.damage_type or 'unknown'}."
+        f" Rebuilt/salvage: {_yn(intake.is_rebuilt_or_salvage)}."
+        f" Photos: {intake.photos_available or 'not stated'}."
+    )
+    insurance = (
+        f"insurance via {intake.insurance_provider or 'unknown'}"
+        f" (claim: {intake.claim_number or 'pending'})"
+        if intake.filing_insurance_claim
+        else "private pay"
+        if intake.filing_insurance_claim is False
+        else "payment path unknown"
+    )
+    customer = (
+        f"CUSTOMER: {intake.caller_name or 'unknown'},"
+        f" callback {intake.phone or 'unknown'}, {insurance}."
+        f" Readback confirmed: {intake.confirmation_ack or 'not reached'}."
+    )
+    flags = ", ".join(assessment.flags) or "none"
+    action = (
+        f"RECOMMENDED ACTION: {assessment.recommended_routing} - "
+        f"{assessment.reason} Flags: {flags}."
+        f" Missing: {', '.join(assessment.missing_information) or 'none'}."
+    )
+    return "\n".join([situation, vehicle_line, customer, action])
+
+
+def _yn(value: bool | None) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "unknown"
 
 
 def _summary(record: AutomotiveCollisionRecord) -> str:
@@ -535,8 +823,8 @@ def _spoken_final_message(
         )
     if "private_pay" in flags:
         return (
-            "No problem, I'll mark this as private pay. I have collected the "
-            "intake details for staff follow-up."
+            "No problem - I have it marked as private pay. "
+            + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
         )
     if "missing_claim_number" in flags:
         return (
@@ -553,12 +841,12 @@ def _spoken_final_message(
             "Thanks. I have marked this for staff review because a few details "
             "need confirmation."
         )
-    return (
-        "Thanks, I have the main details noted. The Birchwood Collision team "
-        "will be able to review this intake and follow up with you. Just a "
-        "reminder, this doesn't confirm coverage, pricing, or an appointment "
-        "yet - the team will confirm the next steps."
-    )
+    if "readback_correction" in flags:
+        return (
+            "Thanks - I've noted your correction for the team to review. "
+            + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
+        )
+    return BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
 
 
 def _conversation_transcript(session: OrchestratorSession) -> str:
@@ -605,7 +893,14 @@ def _claim_number(value: Any) -> str | None:
     cleaned = _clean(value)
     if not cleaned:
         return None
-    if cleaned.lower() in {"no", "none", "not yet", "no claim number"}:
+    lowered = cleaned.lower()
+    if lowered in {"no", "none", "not yet", "no claim number", "n/a"}:
+        return None
+    # Spoken non-answers ("I don't have it yet") are not claim numbers.
+    if re.search(
+        r"don'?t have|do not have|not yet|haven'?t|no number|nothing yet",
+        lowered,
+    ):
         return None
     return cleaned
 

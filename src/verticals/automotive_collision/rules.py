@@ -31,18 +31,37 @@ def classify_collision_intake(
     The injury safety branch (Invariant 3) is applied as an overlay AFTER the
     routing gates so it cannot be bypassed by any routing outcome: every
     assessment — transfer, decline, completed — carries the injury flag and
-    forces human review when injuries are mentioned and not explicitly denied.
+    forces human review when injuries are mentioned (in the narrative OR via
+    the direct injury question) and not explicitly denied.
     """
-    assessment = _classify_collision_intake_base(intake, dynamic_text)
     scan = scan_for_injuries(_combined_text(intake, dynamic_text))
-    if scan.mentioned:
+    # Resolve the injury state once so missing-info checks and the record
+    # agree: an explicit answer wins; otherwise the narrative scan decides.
+    if intake.injuries_state not in ("reported", "denied"):
+        if scan.mentioned:
+            intake.injuries_state = "reported"
+        elif scan.denied:
+            intake.injuries_state = "denied"
+
+    assessment = _classify_collision_intake_base(intake, dynamic_text)
+
+    if intake.injuries_state == "reported" or scan.mentioned:
         assessment.flags = _dedupe(["injuries_reported", *assessment.flags])
         assessment.rules_triggered = _dedupe(
             [*assessment.rules_triggered, INJURY_SAFETY_RULE_ID]
         )
         assessment.human_review_required = True
-    elif scan.denied:
+    elif intake.injuries_state == "denied" or scan.denied:
         assessment.flags = _dedupe([*assessment.flags, "injuries_denied"])
+
+    # A caller who said the readback was wrong (or left a correction note)
+    # needs a human to verify the record before the shop acts on it.
+    correction = _clean(intake.correction_note)
+    if intake.confirmation_ack == "no" or (
+        correction and correction.lower() not in {"none", "n/a", "no"}
+    ):
+        assessment.flags = _dedupe([*assessment.flags, "readback_correction"])
+        assessment.human_review_required = True
     return assessment
 
 
@@ -148,9 +167,6 @@ def _classify_collision_intake_base(
     if _missing_claim_number(intake):
         flags.extend(["missing_claim_number", "callback_needed"])
         missing.append("claim_number")
-    if not intake.license_plate:
-        flags.extend(["missing_license_plate", "callback_needed"])
-        missing.append("license_plate")
     if location["is_luxury"]:
         flags.append("luxury_auto_assigned")
     if location["is_vw"]:
@@ -291,9 +307,26 @@ def parse_intake_bool(value: Any, *, kind: str = "yes_no") -> bool | None:
         if _contains_any(text, ["safe to drive", "drivable", "driveable", "can drive"]):
             return True
     if kind == "insurance":
-        if _contains_any(text, ["private pay", "pay myself", "out of pocket"]):
+        if _contains_any(
+            text,
+            ["private pay", "pay myself", "out of pocket", "paying privately"],
+        ):
             return False
-        if _contains_any(text, ["insurance claim", "filing a claim", "claim number"]):
+        if _contains_any(
+            text,
+            [
+                "insurance claim",
+                "filing a claim",
+                "claim number",
+                "going through insurance",
+                "going through mpi",
+                "going through autopac",
+                "through my insurance",
+                "use my insurance",
+                "mpi",
+                "autopac",
+            ],
+        ):
             return True
     if kind == "rebuilt":
         if _contains_any(text, ["not rebuilt", "not salvage", "clean title", "never"]):
@@ -498,8 +531,8 @@ def _missing_information(
     ]
     if _rebuilt_state(intake) is None:
         missing.append("rebuilt_salvage_status")
-    if not location["is_luxury"] and not location["preferred_center"]:
-        missing.append("preferred_collision_center")
+    # PR 2: preferred collision center and license plate are optional —
+    # captured when offered, assigned/collected by the shop otherwise.
     return missing
 
 
