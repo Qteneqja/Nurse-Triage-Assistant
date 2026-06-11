@@ -46,6 +46,11 @@ class ScriptedStageDefinition(BaseModel):
     speech_profile: str | None = None
     timeout_seconds: int = 8
     speech_timeout: str = "3"
+    # When True, the voice channel keeps the Gather open across multiple
+    # caller utterances and appends them into one logical answer until the
+    # caller signals completion (or a hard cap is reached). Only meaningful
+    # for narrative free-text stages; short fields must leave this False.
+    multi_segment: bool = False
 
     @model_validator(mode="after")
     def _sync_legacy_and_generic_fields(self) -> "ScriptedStageDefinition":
