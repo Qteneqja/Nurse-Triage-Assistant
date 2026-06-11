@@ -58,9 +58,14 @@ curl -s -X POST http://localhost:8000/api/v1/dashboard/records/<id>/status \
 
 ## Auth, privacy, limits (pilot-grade — documented as such)
 
-- **Auth:** single shared token (`DASHBOARD_ADMIN_TOKEN`, env) via
-  `X-Dashboard-Token` header or `Bearer` auth; enforced in staging/
-  production, open in local dev. No per-user accounts — the `actor` field
+- **Auth:** single shared token (`DASHBOARD_ADMIN_TOKEN`, env); enforced in
+  staging/production, open in local dev. **Browsers sign in at
+  `/dashboard/login`** (unauthenticated static page — validates the token
+  against the API, then sets a `SameSite=Strict` cookie for page loads and
+  stores the token for the JS data calls; hitting any dashboard page
+  without the cookie redirects there). Tools/curl use the
+  `X-Dashboard-Token` header or `Bearer` auth — data endpoints accept
+  headers only, never the cookie. No per-user accounts — the `actor` field
   on status changes is the accountability mechanism for the pilot.
 - **Rate limiting:** all dashboard routes sit behind the global
   sliding-window limiter (`RATE_LIMIT`, default 60/minute).

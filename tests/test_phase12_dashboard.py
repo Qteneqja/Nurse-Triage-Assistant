@@ -433,10 +433,44 @@ def _dashboard_shell_client(
 def test_production_dashboard_shell_blocks_unauthenticated_access(monkeypatch):
     client, _ = _dashboard_shell_client(monkeypatch)
 
-    response = client.get("/dashboard")
+    response = client.get("/dashboard", follow_redirects=False)
 
-    assert response.status_code == 401
+    # PR 4.1: browsers can't send the token header on first load, so the
+    # shell redirects to the unauthenticated login page instead of 401-ing.
+    assert response.status_code == 302
+    assert response.headers["location"] == "/dashboard/login"
     assert "Voice Decision Support Platform" not in response.text
+
+
+def test_production_dashboard_login_page_is_reachable_without_auth(monkeypatch):
+    client, _ = _dashboard_shell_client(monkeypatch)
+
+    response = client.get("/dashboard/login")
+
+    assert response.status_code == 200
+    assert "Admin token" in response.text
+
+
+def test_production_dashboard_shell_accepts_login_cookie(monkeypatch):
+    client, token = _dashboard_shell_client(monkeypatch)
+
+    response = client.get("/dashboard", cookies={"dashboard_token": token})
+
+    assert response.status_code == 200
+    assert "Voice Decision Support Platform" in response.text
+
+
+def test_production_dashboard_shell_rejects_bad_cookie(monkeypatch):
+    client, _ = _dashboard_shell_client(monkeypatch)
+
+    response = client.get(
+        "/dashboard",
+        cookies={"dashboard_token": "wrong-token"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/dashboard/login"
 
 
 def test_production_dashboard_shell_renders_with_valid_auth(monkeypatch):

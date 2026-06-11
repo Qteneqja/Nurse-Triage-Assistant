@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 import src.config as config
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parents[1] / "dashboard_static"
 _INDEX_FILE = _STATIC_DIR / "index.html"
+_LOGIN_FILE = _STATIC_DIR / "login.html"
 _OPENCLAW_STATUSES = [
     "proposed",
     "approved",
@@ -577,6 +578,19 @@ async def list_dashboard_actions() -> dict[str, Any]:
     }
 
 
+@page_router.get("/dashboard/login", include_in_schema=False)
+async def dashboard_login(
+    _: None = Depends(require_dashboard_shell_enabled),
+) -> FileResponse:
+    """Unauthenticated sign-in page (static, contains no data).
+
+    A browser cannot send the token header on its initial page load, so the
+    shell gate redirects here; this page validates the token against a data
+    endpoint, stores it for the JS API helpers, and sets the shell cookie.
+    """
+    return FileResponse(_LOGIN_FILE)
+
+
 @page_router.get("/dashboard", include_in_schema=False)
 @page_router.get("/dashboard/calls", include_in_schema=False)
 @page_router.get("/dashboard/calls/{session_id}", include_in_schema=False)
@@ -585,10 +599,27 @@ async def list_dashboard_actions() -> dict[str, Any]:
 @page_router.get("/dashboard/records", include_in_schema=False)
 @page_router.get("/dashboard/records/{session_id}", include_in_schema=False)
 @page_router.get("/dashboard/actions", include_in_schema=False)
-async def dashboard_shell(
-    _: None = Depends(require_dashboard_shell_access),
-) -> FileResponse:
-    return FileResponse(_INDEX_FILE)
+async def dashboard_shell(request: Request):
+    """Serve the dashboard shell; browsers without a token go to /login.
+
+    Accepts the admin token via header (curl/tools) OR the dashboard_token
+    cookie set by the login page (browsers). Data endpoints remain
+    header-authenticated and are unaffected by the cookie.
+    """
+    require_dashboard_shell_enabled()
+    env = (config.APP_ENV or config.ENVIRONMENT).lower()
+    if env in {"development", "test"}:
+        return FileResponse(_INDEX_FILE)
+
+    expected = config.DASHBOARD_ADMIN_TOKEN
+    token = (
+        request.headers.get("x-dashboard-token")
+        or _bearer_token(request.headers.get("authorization"))
+        or request.cookies.get("dashboard_token")
+    )
+    if expected and token and hmac.compare_digest(token, expected):
+        return FileResponse(_INDEX_FILE)
+    return RedirectResponse(url="/dashboard/login", status_code=302)
 
 
 def _call_row(repo: Any, session: OrchestratorSession) -> dict[str, Any]:
