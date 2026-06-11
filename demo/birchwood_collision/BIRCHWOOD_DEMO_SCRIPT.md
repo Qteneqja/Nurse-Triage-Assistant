@@ -6,6 +6,28 @@ ORCA is our voice AI intake platform. For Birchwood, this demo shows an automoti
 
 The Birchwood call flow now uses a warmer voice profile, lets callers take their time on the collision-story question, and keeps press 0 available for a transfer.
 
+## How the Conversation Works (PR 2 - narrative-first)
+
+The flow is no longer a fixed questionnaire. The call opens by inviting the
+whole story ("Take your time and walk me through what happened, from the
+beginning"), and the caller can pause naturally - ORCA says "go on, I'm
+listening" instead of cutting them off. Deterministic extraction then
+prefills every field the story already answered (vehicle, when, where,
+drivability, damage, police report, photos, insurance path, claim number,
+injuries), and ORCA asks ONLY the required fields that are still missing.
+A rich story gets about four follow-up questions; a one-line story gets the
+full gap-fill. Every call ends with a readback confirmation ("Let me make
+sure I got this right...") and a next-steps close. If anyone is hurt, ORCA
+immediately advises seeking medical attention or 9 1 1, flags the record,
+and forces human review - on every routing outcome, including declines.
+
+Try it offline before a live demo:
+
+```bash
+python -m scripts.simulate_birchwood_call                      # all scenarios
+python -m scripts.simulate_birchwood_call --scenario injury_branch
+```
+
 ## Problem Statement
 
 Collision calls can be repetitive, time-sensitive, and hard to triage after hours. Staff need enough information to route the customer, but callers should not wait for a live person just to provide basic intake details.

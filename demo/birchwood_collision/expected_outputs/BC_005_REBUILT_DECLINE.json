@@ -24,7 +24,10 @@
   "is_luxury": false,
   "is_vw": false,
   "is_rebuilt_or_salvage": true,
-  "flags": ["rebuilt_salvage_declined"],
+  "flags": [
+    "rebuilt_salvage_declined",
+    "injuries_denied"
+  ],
   "missing_information": [],
   "recommended_routing": "DECLINED_REBUILT_SALVAGE",
   "transfer_department": null,
@@ -37,5 +40,9 @@
     "Staff must confirm appointments and repair acceptance."
   ],
   "confidence": 0.97,
-  "human_review_required": false
+  "human_review_required": false,
+  "injuries_state": "denied",
+  "incident_datetime": "DEMO_INCIDENT_DATETIME",
+  "incident_location": "DEMO_INCIDENT_LOCATION",
+  "confirmation_ack": "yes"
 }

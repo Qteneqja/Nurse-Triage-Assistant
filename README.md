@@ -1,4 +1,4 @@
-# Nurse Triage Assistant
+# ORCA Decision Support Assistant Phone Tool
 
 [![CI](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/Qteneqja/Nurse-Triage-Assistant/actions/workflows/ci.yml)
 
@@ -63,6 +63,23 @@ non-clinical caller mentions injuries — on every routing outcome, including
 declines. Vertical golden calls live in `tests/golden_calls/vertical_cases/`
 (10 Birchwood + 3 insurance) alongside the 30 healthcare cases; the live
 staging pack is [docs/STAGING_VALIDATION_PR1.md](docs/STAGING_VALIDATION_PR1.md).
+
+PR 2 makes the Birchwood conversation narrative-first: the call invites the
+full story up front, deterministic extraction
+(`src/verticals/automotive_collision/narrative_extraction.py`) prefills
+every field the story answered, and gap-fill asks ONLY the missing required
+fields (a detailed story needs ~4 follow-ups). The flow adds a direct
+injury question when the story didn't resolve it (Invariant 3), a dynamic
+readback confirmation with a correction path (corrections flag the record
+for human review), a "here's what happens next" close, and two new outputs
+on every record: a caller-facing `plain_summary` and a shop-facing
+`shop_summary` (situation / vehicle / customer / recommended action — the
+collision analogue of SBAR). Required vs optional fields are defined in
+`src/verticals/automotive_collision/constants.py`; optional details (email,
+plate, photos, police report, other parties) are captured from the story
+but never interrogated. Run the offline conversation simulator with
+`python -m scripts.simulate_birchwood_call`. Healthcare prompts and flow
+remain untouched.
 
 ## Architecture
 
