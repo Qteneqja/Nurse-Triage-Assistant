@@ -254,6 +254,12 @@
   padding: 24px;
 }
 
+/* The shell owns the column width; hero and card fill it, so both share the
+   same center line. */
+.login-shell {
+  width: min(420px, 100%);
+}
+
 .login-hero {
   display: grid;
   justify-items: center;
@@ -268,7 +274,6 @@
 }
 
 .login-card {
-  width: min(420px, 100%);
   border-radius: var(--radius);
   background: var(--white);
   box-shadow: 0 18px 44px rgba(13, 26, 51, 0.45);
