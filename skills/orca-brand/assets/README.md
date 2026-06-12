@@ -2,19 +2,24 @@
 
 ## Logos
 
-`logo-navy.png`, `logo-cream.png`, and `logo-orange.png` were derived from the
-flat-background logo exports supplied on 2026-06-11 (the official mark on
-exact brand-color grounds: cream `#F6F1E6` / navy `#0F2149`). The flat
-background was converted to transparency pixel-for-pixel; the mark itself was
-not redrawn or recolored.
+`logo-source.png` is the master emblem supplied on 2026-06-11: 1024×1024,
+single-color mark with a true alpha channel (tail cutout and background are
+transparent). Its fill color is `#D44538`; the brand variants below were
+generated from its alpha mask with the fill normalized to the brand tokens
+(SKILL.md §1) — the geometry was not altered:
 
-**Replace when available:**
+- `logo-navy.png` — `#0F2149`, 1024 px. Light backgrounds (default).
+- `logo-cream.png` — `#F6F1E6`, 1024 px. Navy/dark backgrounds.
+- `logo-orange.png` — `#E0633C`, 1024 px. Accent variant, use sparingly.
 
-- High-resolution transparent exports of the three variants (the current
-  files are ~135 px wide — fine at emblem sizes up to ~56 px, too small for
-  covers or print).
-- `logo-original.png` (the archive source mark referenced in SKILL.md) — not
-  yet supplied.
+256 px copies of the same variants are served by the dashboard from
+`src/dashboard_static/`. To regenerate any variant, recolor
+`logo-source.png`'s RGB channels and keep its alpha.
+
+**Still missing:**
+
+- `logo-original.png` (the archive "source navy mark on black" referenced in
+  SKILL.md) — not yet supplied.
 
 ## Fonts
 
