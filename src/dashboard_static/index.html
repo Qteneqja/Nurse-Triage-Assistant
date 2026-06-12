@@ -3,19 +3,25 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Voice Decision Support Platform</title>
+    <title>ORCA Intake Dashboard</title>
+    <link rel="icon" type="image/png" href="/dashboard/static/logo-navy.png" />
+    <link rel="stylesheet" href="/dashboard/static/brand.css" />
     <link rel="stylesheet" href="/dashboard/static/dashboard.css" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-mark">VD</span>
-          <div>
-            <strong>Voice Decision</strong>
-            <span>Support Platform</span>
-          </div>
-        </div>
+        <a class="brand-lockup" href="/dashboard">
+          <img
+            class="brand-emblem"
+            src="/dashboard/static/logo-cream.png"
+            alt="ORCA — whale tail emblem"
+          />
+          <span>
+            <span class="brand-wordmark">ORCA</span>
+            <span class="brand-descriptor">AI Phone Intake</span>
+          </span>
+        </a>
         <nav class="nav">
           <a href="/dashboard" data-route="/dashboard">Overview</a>
           <a href="/dashboard/records" data-route="/dashboard/records">Records</a>
@@ -23,12 +29,13 @@
           <a href="/dashboard/sessions" data-route="/dashboard/sessions">Sessions</a>
           <a href="/dashboard/actions" data-route="/dashboard/actions">Actions</a>
         </nav>
+        <p class="sidebar-tagline">Every call answered. Every detail captured.</p>
       </aside>
       <main class="main">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Admin dashboard</p>
-            <h1 id="page-title">Voice Decision Support Platform</h1>
+            <p class="eyebrow">ORCA Intake Dashboard</p>
+            <h1 id="page-title">Overview</h1>
           </div>
           <div class="token-control">
             <label for="token-input">Admin token</label>

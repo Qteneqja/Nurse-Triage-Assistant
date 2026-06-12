@@ -1,104 +1,67 @@
-:root {
-  color-scheme: light;
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --ink: #18212f;
-  --muted: #667085;
-  --line: #d9dee7;
-  --sidebar: #202735;
-  --sidebar-ink: #f7f9fc;
-  --blue: #2f6fed;
-  --teal: #0f8b8d;
-  --amber: #a86400;
-  --rose: #b42318;
-  --green: #287a49;
-  --shadow: 0 12px 28px rgba(16, 24, 40, 0.08);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-}
+/* Dashboard layout. Theming (tokens, type, components) comes from brand.css —
+   import order in each page is brand.css first, then this file. Keep hex
+   values out of here; use the brand tokens. */
 
 * {
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--ink);
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-button,
-input,
-select {
-  font: inherit;
-}
-
 .app-shell {
   display: grid;
   min-height: 100vh;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 264px minmax(0, 1fr);
 }
+
+/* --- Sidebar: deep navy ground, cream lockup ------------------------------- */
 
 .sidebar {
-  background: var(--sidebar);
-  color: var(--sidebar-ink);
-  padding: 24px 18px;
-}
-
-.brand {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 28px;
+  flex-direction: column;
+  gap: 26px;
+  background: var(--deep);
+  color: var(--cream);
+  padding: 26px 20px;
 }
 
-.brand-mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
-  background: #2f6fed;
-  font-weight: 750;
-}
-
-.brand strong,
-.brand span {
-  display: block;
-}
-
-.brand span {
-  color: #c7ceda;
-  font-size: 13px;
+.sidebar .brand-lockup {
+  color: var(--cream);
 }
 
 .nav {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .nav a {
-  border-radius: 8px;
-  color: #d9dee7;
-  padding: 10px 12px;
+  border-left: 2px solid transparent;
+  border-radius: 0 8px 8px 0;
+  color: rgba(246, 241, 230, 0.82);
+  padding: 10px 14px;
 }
 
-.nav a.active,
 .nav a:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
+  background: rgba(246, 241, 230, 0.08);
+  color: var(--cream);
 }
+
+.nav a.active {
+  border-left-color: var(--orange);
+  background: rgba(246, 241, 230, 0.08);
+  color: var(--cream);
+}
+
+.sidebar-tagline {
+  margin-top: auto;
+  color: rgba(246, 241, 230, 0.6);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* --- Main column ------------------------------------------------------------ */
 
 .main {
   min-width: 0;
-  padding: 26px;
+  padding: 28px;
 }
 
 .topbar {
@@ -110,29 +73,16 @@ select {
 }
 
 .eyebrow {
-  margin: 0 0 4px;
-  color: var(--muted);
-  font-size: 13px;
+  margin: 0 0 6px;
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 
-h1,
-h2,
-h3,
-p {
-  margin-top: 0;
-}
-
-h1 {
+.topbar h1 {
   margin-bottom: 0;
-  font-size: 28px;
-}
-
-h2 {
-  font-size: 19px;
-}
-
-h3 {
-  font-size: 15px;
 }
 
 .token-control {
@@ -144,36 +94,35 @@ h3 {
 .token-control label {
   display: grid;
   gap: 5px;
-  color: var(--muted);
+  color: var(--slate);
   font-size: 12px;
 }
 
 .token-control input,
 .filters select,
-.filters input {
+.filters input,
+.status-buttons input {
   min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
-  color: var(--ink);
+  background: var(--white);
+  color: var(--navy);
   padding: 8px 10px;
 }
 
-.token-control button,
-.button {
+.token-control button {
   min-height: 38px;
-  border: 1px solid #2f6fed;
+  border: 1px solid var(--navy);
   border-radius: 8px;
-  background: #2f6fed;
-  color: #ffffff;
+  background: var(--navy);
+  color: var(--cream);
   cursor: pointer;
-  padding: 8px 12px;
+  padding: 8px 14px;
+  font-weight: 600;
 }
 
-.button.secondary {
-  border-color: var(--line);
-  background: #ffffff;
-  color: var(--ink);
+.token-control button:hover {
+  background: var(--deep);
 }
 
 .content {
@@ -187,54 +136,6 @@ h3 {
   gap: 12px;
 }
 
-.stat-card,
-.panel,
-.empty-state,
-.action-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.stat-card {
-  min-height: 110px;
-  padding: 16px;
-}
-
-.stat-card span {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.stat-card strong {
-  display: block;
-  margin-top: 14px;
-  font-size: 28px;
-}
-
-.panel {
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid var(--line);
-  padding: 15px 16px;
-}
-
-.panel-header h2,
-.panel-header h3 {
-  margin: 0;
-}
-
-.panel-body {
-  padding: 16px;
-}
-
 .filters {
   display: grid;
   grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
@@ -245,89 +146,26 @@ h3 {
 .filters label {
   display: grid;
   gap: 5px;
-  color: var(--muted);
+  color: var(--slate);
   font-size: 12px;
+}
+
+.filters .checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
 }
 
 .table-wrap {
   overflow-x: auto;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
+.table-wrap table {
   min-width: 780px;
-}
-
-th,
-td {
-  border-bottom: 1px solid var(--line);
-  padding: 12px 14px;
-  text-align: left;
-  vertical-align: top;
-}
-
-th {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-  text-transform: uppercase;
-}
-
-td {
-  font-size: 14px;
 }
 
 .summary-cell {
   max-width: 360px;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  border-radius: 6px;
-  padding: 3px 8px;
-  background: #eef2f7;
-  color: #344054;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.badge.healthcare {
-  background: #e9f6f6;
-  color: #08676a;
-}
-
-.badge.property_management {
-  background: #fff4df;
-  color: #8a4b00;
-}
-
-.badge.urgent,
-.badge.er_now,
-.badge.emergency {
-  background: #fde8e7;
-  color: var(--rose);
-}
-
-.badge.same_day,
-.badge.urgent-soft {
-  background: #fff4df;
-  color: var(--amber);
-}
-
-.badge.schedule,
-.badge.scheduled_repair,
-.badge.self_care,
-.badge.information_only,
-.badge.ended {
-  background: #eaf6ee;
-  color: var(--green);
 }
 
 .detail-grid {
@@ -340,63 +178,6 @@ td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-}
-
-.kv {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.kv span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.kv strong {
-  display: block;
-  margin-top: 4px;
-  word-break: break-word;
-}
-
-.json-block,
-.turn-list {
-  max-height: 420px;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcfe;
-}
-
-.json-block {
-  margin: 0;
-  padding: 12px;
-  color: #263044;
-  font-size: 12px;
-  white-space: pre-wrap;
-}
-
-.turn {
-  border-bottom: 1px solid var(--line);
-  padding: 12px;
-}
-
-.turn:last-child {
-  border-bottom: 0;
-}
-
-.turn-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 7px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.turn p {
-  margin: 4px 0;
 }
 
 .actions-grid {
@@ -421,18 +202,135 @@ td {
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #ffffff;
-  color: var(--muted);
+  background: var(--white);
+  color: var(--navy);
+  cursor: pointer;
   padding: 6px 10px;
 }
 
-.error {
-  border: 1px solid #fecdca;
-  border-radius: 8px;
-  background: #fff1f0;
-  color: #7a271a;
-  padding: 14px;
+.action-buttons button:hover {
+  background: var(--cream);
 }
+
+/* --- Intake records (PR 4) ---------------------------------------------------- */
+
+.record-flagged {
+  background: rgba(224, 99, 60, 0.06);
+}
+
+.record-flagged td:first-child {
+  box-shadow: inset 3px 0 0 var(--orange);
+}
+
+.status-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.status-buttons label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 4px;
+  color: var(--slate);
+}
+
+/* Legacy hooks kept for compatibility; styling comes from .alert-banner /
+   .preview-banner in brand.css. */
+.injury-banner,
+.urgent-banner {
+  margin-bottom: 16px;
+}
+
+/* --- Login page (PR 4.2; external CSS — app CSP is style-src 'self') ---------- */
+
+.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  background: var(--deep);
+  padding: 24px;
+}
+
+/* The shell owns the column width; hero and card fill it, so both share the
+   same center line. */
+.login-shell {
+  width: min(420px, 100%);
+}
+
+.login-hero {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin-bottom: 26px;
+  color: var(--cream);
+  text-align: center;
+}
+
+.login-hero .brand-emblem {
+  height: 56px;
+}
+
+.login-card {
+  border-radius: var(--radius);
+  background: var(--white);
+  box-shadow: 0 18px 44px rgba(13, 26, 51, 0.45);
+  padding: 32px;
+}
+
+.login-card h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+}
+
+.login-card p {
+  color: var(--slate);
+  font-size: 14.5px;
+  margin: 0 0 20px;
+}
+
+.login-card label {
+  display: block;
+  color: var(--slate);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--navy);
+  box-sizing: border-box;
+}
+
+.login-card button {
+  width: 100%;
+  padding: 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--navy);
+  color: var(--cream);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-card button:hover {
+  background: var(--deep);
+}
+
+.login-error {
+  color: var(--navy);
+  font-weight: 600;
+  font-size: 13px;
+  min-height: 18px;
+}
+
+/* --- Responsive ----------------------------------------------------------------- */
 
 @media (max-width: 1050px) {
   .app-shell {
@@ -443,20 +341,31 @@ td {
     position: sticky;
     top: 0;
     z-index: 2;
-    display: flex;
+    flex-direction: row;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 14px 18px;
+    padding: 12px 18px;
   }
 
-  .brand {
-    margin: 0;
+  .sidebar-tagline {
+    display: none;
   }
 
   .nav {
     display: flex;
     flex-wrap: wrap;
+  }
+
+  .nav a {
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .nav a.active {
+    border-left: 0;
+    border-bottom-color: var(--orange);
   }
 
   .stats-grid {
@@ -488,75 +397,4 @@ td {
   .kv-grid {
     grid-template-columns: 1fr;
   }
-}
-
-/* PR 4 — intake records */
-.record-flagged {
-  background: rgba(220, 53, 69, 0.08);
-  border-left: 4px solid #dc3545;
-}
-.injury-banner {
-  background: #dc3545;
-  color: #fff;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-.injury-banner.urgent-banner {
-  background: #e67700;
-}
-.status-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-end;
-}
-.status-buttons label {
-  display: flex;
-  flex-direction: column;
-  font-size: 12px;
-  gap: 4px;
-}
-.filters .checkbox {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-}
-
-/* PR 4.2 — login page (external CSS: CSP is style-src 'self') */
-.login-wrap {
-  max-width: 420px;
-  margin: 12vh auto;
-  padding: 32px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-}
-.login-wrap h1 { font-size: 20px; margin: 0 0 4px; }
-.login-wrap p { color: #667085; font-size: 14px; margin: 0 0 20px; }
-.login-wrap label { display: block; font-size: 13px; margin-bottom: 6px; }
-.login-wrap input {
-  width: 100%;
-  padding: 10px 12px;
-  margin-bottom: 16px;
-  border: 1px solid #d0d5dd;
-  border-radius: 8px;
-  box-sizing: border-box;
-}
-.login-wrap button {
-  width: 100%;
-  padding: 10px;
-  border: 0;
-  border-radius: 8px;
-  background: #1d4ed8;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-}
-.login-error { color: #b42318; font-size: 13px; min-height: 18px; }
-
-/* Enrichment shadow-mode preview */
-.preview-banner {
-  background: #6d28d9;
 }
