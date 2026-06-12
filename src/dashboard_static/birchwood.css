@@ -34,13 +34,21 @@
   background: rgba(246, 241, 230, 0.25);
 }
 
-.bw-client-name {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1.1;
-  color: var(--cream);
+/* The Birchwood mark is black-on-transparent, so it sits on a white plate
+   (its native ground) rather than being recolored. Plate padding = the
+   logo's clear space. */
+.bw-client-chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--white);
+  border-radius: 8px;
+  padding: 9px 16px;
+}
+
+.bw-client-logo {
+  height: 30px;
+  width: auto;
+  display: block;
 }
 
 .bw-client-kicker {
