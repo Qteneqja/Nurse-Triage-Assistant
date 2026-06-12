@@ -1,0 +1,406 @@
+/* Birchwood Collision pitch dashboard — layout only. All theming (tokens,
+   type, components) comes from brand.css; import order is brand.css first.
+   No hex values here — brand tokens only. */
+
+* {
+  box-sizing: border-box;
+}
+
+.bw-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* --- Co-branded header: ORCA lockup + Birchwood identity ------------------- */
+
+.bw-header {
+  background: var(--deep);
+  color: var(--cream);
+  padding: 18px 28px;
+}
+
+.bw-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.bw-divider {
+  width: 1px;
+  height: 46px;
+  background: rgba(246, 241, 230, 0.25);
+}
+
+.bw-client-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--cream);
+}
+
+.bw-client-kicker {
+  margin: 3px 0 0;
+  color: var(--orange);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* --- Main column -------------------------------------------------------------- */
+
+.bw-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 26px 28px 40px;
+}
+
+.bw-content {
+  display: grid;
+  gap: 18px;
+}
+
+.bw-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 0;
+}
+
+.bw-section-head h2 {
+  margin: 0;
+}
+
+.bw-sample-note {
+  color: var(--slate);
+  font-size: 13px;
+}
+
+/* --- Top band: the day at a glance ---------------------------------------------- */
+
+.bw-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bw-stat-accent strong {
+  color: var(--orange); /* the day's flag count — the view's orange accent */
+}
+
+.stat-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--slate);
+  font-size: 12.5px;
+}
+
+/* --- Records table ---------------------------------------------------------------- */
+
+.bw-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.bw-filters label {
+  display: grid;
+  gap: 5px;
+  color: var(--slate);
+  font-size: 12px;
+}
+
+.bw-filters select,
+.bw-filters input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--navy);
+  padding: 8px 10px;
+}
+
+.bw-filters .checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table-wrap table {
+  min-width: 980px;
+}
+
+th.bw-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.bw-sortable:hover {
+  color: var(--navy);
+}
+
+.bw-row-flagged {
+  background: rgba(224, 99, 60, 0.06);
+}
+
+.bw-row-flagged td:first-child {
+  box-shadow: inset 3px 0 0 var(--orange);
+}
+
+/* --- Record detail ------------------------------------------------------------------- */
+
+.bw-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  gap: 18px;
+}
+
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.status-row label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 4px;
+  color: var(--slate);
+}
+
+.status-row input {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--navy);
+  padding: 8px 10px;
+}
+
+/* --- Insights band: charts ------------------------------------------------------------ */
+
+.bw-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.bw-chart-note {
+  margin: 0 0 12px;
+  color: var(--slate);
+  font-size: 13px;
+}
+
+/* Vertical bars (volume by weekday / hour) */
+.bw-bars-v {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 150px;
+}
+
+.bw-bar-v {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.bw-bar-v .bar {
+  width: 100%;
+  max-width: 42px;
+  background: var(--navy);
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+
+.bw-bar-v .val {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.bw-bar-v .lbl {
+  color: var(--slate);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* Horizontal bars (damage areas / insurers) */
+.bw-bars-h {
+  display: grid;
+  gap: 9px;
+}
+
+.bw-bar-h {
+  display: grid;
+  grid-template-columns: 110px 1fr 34px;
+  align-items: center;
+  gap: 10px;
+}
+
+.bw-bar-h .lbl {
+  color: var(--slate);
+  font-size: 13px;
+}
+
+.bw-bar-h .track {
+  height: 14px;
+  border-radius: 7px;
+  background: var(--cream);
+}
+
+.bw-bar-h .fill {
+  height: 100%;
+  border-radius: 7px;
+  background: var(--navy);
+  min-width: 2px;
+}
+
+.bw-bar-h .val {
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: right;
+}
+
+/* Split bar (drivable vs towed) */
+.bw-split {
+  display: flex;
+  height: 26px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.bw-split .seg-a {
+  background: var(--navy);
+}
+
+.bw-split .seg-b {
+  background: var(--slate);
+}
+
+.bw-split-legend {
+  display: flex;
+  gap: 18px;
+  margin-top: 10px;
+  color: var(--slate);
+  font-size: 13px;
+}
+
+.bw-split-legend .dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.bw-split-legend .dot.a {
+  background: var(--navy);
+}
+
+.bw-split-legend .dot.b {
+  background: var(--slate);
+}
+
+/* Value stat tiles inside insights */
+.bw-value-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* --- Footer value strip ------------------------------------------------------------------ */
+
+.bw-footer {
+  background: var(--deep);
+  color: var(--cream);
+  padding: 18px 28px;
+  text-align: center;
+}
+
+.bw-footer-tagline {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.bw-footer-value {
+  margin: 4px 0 0;
+  color: rgba(246, 241, 230, 0.75);
+  font-size: 13.5px;
+}
+
+/* --- Responsive ---------------------------------------------------------------------------- */
+
+@media (max-width: 1050px) {
+  .bw-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bw-charts {
+    grid-template-columns: 1fr;
+  }
+
+  .bw-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kv-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .bw-main {
+    padding: 18px;
+  }
+
+  .bw-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bw-header-inner {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .bw-divider {
+    display: none;
+  }
+
+  .bw-stats,
+  .kv-grid,
+  .bw-value-tiles {
+    grid-template-columns: 1fr;
+  }
+}
