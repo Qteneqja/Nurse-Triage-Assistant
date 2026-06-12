@@ -7,6 +7,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
@@ -746,7 +747,10 @@ def _gated_shell_response(request: Request, shell_file: Path):
     )
     if expected and token and hmac.compare_digest(token, expected):
         return FileResponse(shell_file)
-    return RedirectResponse(url="/dashboard/login", status_code=302)
+    # Send the requested path along so the login page can return the browser
+    # to the view it asked for (e.g. /dashboard/birchwood) after sign-in.
+    next_path = quote(request.url.path, safe="/")
+    return RedirectResponse(url=f"/dashboard/login?next={next_path}", status_code=302)
 
 
 def _call_row(repo: Any, session: OrchestratorSession) -> dict[str, Any]:
