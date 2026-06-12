@@ -1,0 +1,516 @@
+/* ============================================================================
+   ORCA brand system — shared presentation layer.
+   Source of truth: skills/orca-brand/SKILL.md. Usage: docs/BRAND_USAGE.md.
+
+   Every client-facing view imports this file FIRST, then adds its own
+   layout-only stylesheet. Components here use the brand tokens exclusively —
+   never hardcode hex values in view stylesheets.
+
+   Color balance: ~70% navy / ~22% cream / ~8% orange. Orange is an accent
+   only — one highlight per view (the urgent flag, the kicker on a dark
+   ground). Never an orange fill, never orange body text.
+
+   Contrast (WCAG 2.1): cream-on-navy and navy-on-cream ~14:1 (AAA);
+   slate-on-cream ~5.1:1 (AA); orange-on-navy ~4.5:1 (AA). Orange on cream
+   or white is ~3:1 — large/decorative use only, never small text.
+   ========================================================================= */
+
+/* --- Fonts (bundled, SIL OFL — see fonts/OFL-*.txt in skill assets) ------ */
+
+@font-face {
+  font-family: "Playfair Display";
+  src: url("fonts/PlayfairDisplay.ttf") format("truetype-variations");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Playfair Display";
+  src: url("fonts/PlayfairDisplay-Italic.ttf") format("truetype-variations");
+  font-weight: 400 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("fonts/SourceSans3.ttf") format("truetype-variations");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("fonts/SourceSans3-Italic.ttf") format("truetype-variations");
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --- Tokens --------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+  --navy: #0f2149;
+  --deep: #0d1a33;
+  --cream: #f6f1e6;
+  --orange: #e0633c;
+  --slate: #5d6675;
+  --line: #e3e0d6;
+  --white: #ffffff;
+
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+
+  --radius: 10px;
+  --shadow: 0 10px 26px rgba(13, 26, 51, 0.07);
+
+  font-family: var(--font-body);
+}
+
+/* --- Base type ------------------------------------------------------------ */
+
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--navy);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  color: var(--navy);
+  margin-top: 0;
+  font-variant-numeric: lining-nums;
+}
+
+h1 {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+p {
+  margin-top: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.muted {
+  color: var(--slate);
+}
+
+:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+/* --- Kicker labels ---------------------------------------------------------
+   Source Sans 700, uppercase, tracked. On light grounds use the slate kicker
+   (orange on cream is ~3:1 — fails AA at label sizes). The orange kicker is
+   reserved for navy/deep grounds, where it clears AA. */
+
+.kicker {
+  margin: 0;
+  color: var(--slate);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.kicker-accent {
+  color: var(--orange); /* dark grounds only */
+}
+
+/* --- Logo lockup ------------------------------------------------------------
+   Emblem -> wordmark "ORCA" -> descriptor "AI PHONE INTAKE".
+   Use logo-cream.png on navy/deep, logo-navy.png on cream/white. Clear space:
+   at least half the emblem's height on all sides (the lockup's padding).
+   Minimum emblem 24px; never place the navy emblem on navy. */
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0;
+}
+
+.brand-emblem {
+  height: 44px;
+  width: auto;
+}
+
+.brand-wordmark {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.brand-descriptor {
+  display: block;
+  margin-top: 2px;
+  color: var(--orange); /* lockup sits on a dark ground */
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* --- Buttons ---------------------------------------------------------------- */
+
+.button,
+button.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border: 1px solid var(--navy);
+  border-radius: 8px;
+  background: var(--navy);
+  color: var(--cream);
+  cursor: pointer;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
+.button:hover,
+button.button:hover {
+  background: var(--deep);
+  border-color: var(--deep);
+}
+
+.button.secondary {
+  border-color: var(--line);
+  background: var(--white);
+  color: var(--navy);
+}
+
+.button.secondary:hover {
+  background: var(--cream);
+}
+
+.button:disabled,
+button.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* --- Inputs ------------------------------------------------------------------ */
+
+.field input,
+.field select,
+input.field,
+select.field {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--navy);
+  padding: 8px 10px;
+}
+
+/* --- Cards / panels ----------------------------------------------------------- */
+
+.panel,
+.stat-card,
+.empty-state,
+.action-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.panel {
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 15px 18px;
+}
+
+.panel-header h2,
+.panel-header h3 {
+  margin: 0;
+}
+
+.panel-body {
+  padding: 18px;
+}
+
+.stat-card {
+  min-height: 110px;
+  padding: 16px;
+}
+
+.stat-card span {
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.stat-card strong {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: lining-nums;
+}
+
+.empty-state {
+  padding: 22px;
+}
+
+.empty-state h2,
+.empty-state h3 {
+  margin-bottom: 6px;
+}
+
+/* --- Tables -------------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+td {
+  font-size: 14.5px;
+}
+
+/* --- Badges -----------------------------------------------------------------------
+   Palette only — no semantic greens/reds. The urgent family carries the view's
+   single orange accent (a dot on a navy fill; cream text stays ~14:1). */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--cream);
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.badge.ended,
+.badge.completed,
+.badge.completed_intake,
+.badge.information_only,
+.badge.self_care {
+  color: var(--slate);
+}
+
+.badge.urgent,
+.badge.injury,
+.badge.er_now,
+.badge.emergency,
+.badge.same_day,
+.badge.escalated,
+.badge.urgent-soft {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: var(--cream);
+}
+
+.badge.urgent::before,
+.badge.injury::before,
+.badge.er_now::before,
+.badge.emergency::before,
+.badge.same_day::before,
+.badge.escalated::before,
+.badge.urgent-soft::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--orange);
+  flex: none;
+}
+
+/* --- Alert banners -------------------------------------------------------------------
+   Navy ground, cream copy, orange kicker + edge: the one orange highlight on
+   record views. Unmistakable without flooding the page. */
+
+.alert-banner {
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  background: var(--navy);
+  color: var(--cream);
+  padding: 14px 18px;
+}
+
+.alert-banner .alert-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.alert-banner p {
+  margin: 0;
+}
+
+/* Preview / shadow-mode banner: slate marks "not committed" work — clearly
+   distinct from the navy urgent banner. Dashed edge = provisional. */
+
+.preview-banner {
+  border-left: 4px dashed var(--line);
+  border-radius: 8px;
+  background: var(--slate);
+  color: var(--white);
+  padding: 14px 18px;
+}
+
+.preview-banner .alert-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--white);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.preview-banner p {
+  margin: 0;
+}
+
+/* --- Key-value tiles ------------------------------------------------------------------- */
+
+.kv {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--white);
+  padding: 10px 12px;
+}
+
+.kv span {
+  display: block;
+  color: var(--slate);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.kv strong {
+  display: block;
+  margin-top: 4px;
+  word-break: break-word;
+}
+
+/* --- Transcript / log lists ----------------------------------------------------------------- */
+
+.json-block,
+.turn-list {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--cream);
+}
+
+.json-block {
+  margin: 0;
+  padding: 12px;
+  color: var(--navy);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.turn {
+  border-bottom: 1px solid var(--line);
+  background: var(--white);
+  padding: 12px;
+}
+
+.turn:last-child {
+  border-bottom: 0;
+}
+
+.turn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  color: var(--slate);
+  font-size: 12px;
+}
+
+.turn p {
+  margin: 4px 0;
+}
+
+/* --- Errors ------------------------------------------------------------------------------------
+   No red in the palette: errors are a white card with the orange edge. */
+
+.error {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--navy);
+  padding: 14px 18px;
+}

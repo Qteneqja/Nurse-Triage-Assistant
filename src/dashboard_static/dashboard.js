@@ -108,8 +108,8 @@ function sessionTable(sessions) {
   if (!sessions.length) {
     return `
       <div class="empty-state">
-        <h3>No sessions found</h3>
-        <p class="muted">Sessions will appear here after voice calls are created.</p>
+        <h3>No sessions yet</h3>
+        <p class="muted">Sessions appear here as soon as a call comes in.</p>
       </div>
     `;
   }
@@ -163,7 +163,7 @@ function sessionTable(sessions) {
 }
 
 async function renderOverview() {
-  setTitle("Voice Decision Support Platform");
+  setTitle("Overview");
   content.innerHTML = '<div class="panel"><div class="panel-body">Loading overview...</div></div>';
   const summary = await api("/summary");
   const healthcare = summary.sessions_by_vertical.healthcare || 0;
@@ -410,8 +410,8 @@ async function renderActions() {
   if (!finalized.length) {
     content.innerHTML = `
       <section class="empty-state">
-        <h2>Proposed actions</h2>
-        <p class="muted">Placeholder post-call actions appear here after a workflow is finalized.</p>
+        <h2>No proposed actions yet</h2>
+        <p class="muted">Follow-up actions appear here after a call is finalized. Nothing runs without your approval.</p>
       </section>
     `;
     return;
@@ -476,8 +476,8 @@ function recordsTable(records) {
   if (!records.length) {
     return `
       <div class="empty-state">
-        <h3>No intake records found</h3>
-        <p class="muted">Records appear here after calls complete.</p>
+        <h3>No records yet</h3>
+        <p class="muted">Records appear here after each call completes.</p>
       </div>
     `;
   }
@@ -537,7 +537,7 @@ async function renderRecords() {
   const statusValue = params.get("record_status") || "";
   content.innerHTML = `
     <section class="panel">
-      <div class="panel-header"><h2>Intake records (${escapeHtml(data.total_matched)})</h2></div>
+      <div class="panel-header"><h2>${escapeHtml(data.total_matched)} intake ${data.total_matched === 1 ? "record" : "records"}</h2></div>
       <div class="panel-body">
         <form class="filters" id="record-filters">
           <label>Status
@@ -633,9 +633,15 @@ async function renderRecordDetail() {
   const record = detail.record || {};
   const intake = detail.intake_record || {};
   const banner = record.injury_flagged
-    ? '<div class="injury-banner">INJURY REPORTED — caller was advised to seek medical attention / 9-1-1. Review before contact.</div>'
+    ? `<div class="alert-banner injury-banner">
+         <span class="alert-kicker">Injury reported</span>
+         <p>The caller was advised to seek medical attention or call 9-1-1. Review this record before you make contact.</p>
+       </div>`
     : record.urgent
-      ? '<div class="injury-banner urgent-banner">URGENT — review and act promptly.</div>'
+      ? `<div class="alert-banner urgent-banner">
+           <span class="alert-kicker">Urgent</span>
+           <p>Review this record and act promptly.</p>
+         </div>`
       : "";
 
   content.innerHTML = `
@@ -745,16 +751,17 @@ async function renderEnrichment() {
     sampleLabel = agg.sample_size ?? 0;
     insightsBody = agg.status === "ok"
       ? jsonBlock(agg)
-      : `<p class="muted">Insufficient data for reliable insights: ${escapeHtml(agg.detail || "")} (sample size ${escapeHtml(agg.sample_size)})</p>`;
+      : `<p class="muted">${escapeHtml(agg.sample_size)} ${agg.sample_size === 1 ? "call" : "calls"} in the sample — not enough yet for reliable insights. ${escapeHtml(agg.detail || "")}</p>`;
   } catch (error) {
     insightsBody = `<p class="muted">Insights unavailable (HTTP ${escapeHtml(error.status ?? "?")}): ${escapeHtml(error.message)}</p>`;
   }
   content.innerHTML = `
-    <div class="injury-banner preview-banner">
-      ENRICHMENT PREVIEW — shadow mode. Nothing here is part of the core pilot record; drafts require human approval and are never auto-sent.
+    <div class="preview-banner">
+      <span class="alert-kicker">Preview — shadow mode</span>
+      <p>Nothing on this page is part of the core pilot record. Drafts need your approval and are never sent automatically.</p>
     </div>
-    ${panel(`Aggregate insights (sample: ${escapeHtml(sampleLabel)} calls)`, insightsBody)}
-    ${panel(`Recent enrichment outputs (${escapeHtml(recent.count)})`, `
+    ${panel(`${escapeHtml(sampleLabel)} ${sampleLabel === 1 ? "call" : "calls"} analyzed — aggregate insights`, insightsBody)}
+    ${panel(`${escapeHtml(recent.count)} recent enrichment ${recent.count === 1 ? "output" : "outputs"}`, `
       <div class="turn-list">
         ${(recent.results || []).map(enrichmentCard).join("") || '<p class="muted">No enrichment outputs yet.</p>'}
       </div>

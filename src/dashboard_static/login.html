@@ -3,17 +3,32 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Dashboard sign-in</title>
+    <title>Sign in · ORCA Intake Dashboard</title>
+    <link rel="icon" type="image/png" href="/dashboard/static/logo-navy.png" />
+    <link rel="stylesheet" href="/dashboard/static/brand.css" />
     <link rel="stylesheet" href="/dashboard/static/dashboard.css" />
   </head>
-  <body>
-    <div class="login-wrap">
-      <h1>Voice Decision Support Platform</h1>
-      <p>Enter the dashboard admin token to continue.</p>
-      <label for="login-token">Admin token</label>
-      <input id="login-token" type="password" autocomplete="off" autofocus />
-      <p class="login-error" id="login-error"></p>
-      <button id="login-submit" type="button">Sign in</button>
+  <body class="login-page">
+    <div>
+      <div class="login-hero">
+        <img
+          class="brand-emblem"
+          src="/dashboard/static/logo-cream.png"
+          alt="ORCA — whale tail emblem"
+        />
+        <span>
+          <span class="brand-wordmark">ORCA</span>
+          <span class="brand-descriptor">AI Phone Intake</span>
+        </span>
+      </div>
+      <div class="login-card">
+        <h1>Sign in</h1>
+        <p>Enter your dashboard admin token. It comes from your deployment config.</p>
+        <label for="login-token">Admin token</label>
+        <input id="login-token" type="password" autocomplete="off" autofocus />
+        <p class="login-error" id="login-error"></p>
+        <button id="login-submit" type="button">Sign in</button>
+      </div>
     </div>
     <script src="/dashboard/static/login.js"></script>
   </body>

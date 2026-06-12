@@ -439,7 +439,7 @@ def test_production_dashboard_shell_blocks_unauthenticated_access(monkeypatch):
     # shell redirects to the unauthenticated login page instead of 401-ing.
     assert response.status_code == 302
     assert response.headers["location"] == "/dashboard/login"
-    assert "Voice Decision Support Platform" not in response.text
+    assert "ORCA Intake Dashboard" not in response.text
 
 
 def test_production_dashboard_login_page_is_reachable_without_auth(monkeypatch):
@@ -457,7 +457,7 @@ def test_production_dashboard_shell_accepts_login_cookie(monkeypatch):
     response = client.get("/dashboard", cookies={"dashboard_token": token})
 
     assert response.status_code == 200
-    assert "Voice Decision Support Platform" in response.text
+    assert "ORCA Intake Dashboard" in response.text
 
 
 def test_production_dashboard_shell_rejects_bad_cookie(monkeypatch):
@@ -479,7 +479,7 @@ def test_production_dashboard_shell_renders_with_valid_auth(monkeypatch):
     response = client.get("/dashboard", headers={"X-Dashboard-Token": token})
 
     assert response.status_code == 200
-    assert "Voice Decision Support Platform" in response.text
+    assert "ORCA Intake Dashboard" in response.text
 
 
 def test_dashboard_shell_returns_disabled_response_when_dashboard_disabled(
@@ -506,7 +506,7 @@ def test_admin_dashboard_shell_and_routes_load(monkeypatch):
     sessions = client.get("/admin/sessions")
 
     assert shell.status_code == 200
-    assert "Voice Decision Support Platform" in shell.text
+    assert "ORCA Intake Dashboard" in shell.text
     assert organizations.status_code == 200
     assert workflows.status_code == 200
     assert sessions.status_code == 200
