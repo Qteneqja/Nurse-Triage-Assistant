@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _STATIC_DIR = Path(__file__).resolve().parents[1] / "dashboard_static"
 _INDEX_FILE = _STATIC_DIR / "index.html"
 _LOGIN_FILE = _STATIC_DIR / "login.html"
+_BIRCHWOOD_FILE = _STATIC_DIR / "birchwood.html"
 _OPENCLAW_STATUSES = [
     "proposed",
     "approved",
@@ -567,6 +568,120 @@ async def update_intake_record_status(
     }
 
 
+# ---------------------------------------------------------------------------
+# Birchwood pitch dashboard (read-only, hard-scoped to automotive_collision).
+# Same rows as /records plus the collision-specific fields the bespoke view
+# renders (drivability, damage, insurer, durations). No write paths here —
+# status changes go through the shared /records/{id}/status endpoint.
+# ---------------------------------------------------------------------------
+
+_BIRCHWOOD_VERTICAL = "automotive_collision"
+
+
+def _intake_duration_seconds(session: OrchestratorSession) -> int | None:
+    record = session.channel_metadata.get("_dashboard_record", {})
+    try:
+        start = datetime.fromisoformat(str(record.get("created_at")))
+        end = datetime.fromisoformat(str(record.get("ended_at")))
+    except (TypeError, ValueError):
+        return None
+    return max(0, int((end - start).total_seconds()))
+
+
+def _birchwood_row(repo: Any, session: OrchestratorSession) -> dict[str, Any]:
+    row = _record_row(repo, session)
+    record = _intake_record_dict(session)
+    collision = {
+        "is_drivable": record.get("is_drivable"),
+        "damage_type": record.get("damage_type"),
+        "damage_area": record.get("damage_area"),
+        "glass_only": record.get("glass_only"),
+        "injuries_state": record.get("injuries_state"),
+        "insurance_provider": record.get("insurance_provider"),
+        "private_pay": record.get("private_pay"),
+        "claim_number_present": bool(record.get("claim_number")),
+        "police_report_filed": record.get("police_report_filed"),
+        "photos_available": record.get("photos_available"),
+        "other_parties": record.get("other_parties"),
+        "incident_datetime": record.get("incident_datetime"),
+        "incident_location": record.get("incident_location"),
+        "preferred_collision_center": record.get("preferred_collision_center"),
+        "preferred_timing": record.get("preferred_timing"),
+    }
+    row["collision"] = mask_dashboard_payload(collision)
+    row["intake_duration_seconds"] = _intake_duration_seconds(session)
+    row["is_demo"] = bool(session.channel_metadata.get("demo_seed"))
+    return row
+
+
+@api_router.get("/birchwood/records")
+async def list_birchwood_records(
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    record_status: str | None = Query(default=None),
+    drivable: bool | None = Query(default=None),
+    injury_flagged: bool | None = Query(default=None),
+    urgent_only: bool = Query(default=False),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+) -> dict[str, Any]:
+    if record_status is not None and record_status not in RECORD_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"record_status must be one of {RECORD_STATUSES}",
+        )
+    from_dt = _parse_date(date_from, field="date_from")
+    to_dt = _parse_date(date_to, field="date_to")
+
+    repo = get_session_repository()
+    sessions = repo.list_recent_sessions(
+        limit=500,
+        vertical_key=_BIRCHWOOD_VERTICAL,
+    )
+    by_id = {s.session_id: s for s in sessions}
+    rows = [
+        _birchwood_row(repo, session)
+        for session in sessions
+        if _vertical_key(session) == _BIRCHWOOD_VERTICAL
+    ]
+
+    if record_status is not None:
+        rows = [r for r in rows if r["record_status"] == record_status]
+    if drivable is not None:
+        rows = [r for r in rows if r["collision"]["is_drivable"] is drivable]
+    if injury_flagged is not None:
+        rows = [r for r in rows if r["injury_flagged"] is injury_flagged]
+    if urgent_only:
+        rows = [r for r in rows if r["urgent"] or r["injury_flagged"]]
+    if from_dt or to_dt:
+        filtered = []
+        for row in rows:
+            created = _created_at_utc(by_id[row["session_id"]])
+            if created is None:
+                continue
+            if from_dt and created < from_dt:
+                continue
+            if to_dt and created > to_dt:
+                continue
+            filtered.append(row)
+        rows = filtered
+
+    rows.sort(
+        key=lambda r: (r["urgency_rank"], r["created_at"] or ""),
+        reverse=True,
+    )
+    total = len(rows)
+    page = rows[offset : offset + limit]
+    return {
+        "count": len(page),
+        "total_matched": total,
+        "limit": limit,
+        "offset": offset,
+        "statuses": RECORD_STATUSES,
+        "records": page,
+    }
+
+
 @api_router.get("/actions")
 async def list_dashboard_actions() -> dict[str, Any]:
     actions: list[ProposedAction] = []
@@ -607,10 +722,21 @@ async def dashboard_shell(request: Request):
     cookie set by the login page (browsers). Data endpoints remain
     header-authenticated and are unaffected by the cookie.
     """
+    return _gated_shell_response(request, _INDEX_FILE)
+
+
+@page_router.get("/dashboard/birchwood", include_in_schema=False)
+@page_router.get("/dashboard/birchwood/records/{session_id}", include_in_schema=False)
+async def birchwood_shell(request: Request):
+    """Serve the Birchwood Collision pitch shell behind the same gate."""
+    return _gated_shell_response(request, _BIRCHWOOD_FILE)
+
+
+def _gated_shell_response(request: Request, shell_file: Path):
     require_dashboard_shell_enabled()
     env = (config.APP_ENV or config.ENVIRONMENT).lower()
     if env in {"development", "test"}:
-        return FileResponse(_INDEX_FILE)
+        return FileResponse(shell_file)
 
     expected = config.DASHBOARD_ADMIN_TOKEN
     token = (
@@ -619,7 +745,7 @@ async def dashboard_shell(request: Request):
         or request.cookies.get("dashboard_token")
     )
     if expected and token and hmac.compare_digest(token, expected):
-        return FileResponse(_INDEX_FILE)
+        return FileResponse(shell_file)
     return RedirectResponse(url="/dashboard/login", status_code=302)
 
 
