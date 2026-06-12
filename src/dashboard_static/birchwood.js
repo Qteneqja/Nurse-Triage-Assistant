@@ -426,20 +426,43 @@ function mountCharts(list) {
 
   const drivable = list.filter((r) => r.collision?.is_drivable === true).length;
   const towed = list.filter((r) => r.collision?.is_drivable === false).length;
+  const noDrivability = list.length - drivable - towed;
   splitBar(document.getElementById("c-split"), drivable, towed);
   document.getElementById("c-split-legend").innerHTML = `
     <span><span class="dot a"></span>Drivable — ${drivable}</span>
     <span><span class="dot b"></span>Towed / not drivable — ${towed}</span>
+    ${noDrivability > 0 ? `<span class="muted">drivability not captured on ${noDrivability}</span>` : ""}
   `;
 
   const areaNames = { front: "Front", rear: "Rear", side: "Side", multi: "Multiple areas", glass: "Glass only", other: "Other", unknown: "Unknown" };
   const damage = [...countBy(list, (r) => damageArea(r)).entries()]
-    .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => [areaNames[k] || k, v]);
-  horizontalBars(document.getElementById("c-damage"), damage);
+  mountCategoryBars("c-damage", damage, "Damage area");
 
-  const insurers = [...countBy(list, insurerLabel).entries()].sort((a, b) => b[1] - a[1]);
-  horizontalBars(document.getElementById("c-insurer"), insurers);
+  const insurers = [...countBy(list, insurerLabel).entries()];
+  mountCategoryBars("c-insurer", insurers, "Insurer");
+}
+
+// Placeholder categories never headline a chart: known values sort first and
+// uncaptured ones collapse into an honest footnote instead of a giant
+// "Unknown" bar.
+const UNCAPTURED_LABELS = new Set(["Unknown", "unknown", "n/a", ""]);
+
+function mountCategoryBars(containerId, entries, noun) {
+  const container = document.getElementById(containerId);
+  const known = entries
+    .filter(([label]) => !UNCAPTURED_LABELS.has(label))
+    .sort((a, b) => b[1] - a[1]);
+  const uncaptured = entries
+    .filter(([label]) => UNCAPTURED_LABELS.has(label))
+    .reduce((sum, [, value]) => sum + value, 0);
+  horizontalBars(container, known);
+  if (uncaptured > 0) {
+    const note = document.createElement("p");
+    note.className = "bw-chart-footnote";
+    note.textContent = `${noun} not captured on ${uncaptured} ${uncaptured === 1 ? "call" : "calls"}.`;
+    container.append(note);
+  }
 }
 
 function renderValueLine(list) {
@@ -548,6 +571,83 @@ function panel(title, body) {
       <div class="panel-header"><h2>${escapeHtml(title)}</h2></div>
       <div class="panel-body">${body}</div>
     </section>
+  `;
+}
+
+// --- Safety events, in plain language ------------------------------------------
+// The deterministic rules are unchanged — this only relabels the display.
+// Unknown flags fall back to a clean generic line; raw JSON lives behind the
+// "Technical details" expander, never as the default view.
+
+const SAFETY_COPY = {
+  injuries_reported:
+    "Caller mentioned possible injuries — the safety advisory was given and the record is flagged for priority review.",
+  injury_advisory:
+    "Caller mentioned possible injuries — the safety advisory was given and the record is flagged for priority review.",
+  non_drivable_transfer:
+    "Vehicle reported not drivable — recommended transfer to the collision center.",
+  glass_only_transfer:
+    "Glass-only damage — routed to the glass department.",
+  caller_requested_transfer:
+    "Caller asked to speak with a person — a transfer was offered.",
+  missing_claim_number:
+    "Claim number not captured — a callback is needed to complete the file.",
+  callback_needed:
+    "A callback is needed to complete this intake.",
+  possible_duplicate:
+    "Looks like a possible duplicate of an earlier call — worth checking before contact.",
+  rebuilt_salvage_declined:
+    "Caller declined the rebuilt/salvage question — flagged for staff review.",
+  staff_review_rebuilt_status:
+    "Rebuilt or salvage title reported — staff review suggested before the estimate.",
+  luxury_auto_assigned:
+    "Luxury brand — routed to the luxury collision location.",
+  vehicle_year_declined:
+    "Caller declined to share the vehicle year.",
+  multiple_vehicles:
+    "More than one vehicle was involved.",
+  readback_correction:
+    "Caller corrected a detail during read-back — the file reflects the correction.",
+  vw_location_choice:
+    "Volkswagen — the VW-certified location was offered.",
+  private_pay:
+    "Customer is paying privately — no insurance claim on this file.",
+};
+
+function humanizeSafetyEvent(event) {
+  if (typeof event === "string") {
+    for (const key of Object.keys(SAFETY_COPY)) {
+      if (event.includes(key)) return SAFETY_COPY[key];
+    }
+    return event;
+  }
+  if (event && typeof event === "object") {
+    const candidates = [
+      event.flag,
+      event.type,
+      String(event.rule_id || "").split(":").pop(),
+    ];
+    for (const candidate of candidates) {
+      if (candidate && SAFETY_COPY[candidate]) return SAFETY_COPY[candidate];
+    }
+    if (typeof event.message === "string" && event.message) return event.message;
+  }
+  return "A safety rule was triggered on this call — open the technical details for specifics.";
+}
+
+function safetyEventsBody(events) {
+  if (!events.length) {
+    return '<p class="muted">None recorded on this call.</p>';
+  }
+  const lines = events
+    .map((event) => `<p class="bw-safety-line">${escapeHtml(humanizeSafetyEvent(event))}</p>`)
+    .join("");
+  return `
+    ${lines}
+    <details class="bw-tech-details">
+      <summary>Technical details</summary>
+      <pre class="json-block">${escapeHtml(JSON.stringify(events, null, 2))}</pre>
+    </details>
   `;
 }
 
@@ -681,7 +781,7 @@ async function renderDetail(sessionId) {
         ${kv("Claim number", intake.claim_number || (intake.private_pay ? "n/a" : "pending"))}
         ${kv("Vehicle year", intake.vehicle_year)}
         ${kv("Preferred location", intake.preferred_collision_center)}
-        ${kv("Missing info", (record.missing_information || []).join(", ") || "none")}
+        ${kv("Missing required info", (record.missing_information || []).length ? (record.missing_information || []).join(", ") : "None — all required fields captured")}
       </div>
       <div class="panel-body">
         <div class="status-row">
@@ -700,7 +800,7 @@ async function renderDetail(sessionId) {
       </div>
       <div class="bw-content">
         ${panel("Status history (audit log)", statusHistory(detail.status_history || []))}
-        ${panel("Safety events", (detail.safety_events || []).length ? `<pre class="json-block">${escapeHtml(JSON.stringify(detail.safety_events, null, 2))}</pre>` : '<p class="muted">None recorded.</p>')}
+        ${panel("Safety events", safetyEventsBody(detail.safety_events || []))}
       </div>
     </div>
   `;

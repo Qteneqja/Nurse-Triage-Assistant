@@ -772,12 +772,21 @@ async def _generate_vertical_menu_twiml(reprompt: bool = False) -> str:
 def _shared_vertical_menu_enabled_for(called_phone_number: str | None) -> bool:
     if not getattr(config, "ENABLE_SHARED_NUMBER_VERTICAL_MENU", False):
         return False
+    called = _normalise_phone(called_phone_number or "")
+    # Dedicated Birchwood line: callers dialed Birchwood directly, so they
+    # drop straight into collision intake — the cross-vertical menu never
+    # plays on this number. The shared number keeps the menu unchanged.
+    birchwood_number = _normalise_phone(
+        getattr(config, "BIRCHWOOD_COLLISION_PHONE_NUMBER", "")
+    )
+    if birchwood_number and called == birchwood_number:
+        return False
     configured_number = _normalise_phone(
         getattr(config, "SHARED_NUMBER_VERTICAL_MENU_PHONE_NUMBER", "")
     )
     if not configured_number:
         return True
-    return _normalise_phone(called_phone_number or "") == configured_number
+    return called == configured_number
 
 
 def _parse_vertical_menu_choice(

@@ -1,17 +1,23 @@
-"""Seed synthetic Birchwood Collision records for the pitch dashboard.
+"""Curated Birchwood Collision demo records for the pitch dashboard.
 
-Loads ~32 clearly-synthetic collision intakes (varied drivability, damage,
-insurers, injuries, statuses, times of day) into the LIVE configured storage
-backend so every panel of /dashboard/birchwood renders populated. All data is
-fabricated: 555 phone numbers, "DEMO" claim numbers, and a demo_seed marker on
-every session. Never run against a live pilot database.
+Loads 36 realistic, fully-populated synthetic collision intakes into the LIVE
+configured storage backend so every panel of /dashboard/birchwood is non-zero
+and credible: believable Manitoba names, 204-555-01xx callback numbers, real
+vehicle combos, normalized damage text, an MPI-heavy insurer mix, ~70/30
+drivable-vs-towed, several records landing today/this week, and 3
+injury-flagged records that pin to the top with the safety advisory.
+
+Every record is synthetic (no real person's data), carries a demo_seed
+marker, and is tagged with the CA-BWDEMO- call-sid prefix so the whole set
+is separable and removable without touching real staging records. Transcripts
+open with the real dedicated-line greeting (BIRCHWOOD_COLLISION_INTRO) — no
+shared-number vertical menu, no other verticals.
 
 Usage:
-    python -m scripts.seed_birchwood_pitch            # load
-    python -m scripts.seed_birchwood_pitch --remove   # remove all seeded rows
+    python -m scripts.seed_birchwood_demo            # load
+    python -m scripts.seed_birchwood_demo --remove   # remove all seeded rows
 
-One run is idempotent-ish: load twice and you get two batches; --remove
-deletes every session whose call_sid carries the seed prefix.
+--remove also cleans records from the older CA-BWPITCH- seed batches.
 """
 
 from __future__ import annotations
@@ -24,41 +30,69 @@ from datetime import UTC, datetime, timedelta
 
 from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
 from src.storage.session_repository import get_session_repository
+from src.verticals.automotive_collision.prompts import BIRCHWOOD_COLLISION_INTRO
 
-SEED_CALL_SID_PREFIX = "CA-BWPITCH-"
+SEED_CALL_SID_PREFIX = "CA-BWDEMO-"
+LEGACY_SEED_PREFIXES = ("CA-BWPITCH-",)
 WORKFLOW_ID = "birchwood_collision_intake_v1"
 VERTICAL = "automotive_collision"
+DEFAULT_COUNT = 36
 
-# Deterministic output: the pitch should look the same on every load.
+# Deterministic output: the pitch looks the same on every load.
 _RNG = random.Random(20260612)
 
+# Believable Manitoba-area names — all synthetic pairings, no real people.
 _FIRST = [
-    "Jordan",
-    "Casey",
-    "Avery",
-    "Riley",
-    "Morgan",
-    "Quinn",
-    "Dana",
-    "Jamie",
-    "Alexis",
-    "Robin",
-    "Sam",
-    "Taylor",
-    "Drew",
-    "Reese",
-    "Skyler",
-    "Parker",
+    "Mara",
+    "Devon",
+    "Lena",
+    "Carter",
+    "Sofia",
+    "Brent",
+    "Priya",
+    "Marc",
+    "Jolene",
+    "Tyler",
+    "Renee",
+    "Owen",
+    "Kayla",
+    "Ethan",
+    "Tessa",
+    "Cole",
+    "Angela",
+    "Dustin",
+    "Maya",
+    "Liam",
+    "Chantal",
+    "Noah",
+    "Brielle",
+    "Evan",
 ]
 _LAST = [
-    "Sample",
-    "Demo",
-    "Testfield",
-    "Placeholder",
-    "Mockley",
-    "Specimen",
-    "Example",
-    "Stand-in",
+    "Friesen",
+    "Penner",
+    "Sawatzky",
+    "Dyck",
+    "Hiebert",
+    "Reimer",
+    "Klassen",
+    "Wiebe",
+    "Thiessen",
+    "Lavallee",
+    "Beaulieu",
+    "Santos",
+    "Reyes",
+    "Sinclair",
+    "McKay",
+    "Chartrand",
+    "Krahn",
+    "Zacharias",
+    "Peters",
+    "Dela Cruz",
+    "Funk",
+    "Toews",
+    "Desjarlais",
+    "Bergen",
 ]
 
 _VEHICLES = [
@@ -82,20 +116,21 @@ _VEHICLES = [
     (2021, "Ram", "1500"),
 ]
 
-# (damage_type text, area bucket, glass_only, drivable-likely)
+# (normalized damage text, area bucket, glass_only, drivable-likely)
 _DAMAGE = [
-    ("front bumper and hood", "front", False, True),
-    ("front end, radiator pushed in", "front", False, False),
-    ("rear bumper and trunk", "rear", False, True),
-    ("rear quarter panel", "rear", False, True),
-    ("driver-side door and fender", "side", False, True),
-    ("passenger-side doors, both", "side", False, True),
-    ("front and driver side", "multi", False, False),
-    ("rear and passenger side", "multi", False, True),
-    ("windshield cracked", "glass", True, True),
-    ("hood, windshield, and roof edge", "multi", False, False),
+    ("Front bumper and hood", "front", False, True),
+    ("Front end, radiator pushed in", "front", False, False),
+    ("Rear bumper and trunk lid", "rear", False, True),
+    ("Rear quarter panel", "rear", False, True),
+    ("Driver-side door and fender", "side", False, True),
+    ("Both passenger-side doors", "side", False, True),
+    ("Front end and driver side", "multi", False, False),
+    ("Rear bumper and passenger side", "multi", False, True),
+    ("Windshield cracked", "glass", True, True),
+    ("Hood, windshield, and roof edge", "multi", False, False),
 ]
 
+# Manitoba mix: MPI is the provincial insurer, so it dominates.
 _INSURERS = [
     "MPI",
     "MPI",
@@ -135,8 +170,7 @@ _OTHER_PARTIES = [
     "another vehicle involved",
 ]
 
-# Weighted call-hour distribution: morning and early-afternoon peaks,
-# a few early-evening calls. (hour, weight)
+# Weighted local call-hour distribution: morning and early-afternoon peaks.
 _HOURS = [
     (8, 3),
     (9, 5),
@@ -149,12 +183,15 @@ _HOURS = [
     (16, 2),
     (17, 2),
     (18, 1),
-    (19, 1),
 ]
 
+# 3 injury-flagged records (escalated via derived status), 2 urgent transfers.
+_INJURY_INDEXES = (2, 9, 17)
+_TRANSFER_INDEXES = (5, 21)
+
 _STATUS_PLAN = (
-    ["new"] * 11 + ["contacted"] * 8 + ["scheduled"] * 7 + ["completed"] * 6
-)  # 32 records
+    ["new"] * 12 + ["contacted"] * 9 + ["scheduled"] * 8 + ["completed"] * 7
+)  # cycles per-index
 
 
 def _pick_hour() -> int:
@@ -166,6 +203,15 @@ def _pick_hour() -> int:
         if roll <= acc:
             return hour
     return 10
+
+
+def _days_ago(index: int) -> int:
+    """Several records land today, ~a third this week, the rest over 30 days."""
+    if index < 5:
+        return 0
+    if index < 12:
+        return _RNG.randint(1, 6)
+    return _RNG.randint(7, 29)
 
 
 def _turns(
@@ -190,23 +236,30 @@ def _turns(
         f"I'm going through {insurer}." if insurer else "I'll be paying privately."
     )
     script = [
-        (
-            "assistant",
-            "Thanks for calling Birchwood Collision. I can get your "
-            "intake started - this'll take about two minutes.",
-        ),
+        # The dedicated Birchwood line opens with the real workflow greeting —
+        # never the shared-number vertical menu.
+        ("assistant", BIRCHWOOD_COLLISION_INTRO),
         (
             "caller",
-            f"I was in an accident with my {vehicle}. The {damage} "
-            "took the worst of it.",
+            f"I was in an accident with my {vehicle}. The "
+            f"{damage.lower()} took the worst of it.",
         ),
-        ("assistant", "I'm sorry to hear that. Is the vehicle still safe to drive?"),
-        ("caller", drive_text),
-        ("assistant", "Was anyone hurt in the collision?"),
+        (
+            "assistant",
+            "I'm sorry you're dealing with this - let's get your "
+            "vehicle looked after. Before anything else - was "
+            "anyone hurt, even a little?",
+        ),
         ("caller", injury_text),
-        ("assistant", "And are you going through insurance?"),
+        ("assistant", "Thank you. And is your vehicle safe to drive right now?"),
+        ("caller", drive_text),
+        ("assistant", "And are you going through insurance for the repair?"),
         ("caller", insurer_text),
-        ("assistant", "Last thing - what's the best name and number for your advisor?"),
+        (
+            "assistant",
+            "Last thing - what's the best name and number for "
+            "your advisor to reach you?",
+        ),
         ("caller", f"{name}, on my cell."),
     ]
     return [ConversationTurn(role=role, text=text) for role, text in script]
@@ -215,23 +268,21 @@ def _turns(
 def _build_session(index: int, run_tag: str) -> tuple[OrchestratorSession, str]:
     """Return (session, target_status) for seeded record #index."""
     first = _FIRST[index % len(_FIRST)]
-    last = _LAST[(index // len(_FIRST) + index) % len(_LAST)]
+    last = _LAST[(index * 7 + index // len(_FIRST)) % len(_LAST)]
     name = f"{first} {last}"
-    phone = f"+1204555{1000 + index:04d}"
+    phone = f"+1204555{100 + index:04d}"  # 204-555-01xx — clearly synthetic
 
     year, make, model = _VEHICLES[index % len(_VEHICLES)]
     vehicle_label = f"{year} {make} {model}"
     damage, area, glass_only, drivable_likely = _DAMAGE[index % len(_DAMAGE)]
     drivable = drivable_likely if _RNG.random() < 0.85 else not drivable_likely
 
-    # 4 of 32 records are injury-flagged; injuries always mean human review.
-    injured = index in (2, 9, 17, 25)
-    # 2 records route straight to a collision centre (urgent, non-injury).
-    transfer = index in (5, 21)
+    injured = index in _INJURY_INDEXES
+    transfer = index in _TRANSFER_INDEXES
 
     private_pay = index in (7, 19, 28)
     insurer = None if private_pay else _INSURERS[index % len(_INSURERS)]
-    claim_missing = (not private_pay) and index % 5 == 3
+    claim_missing = (not private_pay) and index % 6 == 3
     claim_number = (
         None
         if private_pay or claim_missing
@@ -252,18 +303,19 @@ def _build_session(index: int, run_tag: str) -> tuple[OrchestratorSession, str]:
         disposition = "COMPLETED_INTAKE"
 
     flags = ["injuries_reported" if injured else "injuries_denied"]
+    if not drivable:
+        flags.append("non_drivable_transfer")
     if private_pay:
         flags.append("private_pay")
     if callback_needed:
         flags.append("callback_needed")
 
-    # Spread over the last 21 days at believable LOCAL call hours (the
-    # dashboard charts render in the viewer's timezone).
-    days_ago = _RNG.randint(0, 20) if index > 3 else 0  # a few land "today"
+    days_ago = _days_ago(index)
     hour = _pick_hour()
+    now_local = datetime.now().astimezone()
     if days_ago == 0:  # never timestamp a "today" record in the future
-        hour = min(hour, max(8, datetime.now().astimezone().hour))
-    created_local = datetime.now().astimezone().replace(
+        hour = min(hour, max(8, now_local.hour))
+    created_local = now_local.replace(
         hour=hour, minute=_RNG.randint(0, 59), second=0, microsecond=0
     ) - timedelta(days=days_ago)
     created = created_local.astimezone(UTC)
@@ -283,21 +335,25 @@ def _build_session(index: int, run_tag: str) -> tuple[OrchestratorSession, str]:
 
     narrative = (
         f"I was in a collision {incident_when} near {location}. "
-        f"It's my {vehicle_label} - the {damage}. "
+        f"It's my {vehicle_label} - {damage.lower()} took the impact. "
         f"{'It had to be towed.' if not drivable else 'It still drives.'} "
         f"{'My neck has been sore since.' if injured else 'Nobody was hurt.'} "
-        f"({other}; police report: {police}; photos: {photos}.) [SYNTHETIC DEMO DATA]"
+        f"({other}; police report: {police}; photos: {photos}.) "
+        f"[SYNTHETIC DEMO DATA]"
     )
     shop_summary = (
-        f"SITUATION: {narrative}\n"
+        f"SITUATION: Collision {incident_when} near {location}. "
+        f"{'Injuries reported - advisory issued. ' if injured else 'No injuries reported. '}"
+        f"Other parties: {other}. Police report: {police}. Photos: {photos}.\n"
         f"VEHICLE: {vehicle_label}. Drivable: {'yes' if drivable else 'NO - towed'}. "
-        f"Damage: {damage}. Rebuilt/salvage: no. Photos: {photos}.\n"
+        f"Damage: {damage}. Rebuilt/salvage: no.\n"
         f"CUSTOMER: {name}, callback {phone}, "
         f"{'private pay' if private_pay else f'insurance via {insurer}'}"
         f"{f' (claim: {claim_number})' if claim_number else ' (claim: pending)'}.\n"
         f"RECOMMENDED ACTION: {disposition} - "
         f"{'review injury advisory before contact. ' if injured else ''}"
-        f"Flags: {', '.join(flags)}. Missing: {', '.join(missing) or 'none'}."
+        f"Flags: {', '.join(flags)}. Missing: {', '.join(missing) or 'none'}. "
+        f"[SYNTHETIC DEMO DATA]"
     )
 
     record = {
@@ -389,20 +445,27 @@ def _build_session(index: int, run_tag: str) -> tuple[OrchestratorSession, str]:
         "shop_summary": shop_summary,
     }
 
-    safety_events = (
-        [
+    safety_events = []
+    if injured:
+        safety_events.append(
             {
                 "type": "injury_advisory",
+                "flag": "injuries_reported",
                 "message": "Caller reported injuries. The assistant advised seeking "
                 "medical attention / 9-1-1 before booking. (synthetic demo)",
             }
-        ]
-        if injured
-        else []
-    )
+        )
+    if not drivable:
+        safety_events.append(
+            {
+                "type": "rule_triggered",
+                "rule_id": "automotive_collision:gate_1_drivability_transfer",
+                "flag": "non_drivable_transfer",
+            }
+        )
 
     session = OrchestratorSession(
-        session_id=f"bwpitch-{run_tag}-{index:02d}",
+        session_id=f"bwdemo-{run_tag}-{index:02d}",
         call_sid=f"{SEED_CALL_SID_PREFIX}{run_tag}-{index:02d}",
     )
     session.vertical_key = VERTICAL
@@ -430,10 +493,13 @@ def _build_session(index: int, run_tag: str) -> tuple[OrchestratorSession, str]:
         "rules_triggered": [],
         "audit_metadata": {"demo_seed": True},
     }
-    return session, _STATUS_PLAN[index % len(_STATUS_PLAN)]
+    # Injury records carry no status events: the dashboard derives
+    # "escalated" for them, which is exactly the pitch behavior.
+    target_status = "new" if injured else _STATUS_PLAN[index % len(_STATUS_PLAN)]
+    return session, target_status
 
 
-def seed_records(count: int = 32, run_tag: str | None = None) -> list[str]:
+def seed_records(count: int = DEFAULT_COUNT, run_tag: str | None = None) -> list[str]:
     """Create `count` synthetic sessions; returns their session ids."""
     repo = get_session_repository()
     tag = run_tag or uuid.uuid4().hex[:6].upper()
@@ -441,7 +507,6 @@ def seed_records(count: int = 32, run_tag: str | None = None) -> list[str]:
     for index in range(count):
         session, target_status = _build_session(index, tag)
         repo.persist_session(session)
-        # Walk the status workflow so histories look real (audit-logged).
         steps = {
             "new": [],
             "contacted": ["contacted"],
@@ -462,12 +527,13 @@ def seed_records(count: int = 32, run_tag: str | None = None) -> list[str]:
 
 
 def remove_records() -> int:
-    """Delete every seeded session (matched by the seed call_sid prefix)."""
+    """Delete every seeded session (matched by the demo call_sid prefixes)."""
     repo = get_session_repository()
     sessions = repo.list_recent_sessions(limit=1000, vertical_key=VERTICAL)
+    prefixes = (SEED_CALL_SID_PREFIX, *LEGACY_SEED_PREFIXES)
     removed = 0
     for session in sessions:
-        if (session.call_sid or "").startswith(SEED_CALL_SID_PREFIX):
+        if (session.call_sid or "").startswith(prefixes):
             repo.delete_session(session.session_id)
             removed += 1
     return removed
@@ -476,21 +542,21 @@ def remove_records() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--remove", action="store_true", help="remove all seeded pitch records"
+        "--remove", action="store_true", help="remove all seeded demo records"
     )
-    parser.add_argument("--count", type=int, default=32)
+    parser.add_argument("--count", type=int, default=DEFAULT_COUNT)
     args = parser.parse_args(argv)
 
     if args.remove:
         removed = remove_records()
-        print(f"Removed {removed} seeded Birchwood pitch records.")
+        print(f"Removed {removed} seeded Birchwood demo records.")
         return 0
 
     seeded = seed_records(count=args.count)
     print(f"Seeded {len(seeded)} synthetic Birchwood collision records.")
     print(
         "Open /dashboard/birchwood — remove later with: "
-        "python -m scripts.seed_birchwood_pitch --remove"
+        "python -m scripts.seed_birchwood_demo --remove"
     )
     return 0
 
