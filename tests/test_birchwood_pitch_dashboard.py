@@ -108,7 +108,7 @@ def test_rows_carry_collision_fields_and_demo_marker(client):
         ):
             assert field in collision
         # Claim numbers themselves never appear in the list payload.
-        assert "claim_number\"" not in str(rows).replace("claim_number_present", "")
+        assert 'claim_number"' not in str(rows).replace("claim_number_present", "")
 
 
 def test_injury_rows_pin_to_top_and_filters_scope(client):
@@ -141,12 +141,12 @@ def test_seeded_status_history_is_audited(client):
 
         rows = client.get(f"{BW_API}?record_status=scheduled").json()["records"]
         assert rows
-        detail = client.get(
-            f"/api/v1/dashboard/records/{rows[0]['session_id']}"
-        ).json()
+        detail = client.get(f"/api/v1/dashboard/records/{rows[0]['session_id']}").json()
         statuses = [event["status"] for event in detail["status_history"]]
         assert "scheduled" in statuses
-        assert all(event["actor"] == "demo.seeder" for event in detail["status_history"])
+        assert all(
+            event["actor"] == "demo.seeder" for event in detail["status_history"]
+        )
 
 
 def _shell_client(monkeypatch, token: str = "strong-dashboard-token-value-12345"):
@@ -176,9 +176,7 @@ def test_birchwood_shell_blocks_unauthenticated_production_access(monkeypatch):
 def test_birchwood_shell_serves_with_valid_auth(monkeypatch):
     client, token = _shell_client(monkeypatch)
 
-    response = client.get(
-        "/dashboard/birchwood", headers={"X-Dashboard-Token": token}
-    )
+    response = client.get("/dashboard/birchwood", headers={"X-Dashboard-Token": token})
 
     assert response.status_code == 200
     assert "Birchwood Collision" in response.text
