@@ -32,7 +32,15 @@ async function signIn() {
   localStorage.setItem("dashboardAdminToken", token);
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `dashboard_token=${encodeURIComponent(token)}; path=/; SameSite=Strict${secure}`;
-  window.location.href = "/dashboard/records";
+  window.location.href = nextPath();
+}
+
+function nextPath() {
+  // Return to the view that sent us here (e.g. /dashboard/birchwood).
+  // Same-origin dashboard paths only — never external or protocol-relative.
+  const next = new URLSearchParams(window.location.search).get("next") || "";
+  if (next.startsWith("/dashboard") && !next.startsWith("//")) return next;
+  return "/dashboard/records";
 }
 
 document.getElementById("login-submit").addEventListener("click", signIn);

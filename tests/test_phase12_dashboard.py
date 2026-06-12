@@ -438,7 +438,7 @@ def test_production_dashboard_shell_blocks_unauthenticated_access(monkeypatch):
     # PR 4.1: browsers can't send the token header on first load, so the
     # shell redirects to the unauthenticated login page instead of 401-ing.
     assert response.status_code == 302
-    assert response.headers["location"] == "/dashboard/login"
+    assert response.headers["location"].startswith("/dashboard/login")
     assert "ORCA Intake Dashboard" not in response.text
 
 
@@ -470,7 +470,7 @@ def test_production_dashboard_shell_rejects_bad_cookie(monkeypatch):
     )
 
     assert response.status_code == 302
-    assert response.headers["location"] == "/dashboard/login"
+    assert response.headers["location"].startswith("/dashboard/login")
 
 
 def test_production_dashboard_shell_renders_with_valid_auth(monkeypatch):

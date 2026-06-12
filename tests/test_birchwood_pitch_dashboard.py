@@ -169,7 +169,8 @@ def test_birchwood_shell_blocks_unauthenticated_production_access(monkeypatch):
     response = client.get("/dashboard/birchwood", follow_redirects=False)
 
     assert response.status_code == 302
-    assert response.headers["location"] == "/dashboard/login"
+    # Login page returns the browser to the Birchwood view after sign-in.
+    assert response.headers["location"] == "/dashboard/login?next=/dashboard/birchwood"
     assert "Birchwood" not in response.text
 
 
