@@ -234,7 +234,7 @@ async def test_sparse_story_asks_injury_check_first():
         # Denied — no advisory, straight to the drivability gap-fill.
         body = r.body.decode().lower()
         assert "9 1 1" not in body
-        assert "safe to drive" in body
+        assert "does it need a tow" in body
 
         stored = repo.load_session_by_call(call_sid)
         fields = stored.channel_metadata["scripted_intake"]["fields"]

@@ -92,6 +92,167 @@ SCENARIOS: dict[str, dict] = {
         "expect_outcome": "COMPLETED_INTAKE",
         "expect_flags": ["private_pay"],
     },
+    "completed_toyota": {
+        "description": "Drivable Toyota with claim number — clean completed intake",
+        "story": [
+            "Another driver backed into me in a parking lot yesterday "
+            "afternoon and crunched the front bumper and grille. It's my "
+            "2020 Toyota Camry, it's still safe to drive, and nobody was "
+            "hurt. I'm going through insurance - the claim number is "
+            "CLM-DEMO-1001.",
+            "that's everything",
+        ],
+        "answers": {
+            "injuries_state": "no, nobody was hurt",
+            "is_drivable": "yes, it's safe to drive",
+            "damage_type": "front bumper and grille body damage",
+            "vehicle_year": "2020",
+            "vehicle_make": "Toyota",
+            "vehicle_model": "Camry",
+            "rebuilt_salvage_status": "no, clean title",
+            "incident_datetime": "yesterday afternoon",
+            "incident_location": "a parking lot",
+            "filing_insurance_claim": "going through insurance",
+            "claim_number": "CLM-DEMO-1001",
+            "caller_name": "John Smith",
+            "phone": "204 555 0101",
+            "confirmation_ack": "yes that's right",
+        },
+        "expect_outcome": "COMPLETED_INTAKE",
+        "expect_flags": ["injuries_denied"],
+    },
+    "non_drivable_transfer": {
+        "description": "Vehicle needs a tow — transfers to the collision team",
+        "story": [
+            "I got hit hard and the whole front end is crushed in - it's "
+            "not safe to drive.",
+            "that's everything",
+        ],
+        "answers": {
+            "injuries_state": "no, everyone's okay",
+            "is_drivable": "no, it's not drivable, it needs a tow",
+            "damage_type": "front end body damage",
+            "vehicle_year": "2018",
+            "vehicle_make": "Ford",
+            "vehicle_model": "Escape",
+            "rebuilt_salvage_status": "no, clean title",
+            "incident_datetime": "this afternoon",
+            "incident_location": "Portage and Main",
+            "filing_insurance_claim": "going through insurance",
+            "claim_number": "CLM-DEMO-2002",
+            "caller_name": "Avery Lee",
+            "phone": "204 555 0102",
+            "confirmation_ack": "yes",
+        },
+        "expect_outcome": "TRANSFER_COLLISION_CENTER",
+        "expect_flags": ["non_drivable_transfer"],
+    },
+    "glass_only_transfer": {
+        "description": "Windshield-only damage — routes to the glass team",
+        "story": [
+            "A rock flew up on the highway and cracked my windshield - it's "
+            "just the glass, no other damage. The car still drives fine and "
+            "nobody was hurt.",
+            "that's everything",
+        ],
+        "answers": {
+            "injuries_state": "no",
+            "is_drivable": "yes, it's drivable",
+            "damage_type": "just the windshield, glass only",
+            "vehicle_year": "2021",
+            "vehicle_make": "Honda",
+            "vehicle_model": "Accord",
+            "rebuilt_salvage_status": "no",
+            "incident_datetime": "this morning",
+            "incident_location": "the highway",
+            "filing_insurance_claim": "paying out of pocket",
+            "caller_name": "Morgan Patel",
+            "phone": "204 555 0103",
+            "confirmation_ack": "yes",
+        },
+        "expect_outcome": "TRANSFER_GLASS_DEPARTMENT",
+        "expect_flags": ["glass_only_transfer"],
+    },
+    "old_vehicle_decline": {
+        "description": "2010 vehicle — polite decline on the vehicle-year gate",
+        "story": [
+            "Someone rear-ended me and dented the back bumper. The car "
+            "still drives and no one was hurt.",
+            "that's everything",
+        ],
+        "answers": {
+            "injuries_state": "no",
+            "is_drivable": "yes, safe to drive",
+            "damage_type": "rear bumper body damage",
+            "vehicle_year": "2010",
+            "vehicle_make": "Toyota",
+            "vehicle_model": "Corolla",
+            "rebuilt_salvage_status": "no",
+            "incident_datetime": "yesterday",
+            "incident_location": "Main Street",
+            "filing_insurance_claim": "going through insurance",
+            "claim_number": "CLM-DEMO-4004",
+            "caller_name": "Casey Nguyen",
+            "phone": "204 555 0104",
+            "confirmation_ack": "yes",
+        },
+        "expect_outcome": "DECLINED_VEHICLE_YEAR",
+        "expect_flags": ["vehicle_year_declined"],
+    },
+    "missing_claim_callback": {
+        "description": "Insurance with no claim number yet — callback flagged",
+        "story": [
+            "I was sideswiped on the freeway and there's damage along the "
+            "passenger side. The car drives okay and nobody was hurt. I'll "
+            "be going through insurance but I don't have a claim number yet.",
+            "that's everything",
+        ],
+        "answers": {
+            "injuries_state": "no",
+            "is_drivable": "yes, it drives okay",
+            "damage_type": "passenger side panels",
+            "vehicle_year": "2019",
+            "vehicle_make": "Nissan",
+            "vehicle_model": "Rogue",
+            "rebuilt_salvage_status": "no",
+            "incident_datetime": "last night",
+            "incident_location": "the freeway",
+            "filing_insurance_claim": "going through insurance",
+            "claim_number": "I don't have it yet",
+            "caller_name": "Taylor Johnson",
+            "phone": "204 555 0106",
+            "confirmation_ack": "yes",
+        },
+        "expect_outcome": "INCOMPLETE_CALLBACK_NEEDED",
+        "expect_flags": ["missing_claim_number", "callback_needed"],
+    },
+    "luxury_completed": {
+        "description": "Luxury brand — auto-assigned to the luxury location",
+        "story": [
+            "Someone clipped my front fender in a parking garage. It's my "
+            "2022 BMW X5, it still drives fine, and no one was hurt. I'll be "
+            "going through insurance, claim number CLM-DEMO-8008.",
+            "that's everything",
+        ],
+        "answers": {
+            "injuries_state": "no",
+            "is_drivable": "yes",
+            "damage_type": "front fender body damage",
+            "vehicle_year": "2022",
+            "vehicle_make": "BMW",
+            "vehicle_model": "X5",
+            "rebuilt_salvage_status": "no",
+            "incident_datetime": "this morning",
+            "incident_location": "a parking garage",
+            "filing_insurance_claim": "going through insurance",
+            "claim_number": "CLM-DEMO-8008",
+            "caller_name": "Sam Rivera",
+            "phone": "204 555 0108",
+            "confirmation_ack": "yes",
+        },
+        "expect_outcome": "COMPLETED_INTAKE",
+        "expect_flags": ["luxury_auto_assigned"],
+    },
 }
 
 _MAX_TURNS = 25

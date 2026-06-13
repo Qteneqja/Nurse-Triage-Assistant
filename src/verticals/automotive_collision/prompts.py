@@ -5,15 +5,25 @@ Birchwood Automotive Group service advisor would say it on the phone —
 warm, branded, dealership-grade. The caller may have just been in an
 accident; lead with reassurance, use plain spoken language, and frame
 insurance details as coordination for THEIR repair, never as claim
-processing. Wording only: extraction fields, safety branches, and the
-engine are unchanged.
+processing.
+
+Repair-voice pass (pr-birchwood-repair-voice): pushed the copy further
+toward a collision shop booking a damaged car in rather than a claims
+intake — the greeting promises to get the vehicle "booked in" and "back
+on the road", drivability is asked as "drive it in to us, or does it
+need a tow", insurance is reinforced as "we'll take care of the car
+either way", and the close opens with "we'll get you booked in".
+
+Wording only: extraction fields, safety branches, and the engine are
+unchanged.
 """
 
 BIRCHWOOD_COLLISION_INTRO = (
     "Thank you for calling Birchwood Automotive Group. This call may be "
-    "recorded for training and quality purposes. I'm here to help get "
-    "your vehicle taken care of after your accident. And if you'd rather "
-    "speak with one of our team right away, just say transfer or press 0."
+    "recorded for training and quality purposes. I'm here to get your "
+    "vehicle booked in and taken care of after your accident - we'll get "
+    "you back on the road. And if you'd rather speak with one of our team "
+    "right away, just say transfer or press 0."
 )
 
 BIRCHWOOD_COLLISION_PROMPTS = {
@@ -24,7 +34,10 @@ BIRCHWOOD_COLLISION_PROMPTS = {
         "I'll listen first, and then ask a few quick follow-ups."
     ),
     "injuries_state": ("Before anything else - was anyone hurt, even a little?"),
-    "is_drivable": "Thank you. And is your vehicle safe to drive right now?",
+    "is_drivable": (
+        "Thank you. Can you drive the vehicle in to us right now, or does "
+        "it need a tow?"
+    ),
     "damage_type": (
         "Where's the damage on the vehicle? For example, is it just "
         "glass - like a windshield - or is there body damage too?"
@@ -41,8 +54,9 @@ BIRCHWOOD_COLLISION_PROMPTS = {
         "And where did it happen? A street, intersection, or parking lot is perfect."
     ),
     "filing_insurance_claim": (
-        "Are you planning to go through insurance for the repair, or pay "
-        "out of pocket? Either way is absolutely fine."
+        "For the repair, are you planning to go through insurance, or pay "
+        "out of pocket? Either way's absolutely fine - we'll take care of "
+        "the car either way."
     ),
     "claim_number": (
         "If your insurance has given you a claim number, what is it? "
@@ -70,10 +84,10 @@ BIRCHWOOD_COLLISION_PROMPTS = {
 
 # Spoken right after the caller confirms the readback.
 BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE = (
-    "Perfect - you're all set. Here's what happens next: one of our "
-    "service advisors will give you a call back to confirm timing and "
-    "the Birchwood location that works best for you. Just so you know, "
-    "this doesn't confirm coverage, pricing, or an appointment yet - "
-    "your advisor will take care of those details with you. Thanks so "
-    "much for calling Birchwood, and take care."
+    "Perfect - you're all set, and we'll get you booked in. Here's what "
+    "happens next: one of our service advisors will give you a call back "
+    "to confirm timing and the Birchwood location that works best for "
+    "you. Just so you know, this doesn't confirm coverage, pricing, or an "
+    "appointment yet - your advisor will take care of those details with "
+    "you. Thanks so much for calling Birchwood, and take care."
 )
