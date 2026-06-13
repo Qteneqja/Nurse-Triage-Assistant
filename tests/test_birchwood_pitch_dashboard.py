@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from scripts.seed_birchwood_pitch import remove_records, seed_records
+from scripts.seed_birchwood_demo import remove_records, seed_records
 from src.main import app
 from src.orchestrator.schemas import OrchestratorSession
 

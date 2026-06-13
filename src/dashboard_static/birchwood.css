@@ -222,6 +222,33 @@ th.bw-sortable:hover {
   font-size: 13px;
 }
 
+/* Honest footnote for uncaptured values — sits below the bars, never as a
+   dominant "Unknown" bar. */
+.bw-chart-footnote {
+  margin: 10px 0 0;
+  color: var(--slate);
+  font-size: 13px;
+}
+
+/* Safety events: human line by default, raw detail on expand only. */
+.bw-safety-line {
+  margin: 0 0 8px;
+}
+
+.bw-tech-details {
+  margin-top: 8px;
+}
+
+.bw-tech-details summary {
+  color: var(--slate);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.bw-tech-details[open] summary {
+  margin-bottom: 8px;
+}
+
 /* Vertical bars (volume by weekday / hour) */
 .bw-bars-v {
   display: flex;
