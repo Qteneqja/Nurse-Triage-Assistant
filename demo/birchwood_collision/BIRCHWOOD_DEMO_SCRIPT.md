@@ -30,7 +30,7 @@ python -m scripts.simulate_birchwood_call --scenario injury_branch
 
 ## Problem Statement
 
-Collision calls can be repetitive, time-sensitive, and hard to triage after hours. Staff need enough information to route the customer, but callers should not wait for a live person just to provide basic intake details.
+Collision calls can be repetitive, time-sensitive, and hard to prioritize after hours. Staff need enough information to route the customer, but callers should not wait for a live person just to provide basic intake details.
 
 ## Live Demo Setup
 
@@ -56,7 +56,7 @@ This scenario demonstrates the cleanest path:
 - ORCA asks one phone-friendly question at a time.
 - ORCA now says callers can press 0 anytime to speak with someone.
 - The incident-description prompt explicitly says "take your time" so callers can tell the collision story in their own words.
-- The workflow is automotive-service oriented, not clinical.
+- The workflow is built for collision repair intake, start to finish.
 - Non-drivable and unsure vehicles transfer to the collision team.
 - Glass-only damage routes separately.
 - Older vehicles and rebuilt/salvage titles receive short, polite decline messages.
