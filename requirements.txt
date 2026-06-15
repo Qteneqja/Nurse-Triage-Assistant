@@ -20,7 +20,7 @@ python-dotenv>=1.2.2,<2.0.0
 # Phase 3: Persistent Storage
 sqlalchemy>=2.0.50
 alembic>=1.13.0
-psycopg2-binary>=2.9.0   # PostgreSQL driver (binary for easy install)
+psycopg2-binary>=2.9.12   # PostgreSQL driver (binary for easy install)
 
 # Azure Blob Storage (persistent report storage in production)
 azure-storage-blob>=12.19.0
