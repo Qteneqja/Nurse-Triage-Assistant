@@ -23,7 +23,7 @@ alembic>=1.13.0
 psycopg2-binary>=2.9.12   # PostgreSQL driver (binary for easy install)
 
 # Azure Blob Storage (persistent report storage in production)
-azure-storage-blob>=12.19.0
+azure-storage-blob>=12.30.0
 
 # Optional: SQLite support (if needed)
 aiosqlite==0.19.0
