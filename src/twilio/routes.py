@@ -1438,6 +1438,24 @@ async def handle_incoming_call(
             To = None
         logger.info(f"[TWILIO] Incoming call: {CallSid}")
 
+        # Voice pipeline seam: when ConversationRelay is selected, hand the call
+        # to the streaming WebSocket transport. The session is created on the CR
+        # `setup` message (see conversation_relay.py). Falls back to the legacy
+        # gather path if the wss URL can't be derived, so a misconfig never
+        # starts a broken call.
+        if config.VOICE_PIPELINE == "conversation_relay":
+            from src.twilio.conversation_relay import build_conversation_relay_twiml
+
+            cr_twiml = build_conversation_relay_twiml()
+            if cr_twiml:
+                logger.info("[TWILIO] Routing call %s to ConversationRelay", CallSid)
+                return Response(content=cr_twiml, media_type="application/xml")
+            logger.error(
+                "[TWILIO] VOICE_PIPELINE=conversation_relay but no wss URL could be "
+                "derived (set CONVERSATION_RELAY_WSS_URL or TWILIO_WEBHOOK_BASE_URL); "
+                "falling back to gather."
+            )
+
         ensure_default_workflows_registered()
         route = get_workflow_route_resolver().resolve(called_phone_number=To)
 
