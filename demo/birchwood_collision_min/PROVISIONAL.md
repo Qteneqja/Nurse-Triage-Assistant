@@ -34,26 +34,16 @@ glass/non-drivable, and does luxury routing). The two are intentionally **not co
 After the July call we will decide which rule set is canonical, update v1, and retire the
 unused one.
 
-## Cut-over: make the Birchwood line use THIS minimal workflow
+## Which workflow the Birchwood line uses
 
-By default the Birchwood number routes to the live pilot (`birchwood_collision_intake_v1`).
-To point it at the minimal pure-intake workflow instead, set one env var in the **deployed**
-environment - no code change, reversible by unsetting it:
+The Birchwood number now routes to **this minimal workflow by default** (config var
+`BIRCHWOOD_COLLISION_WORKFLOW_ID`, default `birchwood_collision_intake_min_v1`). It takes
+effect on the next merge + deploy of `main` — no manual env var needed.
 
-```
-WORKFLOW_PHONE_ROUTES={"<the deployed BIRCHWOOD_COLLISION_PHONE_NUMBER>": "birchwood_collision_intake_min_v1"}
-```
-
-Use the SAME E.164 value already configured as `BIRCHWOOD_COLLISION_PHONE_NUMBER`.
-`WORKFLOW_PHONE_ROUTES` is checked before the built-in Birchwood route, so it overrides it.
-Verified by `tests/test_birchwood_collision_min_routing.py`.
-
-Full sequence to change the live line:
-1. Merge this PR (registers `birchwood_collision_intake_min_v1`).
-2. Deploy to the environment the Birchwood number points at.
-3. Set the `WORKFLOW_PHONE_ROUTES` env var above and restart/redeploy.
-4. To revert: unset `WORKFLOW_PHONE_ROUTES` (the line returns to the live pilot).
-
-Note: until steps 1-3 are done, calling the Birchwood line still runs the live pilot flow.
-This wiring is intentionally NOT enabled by default (the live pilot stays the line's behavior
-until you choose to cut over).
+- **Revert to the richer live pilot:** set `BIRCHWOOD_COLLISION_WORKFLOW_ID=birchwood_collision_intake_v1`
+  in the deployed environment (no code change), then restart/redeploy.
+- If the configured workflow id is not registered, routing **falls back safely** to the live pilot.
+- **Precedence caveat:** if the prod number is mapped by a database `phone_numbers` row, that DB
+  route wins over this config route (see `router.resolve`). In that case the cut-over must be done
+  in the DB row instead. If, after deploying this change, the line still runs the live pilot, the
+  number is DB-routed and we update that row next.

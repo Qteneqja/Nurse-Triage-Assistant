@@ -410,6 +410,24 @@ def setup_test_env():
     os.environ["PROTOCOL_VERSION"] = "v1"
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Make tests hermetic w.r.t. the global rate limiter.
+
+    The middleware keeps a module-level sliding-window store keyed by client IP;
+    every TestClient request shares the IP "testclient", so without a reset the
+    whole suite accumulates into one 60s window and a later test can be 429'd
+    purely because earlier tests made requests. Clear it before each test.
+    """
+    try:
+        from src.security.middleware import _rate_limiter
+
+        _rate_limiter._requests.clear()
+    except Exception:
+        pass
+    yield
+
+
 # ============================================================================
 # Parametrize Helpers
 # ============================================================================
