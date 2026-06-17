@@ -33,3 +33,17 @@ This minimal workflow is **separate** from the live pilot `birchwood_collision_i
 glass/non-drivable, and does luxury routing). The two are intentionally **not converged**.
 After the July call we will decide which rule set is canonical, update v1, and retire the
 unused one.
+
+## Which workflow the Birchwood line uses
+
+The Birchwood number now routes to **this minimal workflow by default** (config var
+`BIRCHWOOD_COLLISION_WORKFLOW_ID`, default `birchwood_collision_intake_min_v1`). It takes
+effect on the next merge + deploy of `main` — no manual env var needed.
+
+- **Revert to the richer live pilot:** set `BIRCHWOOD_COLLISION_WORKFLOW_ID=birchwood_collision_intake_v1`
+  in the deployed environment (no code change), then restart/redeploy.
+- If the configured workflow id is not registered, routing **falls back safely** to the live pilot.
+- **Precedence caveat:** if the prod number is mapped by a database `phone_numbers` row, that DB
+  route wins over this config route (see `router.resolve`). In that case the cut-over must be done
+  in the DB row instead. If, after deploying this change, the line still runs the live pilot, the
+  number is DB-routed and we update that row next.

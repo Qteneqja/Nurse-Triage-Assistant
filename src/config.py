@@ -266,6 +266,16 @@ BIRCHWOOD_COLLISION_PHONE_NUMBER: str = os.getenv(
     "+15555550140",
 )
 
+# Which collision workflow the Birchwood number uses. Default = the minimal
+# pure-intake workflow (birchwood_collision_intake_min_v1). Set to
+# "birchwood_collision_intake_v1" to route back to the richer live pilot.
+# Reversible via env, no code change. (A DB phone_numbers route, if present,
+# still takes precedence over this config route — see router.resolve.)
+BIRCHWOOD_COLLISION_WORKFLOW_ID: str = os.getenv(
+    "BIRCHWOOD_COLLISION_WORKFLOW_ID",
+    "birchwood_collision_intake_min_v1",
+)
+
 # TODO(stakeholder-confirmation): Confirm exact Birchwood collision center
 # location names/addresses and the glass department transfer process before
 # production use. Demo values intentionally remain placeholders.

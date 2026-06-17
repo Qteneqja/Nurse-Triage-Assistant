@@ -115,6 +115,14 @@ def test_route_resolves_from_birchwood_collision_phone_number(monkeypatch):
         BIRCHWOOD_COLLISION_PHONE_PLACEHOLDER,
         raising=False,
     )
+    # The live pilot route applies when the number is configured for it. (The
+    # default now routes to the minimal workflow — see test_birchwood_collision
+    # _min_routing.py.) The live WORKFLOW itself is unchanged.
+    monkeypatch.setattr(
+        "src.platform.workflows.router.config.BIRCHWOOD_COLLISION_WORKFLOW_ID",
+        BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        raising=False,
+    )
 
     route = resolver.resolve("+1 (555) 555-0140")
 
