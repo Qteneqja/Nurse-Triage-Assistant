@@ -1,0 +1,33 @@
+{
+  "workflow_id": "birchwood_collision_intake_min_v1",
+  "vertical": "automotive_collision_min",
+  "powered_by": "ORCA",
+  "client_target": "Birchwood Automotive Group",
+  "status": "demo/pilot",
+  "caller_name": "Morgan Patel",
+  "callback_number": "204 555 0143",
+  "vehicle_year": 2021,
+  "vehicle_make": "Mazda",
+  "vehicle_model": "CX-5",
+  "vehicle_color": null,
+  "license_plate": null,
+  "vin": null,
+  "damage_description": "rear bumper and trunk",
+  "drivable_status": "drivable",
+  "vehicle_location": null,
+  "mpi_claim_opened": false,
+  "mpi_claim_number": null,
+  "flags": [
+    "drivable",
+    "no_mpi_claim"
+  ],
+  "missing_information": [],
+  "recommended_routing": "READY_FOR_SPECIALIST",
+  "handoff_mode": "warm_transfer",
+  "handoff_summary": "CALLER: Morgan Patel, callback 204 555 0143. VEHICLE: 2021 Mazda CX-5 (drivable). DAMAGE: rear bumper and trunk. INSURANCE: no MPI claim opened yet. HANDOFF: READY_FOR_SPECIALIST (missing: none).",
+  "disclaimers_given": [
+    "ORCA collects your collision details for a Birchwood specialist; it does not estimate cost, coverage, fault, or repair time."
+  ],
+  "confidence": 0.9,
+  "human_review_required": false
+}
