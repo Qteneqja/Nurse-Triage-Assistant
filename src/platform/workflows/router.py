@@ -411,20 +411,87 @@ def _birchwood_collision_phone_number_route(
         BIRCHWOOD_COLLISION_DISPLAY_NAME,
         BIRCHWOOD_COLLISION_POWERED_BY,
         BIRCHWOOD_COLLISION_STATUS,
-        BIRCHWOOD_COLLISION_WORKFLOW_ID,
-        BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
+        BIRCHWOOD_COLLISION_WORKFLOW_ID as LIVE_WORKFLOW_ID,
+        BIRCHWOOD_COLLISION_WORKFLOW_VERSION as LIVE_WORKFLOW_VERSION,
     )
 
+    # Which collision workflow this number uses. Default = the minimal
+    # pure-intake workflow; set BIRCHWOOD_COLLISION_WORKFLOW_ID to the live
+    # pilot id to route back to the richer flow. Reversible via env.
+    target_id = (
+        getattr(config, "BIRCHWOOD_COLLISION_WORKFLOW_ID", "") or LIVE_WORKFLOW_ID
+    )
+
+    # The richer live pilot keeps its original, fully-described route.
+    if target_id == LIVE_WORKFLOW_ID:
+        return ResolvedWorkflowRoute(
+            vertical_key=AUTOMOTIVE_COLLISION_VERTICAL,
+            workflow_id=LIVE_WORKFLOW_ID,
+            workflow_version=LIVE_WORKFLOW_VERSION,
+            config_json={
+                "route_type": "birchwood_collision_demo_placeholder",
+                "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
+                "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
+                "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
+                "status": BIRCHWOOD_COLLISION_STATUS,
+            },
+            fallback_used=False,
+            audit_metadata={
+                "routing_source": "configured_phone_number",
+                "configured_key": "BIRCHWOOD_COLLISION_PHONE_NUMBER",
+                "called_phone_number_masked": _mask_phone(called_phone_number),
+                "environment": getattr(config, "ENVIRONMENT", "development"),
+                "vertical": AUTOMOTIVE_COLLISION_VERTICAL,
+                "workflow_id": LIVE_WORKFLOW_ID,
+                "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
+                "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
+                "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
+                "status": BIRCHWOOD_COLLISION_STATUS,
+            },
+        )
+
+    # Any other configured collision workflow (default: the minimal pure-intake
+    # one) — build the route from its registered definition. Fall back to the
+    # live pilot if the configured id is not registered (fail safe).
+    try:
+        definition = (
+            ensure_default_workflows_registered().get(target_id).get_definition()
+        )
+    except Exception:
+        logger.error(
+            "[Routing] BIRCHWOOD_COLLISION_WORKFLOW_ID '%s' is not registered — "
+            "falling back to the live pilot route",
+            target_id,
+        )
+        return ResolvedWorkflowRoute(
+            vertical_key=AUTOMOTIVE_COLLISION_VERTICAL,
+            workflow_id=LIVE_WORKFLOW_ID,
+            workflow_version=LIVE_WORKFLOW_VERSION,
+            config_json={
+                "route_type": "birchwood_collision_demo_placeholder",
+                "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
+                "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
+                "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
+                "status": BIRCHWOOD_COLLISION_STATUS,
+            },
+            fallback_used=False,
+            audit_metadata={
+                "routing_source": "configured_phone_number",
+                "configured_key": "BIRCHWOOD_COLLISION_PHONE_NUMBER",
+                "called_phone_number_masked": _mask_phone(called_phone_number),
+                "vertical": AUTOMOTIVE_COLLISION_VERTICAL,
+                "workflow_id": LIVE_WORKFLOW_ID,
+                "fallback_reason": "configured_workflow_not_registered",
+            },
+        )
+
     return ResolvedWorkflowRoute(
-        vertical_key=AUTOMOTIVE_COLLISION_VERTICAL,
-        workflow_id=BIRCHWOOD_COLLISION_WORKFLOW_ID,
-        workflow_version=BIRCHWOOD_COLLISION_WORKFLOW_VERSION,
+        vertical_key=definition.vertical,
+        workflow_id=definition.workflow_id,
+        workflow_version=definition.version,
         config_json={
-            "route_type": "birchwood_collision_demo_placeholder",
-            "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
-            "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
-            "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
-            "status": BIRCHWOOD_COLLISION_STATUS,
+            "route_type": "birchwood_collision_phone_number",
+            "display_name": definition.display_name,
         },
         fallback_used=False,
         audit_metadata={
@@ -432,12 +499,9 @@ def _birchwood_collision_phone_number_route(
             "configured_key": "BIRCHWOOD_COLLISION_PHONE_NUMBER",
             "called_phone_number_masked": _mask_phone(called_phone_number),
             "environment": getattr(config, "ENVIRONMENT", "development"),
-            "vertical": AUTOMOTIVE_COLLISION_VERTICAL,
-            "workflow_id": BIRCHWOOD_COLLISION_WORKFLOW_ID,
-            "display_name": BIRCHWOOD_COLLISION_DISPLAY_NAME,
-            "powered_by": BIRCHWOOD_COLLISION_POWERED_BY,
-            "client_target": BIRCHWOOD_COLLISION_CLIENT_TARGET,
-            "status": BIRCHWOOD_COLLISION_STATUS,
+            "vertical": definition.vertical,
+            "workflow_id": definition.workflow_id,
+            "display_name": definition.display_name,
         },
     )
 
