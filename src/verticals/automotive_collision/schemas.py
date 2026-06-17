@@ -14,6 +14,7 @@ AutomotiveCollisionOutcome = Literal[
     "TRANSFER_GLASS_DEPARTMENT",
     "DECLINED_VEHICLE_YEAR",
     "DECLINED_REBUILT_SALVAGE",
+    "ESCALATE_SAFETY",
     "HUMAN_REVIEW",
 ]
 

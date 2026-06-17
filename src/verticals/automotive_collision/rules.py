@@ -7,6 +7,7 @@ from typing import Any
 
 import src.config as config
 from src.safety.injury_detection import scan_for_injuries
+from src.verticals.automotive_collision.advice_boundaries import detect_advice_request
 from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_DEFAULT_LOCATIONS,
     BIRCHWOOD_COLLISION_DEFAULT_LUXURY_BRANDS,
@@ -14,12 +15,17 @@ from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_DISCLAIMERS,
     BIRCHWOOD_COLLISION_REQUIRED_FIELDS,
 )
+from src.verticals.automotive_collision.safety_escalation import (
+    CollisionSafetyScan,
+    scan_collision_safety,
+)
 from src.verticals.automotive_collision.schemas import (
     AutomotiveCollisionAssessment,
     AutomotiveCollisionIntake,
 )
 
 INJURY_SAFETY_RULE_ID = "automotive_collision:injury_safety_branch"
+RESTRICTED_ADVICE_RULE_ID = "automotive_collision:restricted_advice_requested"
 
 
 def classify_collision_intake(
@@ -62,6 +68,76 @@ def classify_collision_intake(
     ):
         assessment.flags = _dedupe([*assessment.flags, "readback_correction"])
         assessment.human_review_required = True
+
+    combined = _combined_text(intake, dynamic_text)
+
+    # ── Safety escalation overlay (hazard / scene / legal) ───────────────────
+    # Additive, highest priority on the OUTCOME. Mirrors the injury branch:
+    # deterministic, over-escalation preferred, fail-closed. The injury overlay
+    # above is unchanged (injury keeps its flag + human_review on the base
+    # outcome); hazard/scene/legal route to a dedicated ESCALATE_SAFETY handoff.
+    try:
+        safety = scan_collision_safety(combined)
+    except Exception:
+        # Fail closed: a scan error escalates rather than proceeding.
+        safety = CollisionSafetyScan(
+            triggered=True,
+            categories=["hazard"],
+            rule_ids=["automotive_collision:safety:scan_exception"],
+        )
+    if safety.triggered:
+        assessment.outcome = "ESCALATE_SAFETY"
+        assessment.status = "human_review"
+        assessment.result = "escalate_safety"
+        assessment.recommended_routing = "ESCALATE_SAFETY"
+        assessment.reason = (
+            "Safety-sensitive situation detected ("
+            + ", ".join(safety.categories)
+            + ") - routed to a human with safety guidance."
+        )
+        assessment.flags = _dedupe(
+            [
+                *assessment.flags,
+                "safety_escalation",
+                *[f"safety:{category}" for category in safety.categories],
+            ]
+        )
+        assessment.rules_triggered = _dedupe(
+            [*assessment.rules_triggered, *safety.rule_ids]
+        )
+        assessment.human_review_required = True
+        assessment.confidence = 0.5
+
+    # ── Restricted-advice request overlay (PROVISIONAL) ──────────────────────
+    # Caller asked about coverage / fault / cost / legal / medical. The bot must
+    # not answer; flag the record and route to human review (never downgrades a
+    # safety escalation). Confirm escalation policy with Birchwood.
+    try:
+        advice_requests = detect_advice_request(combined)
+    except Exception:
+        advice_requests = ["coverage"]
+    if advice_requests:
+        assessment.flags = _dedupe(
+            [
+                *assessment.flags,
+                *[f"restricted_advice_requested:{cat}" for cat in advice_requests],
+            ]
+        )
+        assessment.rules_triggered = _dedupe(
+            [*assessment.rules_triggered, RESTRICTED_ADVICE_RULE_ID]
+        )
+        assessment.human_review_required = True
+        if assessment.outcome != "ESCALATE_SAFETY":
+            assessment.outcome = "HUMAN_REVIEW"
+            assessment.status = "human_review"
+            assessment.result = "human_review"
+            assessment.recommended_routing = "HUMAN_REVIEW"
+            assessment.reason = (
+                "Caller asked for restricted advice ("
+                + ", ".join(advice_requests)
+                + ") - routed to a human; the bot does not advise on these."
+            )
+
     return assessment
 
 

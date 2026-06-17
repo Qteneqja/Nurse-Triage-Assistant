@@ -280,5 +280,155 @@
     "dashboard_summary": "Completed intake with possible duplicate flag.",
     "demo_notes": "Shows workload reduction without dropping context.",
     "flow_note": "PR 2: conversation is narrative-first - the caller tells the full story, extraction prefills fields, then targeted gap-fill of required fields only, readback confirmation, next-steps close."
+  },
+  {
+    "scenario_id": "BC_011_HAZARD_FIRE_ESCALATE",
+    "title": "Smoke/fuel-leak hazard escalates to a human with safety guidance",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Dana Demo",
+      "phone": "204-555-0111",
+      "demo_only": true
+    },
+    "simulation_scenario": "hazard_fire_escalate",
+    "caller_answers": {
+      "incident_description": "Crash with smoke from the hood and a suspected fuel leak."
+    },
+    "expected_outcome": "ESCALATE_SAFETY",
+    "expected_flags": [
+      "safety_escalation",
+      "safety:hazard"
+    ],
+    "expected_key_fields": {
+      "is_drivable": false,
+      "injuries_state": "denied",
+      "human_review_required": true
+    },
+    "dashboard_summary": "Safety escalation (hazard) - connect caller to a human immediately.",
+    "demo_notes": "Deterministic hazard escalation (fire/smoke/fuel). Run via simulate_birchwood_call.py scenario hazard_fire_escalate.",
+    "provisional_note": "PROVISIONAL - confirm hazard trigger list and ESCALATE_SAFETY handling with Birchwood (July discovery call).",
+    "flow_note": "Safety hardening: hazard/scene/legal route to ESCALATE_SAFETY before routine intake gates; over-escalation preferred."
+  },
+  {
+    "scenario_id": "BC_012_ACTIVE_SCENE_ESCALATE",
+    "title": "Active scene / caller distress escalates to a human",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Sam Scene",
+      "phone": "204-555-0112",
+      "demo_only": true
+    },
+    "simulation_scenario": "active_scene_escalate",
+    "caller_answers": {
+      "incident_description": "Caller still at the scene, trapped in the car and distressed."
+    },
+    "expected_outcome": "ESCALATE_SAFETY",
+    "expected_flags": [
+      "safety_escalation",
+      "safety:scene"
+    ],
+    "expected_key_fields": {
+      "injuries_state": "reported",
+      "human_review_required": true
+    },
+    "dashboard_summary": "Safety escalation (active scene / distress) - human handoff.",
+    "demo_notes": "Deterministic scene escalation. Run via simulate_birchwood_call.py scenario active_scene_escalate.",
+    "provisional_note": "PROVISIONAL - confirm scene/distress trigger list with Birchwood (July discovery call).",
+    "flow_note": "Safety hardening: prioritize safety + a human, not data collection, when the crash is active."
+  },
+  {
+    "scenario_id": "BC_013_DISPUTED_LIABILITY_ESCALATE",
+    "title": "Disputed liability / legal threat escalates; bot gives no advice",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Lee Legal",
+      "phone": "204-555-0113",
+      "demo_only": true
+    },
+    "simulation_scenario": "disputed_liability_escalate",
+    "caller_answers": {
+      "incident_description": "Other driver disputing fault and threatening a lawyer and lawsuit."
+    },
+    "expected_outcome": "ESCALATE_SAFETY",
+    "expected_flags": [
+      "safety_escalation",
+      "safety:legal"
+    ],
+    "expected_key_fields": {
+      "injuries_state": "denied",
+      "human_review_required": true
+    },
+    "dashboard_summary": "Safety/legal escalation (disputed liability) - human handoff, no advice.",
+    "demo_notes": "Deterministic legal escalation. Run via simulate_birchwood_call.py scenario disputed_liability_escalate.",
+    "provisional_note": "PROVISIONAL - confirm legal trigger list (disputed liability, legal threat, fatality, police) with Birchwood.",
+    "flow_note": "Safety hardening: legal-sensitive situations get an immediate human handoff; the bot never advises on fault/liability."
+  },
+  {
+    "scenario_id": "BC_014_COVERAGE_QUESTION_HUMAN_REVIEW",
+    "title": "Caller asks if insurance covers it - bot gives no coverage answer",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Casey Coverage",
+      "phone": "204-555-0114",
+      "demo_only": true
+    },
+    "simulation_scenario": "coverage_question_human_review",
+    "caller_answers": {
+      "incident_description": "Parking-lot bump; caller asks whether insurance covers the repair."
+    },
+    "expected_outcome": "HUMAN_REVIEW",
+    "expected_flags": [
+      "restricted_advice_requested:coverage"
+    ],
+    "expected_key_fields": {
+      "injuries_state": "denied",
+      "human_review_required": true
+    },
+    "dashboard_summary": "Coverage question - routed to human; bot does not state coverage.",
+    "demo_notes": "Restricted-advice boundary (coverage). Run via simulate_birchwood_call.py scenario coverage_question_human_review.",
+    "provisional_note": "PROVISIONAL - confirm with Birchwood whether a coverage question should route to human review or just get the disclaimer and continue.",
+    "flow_note": "Restricted-advice boundary: the bot never states coverage/approval; the post-check would discard any such line."
+  },
+  {
+    "scenario_id": "BC_015_COST_QUESTION_HUMAN_REVIEW",
+    "title": "Caller asks how much repair will cost - bot quotes nothing",
+    "workflow_id": "birchwood_collision_intake_v1",
+    "vertical": "automotive_collision",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "caller_profile": {
+      "name": "Quinn Quote",
+      "phone": "204-555-0115",
+      "demo_only": true
+    },
+    "simulation_scenario": "cost_question_human_review",
+    "caller_answers": {
+      "incident_description": "Door scrape; caller asks how much the repair will cost."
+    },
+    "expected_outcome": "HUMAN_REVIEW",
+    "expected_flags": [
+      "restricted_advice_requested:cost"
+    ],
+    "expected_key_fields": {
+      "injuries_state": "denied",
+      "private_pay": true,
+      "human_review_required": true
+    },
+    "dashboard_summary": "Cost/estimate question - routed to human; bot quotes nothing.",
+    "demo_notes": "Restricted-advice boundary (cost/estimate). Run via simulate_birchwood_call.py scenario cost_question_human_review.",
+    "provisional_note": "PROVISIONAL - confirm with Birchwood whether a cost question should route to human review or just get the disclaimer and continue.",
+    "flow_note": "Restricted-advice boundary: the bot never quotes a repair cost/estimate; the post-check would discard any such line."
   }
 ]

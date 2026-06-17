@@ -20,6 +20,12 @@ from src.platform.workflows.schemas import (
 )
 from src.platform.workflows.spec_workflow import SpecDrivenWorkflow
 from src.safety.injury_detection import scan_for_injuries
+from src.verticals.automotive_collision.advice_boundaries import (
+    enforce_advice_boundaries,
+)
+from src.verticals.automotive_collision.safety_escalation import (
+    SAFETY_ESCALATION_ADVISORY,
+)
 from src.verticals.automotive_collision.constants import (
     AUTOMOTIVE_COLLISION_VERTICAL,
     BIRCHWOOD_COLLISION_CLIENT_TARGET,
@@ -118,12 +124,21 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
 
         disposition = final_result.final_disposition
         return WorkflowTurnResult(
-            assistant_text=_spoken_final_message(disposition, final_result),
+            # Vertical restricted-advice post-check on the caller-facing line
+            # (no-op for the deterministic templates; guardrail for any future
+            # LLM text). Composes with the platform safety gate.
+            assistant_text=enforce_advice_boundaries(
+                _spoken_final_message(disposition, final_result)
+            ).safe_text,
             stage="FINAL",
             should_continue=False,
             should_finalize=True,
             escalation_required=disposition
-            in {"TRANSFER_COLLISION_CENTER", "TRANSFER_GLASS_DEPARTMENT"},
+            in {
+                "TRANSFER_COLLISION_CENTER",
+                "TRANSFER_GLASS_DEPARTMENT",
+                "ESCALATE_SAFETY",
+            },
             recommended_disposition=disposition,
             confidence_score=final_result.confidence_score,
             rules_triggered=list(final_result.rules_triggered),
@@ -313,10 +328,13 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         if contact:
             parts.append(f"and your advisor should call {contact}")
         summary = "; ".join(parts) if parts else "the details you gave me"
-        return (
+        readback = (
             "Wonderful - let me just make sure I've got everything right: "
             f"{summary}. Did I get all of that right?"
         )
+        # Restricted-advice post-check on the dynamic readback (deterministic
+        # today, so a no-op; guards against any future free-text drift).
+        return enforce_advice_boundaries(readback).safe_text
 
     def _load_session(
         self,
@@ -817,6 +835,11 @@ def _spoken_final_message(
 ) -> str:
     record = final_result.structured_output.get("intake_record", {})
     flags = set(record.get("flags") or [])
+    if disposition == "ESCALATE_SAFETY":
+        return (
+            f"{SAFETY_ESCALATION_ADVISORY} I've saved your details so the team "
+            "has them."
+        )
     if disposition == "TRANSFER_COLLISION_CENTER":
         return (
             "No problem at all. Since the vehicle may not be safe to drive - "

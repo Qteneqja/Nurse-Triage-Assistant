@@ -205,10 +205,18 @@ def build_birchwood_spec() -> WorkflowSpec:
             "DECLINED_REBUILT_SALVAGE": (
                 "No action — declined per policy (rebuilt/salvage title)."
             ),
+            "ESCALATE_SAFETY": (
+                "Safety/legal escalation — connect the caller to a human "
+                "immediately; do not handle as routine intake."
+            ),
             "HUMAN_REVIEW": "Staff review required before contacting the customer.",
         },
         final_messages={"COMPLETED_INTAKE": BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE},
-        safety_hooks=["injury_safety_branch"],
+        safety_hooks=[
+            "injury_safety_branch",
+            "safety_escalation_branch",
+            "restricted_advice_boundary",
+        ],
         narrative_extractor=BIRCHWOOD_NARRATIVE_HOOK,
         field_recorded_hook=BIRCHWOOD_FIELD_HOOK,
         dynamic_prompt_builder=BIRCHWOOD_READBACK_HOOK,

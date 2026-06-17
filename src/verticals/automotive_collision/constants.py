@@ -54,7 +54,22 @@ BIRCHWOOD_COLLISION_OUTCOMES = [
     "TRANSFER_GLASS_DEPARTMENT",
     "DECLINED_VEHICLE_YEAR",
     "DECLINED_REBUILT_SALVAGE",
+    # Safety hardening: deterministic hazard/scene/legal escalation (additive,
+    # over-escalation preferred). Routed to an immediate human handoff with
+    # safety guidance. See safety_escalation.py + ADR/skills.
+    "ESCALATE_SAFETY",
     "HUMAN_REVIEW",
+]
+
+# PROVISIONAL — confirm with Birchwood (July discovery call). Categories the
+# intake bot must never advise on; enforced deterministically by
+# advice_boundaries.py (post-check on assistant text + caller-request routing).
+BIRCHWOOD_COLLISION_RESTRICTED_ADVICE = [
+    "coverage",  # insurance coverage / claim approval
+    "fault",  # fault / liability assignment
+    "cost",  # repair cost / estimate / pricing
+    "legal",  # legal advice (sue / lawyer / charges)
+    "medical",  # medical diagnosis / advice
 ]
 
 BIRCHWOOD_COLLISION_DEFAULT_LOCATIONS = [
