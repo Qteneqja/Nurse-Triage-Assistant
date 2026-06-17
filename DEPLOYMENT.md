@@ -35,6 +35,25 @@
 | `CORS_ALLOWED_ORIGINS` | _(empty)_ | Comma-separated CORS origins |
 | `RUN_MIGRATIONS_ON_STARTUP` | `true` (prod) | Auto-run Alembic migrations at startup |
 
+### Voice pipeline (telephony transport)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VOICE_PIPELINE` | `gather` | `gather` (legacy `<Gather>`/TwiML) or `conversation_relay` (streaming WebSocket). Rollback = set back to `gather`. Keep `gather` until the staging latency gate passes (ADR 0002). |
+| `VOICE_OUTPUT_MODE` | `azure_play` | CR output: `azure_play` (keep Azure voice via `play` URL, no streaming) or `cr_native` (stream tokens, CR renders TTS — changes the voice). |
+| `CONVERSATION_RELAY_WSS_URL` | _(derived)_ | Explicit `wss://` URL for `<ConversationRelay>`; derived from `TWILIO_WEBHOOK_BASE_URL` + `/api/v1/voice/relay` when empty. |
+| `CONVERSATION_RELAY_WS_TOKEN` | _(empty)_ | Shared secret appended to the wss URL (`?token=`) to authenticate the WS upgrade. Set in staging/production. |
+| `CR_TTS_PROVIDER` | `ElevenLabs` | CR-native TTS provider (`ElevenLabs`/`Google`/`Amazon`). |
+| `CR_TTS_VOICE` | _(empty)_ | CR-native TTS voice id. |
+| `CR_TRANSCRIPTION_PROVIDER` | `Deepgram` | CR STT provider (`Deepgram`/`Google`). |
+| `CR_SPEECH_MODEL` | _(empty)_ | CR STT model (e.g. `nova-3-general`). |
+
+To enable ConversationRelay on staging: set `VOICE_PIPELINE=conversation_relay`,
+`TWILIO_WEBHOOK_BASE_URL` (or `CONVERSATION_RELAY_WSS_URL`), and `CONVERSATION_RELAY_WS_TOKEN`;
+keep `VOICE_OUTPUT_MODE=azure_play` for no voice change. Then run the latency gate
+(`python -m scripts.measure_voice_latency` + the staged-call methodology it prints) before
+making `conversation_relay` the default.
+
 ## Local Development (Docker Compose)
 
 ```bash

@@ -343,6 +343,45 @@ TWILIO_VALIDATE_SIGNATURE: bool = os.getenv(
 NURSE_TRANSFER_NUMBER: str = os.getenv("NURSE_TRANSFER_NUMBER", "")
 
 # ---------------------------------------------------------------------------
+# Voice pipeline selection + ConversationRelay (voice-cr migration)
+# ---------------------------------------------------------------------------
+# Selects the telephony transport:
+#   "gather"             — legacy Twilio <Gather>/TwiML request-response path.
+#   "conversation_relay" — streaming Twilio ConversationRelay WebSocket path.
+# Instant rollback = set this back to "gather".
+# NOTE: the default stays "gather" until the ConversationRelay path is
+# feature-complete AND the latency gate passes; the migration flips the default
+# to "conversation_relay" at completion (do NOT default to an incomplete path).
+VOICE_PIPELINE: str = os.getenv("VOICE_PIPELINE", "gather").strip().lower()
+
+# Output/TTS provider seam for ConversationRelay sessions:
+#   "azure_play" — render with the existing Azure TTS pipeline and send the MP3
+#                  URL as a CR <play> message. Keeps the exact current voice,
+#                  no streaming. The no-regression default.
+#   "cr_native"  — stream assistant text as CR <text> tokens and let Twilio's
+#                  ConversationRelay TTS render it (ElevenLabs/Google/Amazon).
+#                  Enables streaming + barge-in, but changes the voice identity.
+VOICE_OUTPUT_MODE: str = os.getenv("VOICE_OUTPUT_MODE", "azure_play").strip().lower()
+
+# Explicit wss:// URL Twilio opens for ConversationRelay. When empty it is
+# derived from TWILIO_WEBHOOK_BASE_URL (https->wss) + "/api/v1/voice/relay".
+CONVERSATION_RELAY_WSS_URL: str = os.getenv("CONVERSATION_RELAY_WSS_URL", "").strip()
+
+# Shared secret appended to the wss URL as ?token=... so the WebSocket upgrade
+# can be authenticated (CR connections don't carry the X-Twilio-Signature header
+# the HTTP webhooks validate). Empty disables the check (dev only).
+CONVERSATION_RELAY_WS_TOKEN: str = os.getenv("CONVERSATION_RELAY_WS_TOKEN", "").strip()
+
+# ConversationRelay native STT/TTS config — used for the <ConversationRelay>
+# TwiML attributes and for "cr_native" output. Defaults mirror Twilio's.
+CR_TTS_PROVIDER: str = os.getenv("CR_TTS_PROVIDER", "ElevenLabs").strip()
+CR_TTS_VOICE: str = os.getenv("CR_TTS_VOICE", "").strip()
+CR_TRANSCRIPTION_PROVIDER: str = os.getenv(
+    "CR_TRANSCRIPTION_PROVIDER", "Deepgram"
+).strip()
+CR_SPEECH_MODEL: str = os.getenv("CR_SPEECH_MODEL", "").strip()
+
+# ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
 

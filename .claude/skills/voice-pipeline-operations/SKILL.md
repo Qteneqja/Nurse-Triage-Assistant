@@ -1,19 +1,21 @@
 ---
 name: voice-pipeline-operations
-description: Load when working on the telephony/voice layer — Twilio webhooks, STT/TTS, how caller speech flows into the orchestrator, swapping voice providers, running a staged/simulated call, and rollback. Documents current reality (Twilio Gather/TwiML + Azure TTS) and notes where the ConversationRelay migration is planned.
+description: Load when working on the telephony/voice layer — Twilio webhooks, STT/TTS, how caller speech flows into the orchestrator, swapping voice providers, running a staged/simulated call, and rollback. Two transports exist behind the VOICE_PIPELINE flag — legacy gather/TwiML + Azure TTS (default), and the streaming ConversationRelay WebSocket path.
 ---
 
 # Voice Pipeline Operations
 
-How ORCA's telephony layer works today and how to operate it. Current reality is
-**Twilio `<Gather>` (TwiML, request/response) + Twilio STT + Azure TTS** — there is no
-streaming pipeline and no ConversationRelay yet (see ADR 0002 for the planned direction).
+How ORCA's telephony layer works and how to operate it. **Two transports exist behind
+`VOICE_PIPELINE`:** the legacy **Twilio `<Gather>` (TwiML, request/response) + Twilio STT
++ Azure TTS** (default `gather`), and the streaming **Twilio ConversationRelay**
+WebSocket path (`conversation_relay`). Both feed the SAME orchestrator/safety gate
+unchanged. See ADR 0002.
 
 ## When to load this skill
 
-Changes to `src/twilio/routes.py`, `src/security/twilio_signature.py`,
-`src/utils/azure_tts.py`, voice config vars, or anything touching how a call is captured,
-transcribed, spoken, or fed into the orchestrator.
+Changes to `src/twilio/routes.py`, `src/twilio/conversation_relay.py`,
+`src/security/twilio_signature.py`, `src/utils/azure_tts.py`, voice config vars, or
+anything touching how a call is captured, transcribed, spoken, or fed into the orchestrator.
 
 ## How telephony works today
 
@@ -66,20 +68,57 @@ constant-time compare). Controlled by `TWILIO_AUTH_TOKEN`, `TWILIO_WEBHOOK_BASE_
 (reverse-proxy URL), and `TWILIO_VALIDATE_SIGNATURE` (off in development, on in
 staging/production by default).
 
-## Pipeline selection flag — current state
+## Pipeline selection flag
 
-**There is NO voice-pipeline selection flag.** All calls use Twilio `<Gather>`. There is
-no `VOICE_PIPELINE` / ConversationRelay switch in the code. If/when ConversationRelay is
-added (ADR 0002), introduce a flag (e.g. `ENABLE_CONVERSATION_RELAY`) and branch TwiML
-generation in the incoming handler so rollback is a flag flip.
+`VOICE_PIPELINE=gather|conversation_relay` (`src/config.py`, default `gather`) selects the
+transport in `handle_incoming_call`: `gather` returns the `<Gather>` TwiML above;
+`conversation_relay` returns `<Connect><ConversationRelay>` (falling back to gather if no
+wss URL can be derived). **Rollback = set it back to `gather`** (per-call TwiML, so only
+new calls are affected; in-flight calls finish on their path).
 
-## ConversationRelay migration — PLANNED, not implemented
+> The default stays `gather` until the latency gate (below) passes on staging. Do not flip
+> it to `conversation_relay` without that measurement.
 
-No code references `ConversationRelay` or audio streaming today. Phase 4 notes record
-that Twilio voice integration is mocked in tests
-(`docs/phase4/known_limitations.md`). The intended direction (lower latency, barge-in,
-streaming STT/TTS) and its tradeoffs/rollback are captured in
-[docs/decisions/0002-voice-pipeline-direction.md](../../../docs/decisions/0002-voice-pipeline-direction.md).
+## ConversationRelay (streaming WebSocket) — implemented
+
+[src/twilio/conversation_relay.py](../../../src/twilio/conversation_relay.py) is the
+additive streaming transport (selected by the flag), running alongside the gather path,
+which it leaves untouched:
+
+- **WS endpoint** `/api/v1/voice/relay` (auth via `?token=` = `CONVERSATION_RELAY_WS_TOKEN`,
+  no `X-Twilio-Signature` on a WS upgrade). Handles CR messages: `setup` (create/resume
+  session + greeting + first scripted prompt), `prompt` (advance one turn), `dtmf`,
+  `interrupt`, `error`.
+- It REUSES the gather path's transport-neutral helpers (scripted intake, narrative
+  capture, injury advisory, finalize/report dispatch) and calls the SAME workflow-engine
+  entry point. The orchestrator stays turn-batched — token streaming is a transport
+  concern; it does NOT become a generator (that would bypass the safety gate).
+- **Provider seam** `VOICE_OUTPUT_MODE=azure_play|cr_native`: `azure_play` (default) keeps
+  the exact Azure voice via a CR `play` MP3 URL (no streaming TTS, no voice regression);
+  `cr_native` streams `text` tokens for CR's TTS (ElevenLabs/Google/Amazon — **Azure is
+  not a CR TTS provider**) gaining streaming + barge-in but changing the voice. CR STT is
+  Deepgram/Google (`CR_TRANSCRIPTION_PROVIDER`, `CR_SPEECH_MODEL`).
+- **Nurse warm-transfer:** on healthcare finalize the CR `end` carries a dial/hangup
+  intent; the signature-validated `/api/v1/voice/relay-action` `<Connect action>` callback
+  returns `<Dial>NURSE_TRANSFER_NUMBER` or `<Hangup>` (number from config, never trusted
+  from the payload). Confirm the exact `HandoffData` param name in staging — an
+  unrecognized payload safely falls back to `<Hangup>`.
+- CR config vars (`src/config.py`): `VOICE_PIPELINE`, `VOICE_OUTPUT_MODE`,
+  `CONVERSATION_RELAY_WSS_URL` (else derived from `TWILIO_WEBHOOK_BASE_URL`),
+  `CONVERSATION_RELAY_WS_TOKEN`, `CR_TTS_PROVIDER`, `CR_TTS_VOICE`,
+  `CR_TRANSCRIPTION_PROVIDER`, `CR_SPEECH_MODEL`.
+- **Deferred:** the shared-number vertical menu (gather still serves shared-menu numbers);
+  trimming the stored transcript to the heard portion on barge-in.
+
+## Latency gate (run before flipping the default)
+
+```bash
+python -m scripts.measure_voice_latency --runs 30   # app-side overhead only (offline)
+```
+The TRUE metric — "caller stops speaking → agent audio starts" p50/p95 — must be measured
+on a **staged call** (real Twilio CR + Deepgram + TTS); it is not measurable offline. The
+script prints the staging methodology. Accept CR only if its p50 AND p95 are no worse than
+gather. See ADR 0002.
 
 ## Running a staged / simulated call (no Twilio)
 
@@ -96,16 +135,16 @@ to validate a voice/flow change without a live call. For a real staged call, see
 
 ## Rollback path
 
-- Voice pipeline choice is **not** stored per session; TwiML is generated fresh per
-  webhook, so a config/flag change affects only new calls (in-flight calls finish on the
-  old behavior).
-- TTS provider change → revert `src/utils/azure_tts.py` / config and restart.
+- **Pipeline:** `VOICE_PIPELINE=gather` instantly reverts to the legacy path. Choice is
+  **not** stored per session (TwiML generated per webhook), so only new calls are affected;
+  in-flight calls finish on their path.
+- TTS provider change → `VOICE_OUTPUT_MODE`, or revert `src/utils/azure_tts.py` / config.
 - Signature regression → `TWILIO_VALIDATE_SIGNATURE` controls enforcement.
-- A future ConversationRelay rollout should be guarded by a flag so revert = flip to off.
 
 ## Sources
 
-Derived from reading: `src/twilio/routes.py`, `src/security/twilio_signature.py`,
-`src/utils/azure_tts.py`, `src/config.py` (voice/Twilio/Azure vars), `scripts/simulate_calls.py`,
-`scripts/run_insurance_demo.py`, `docs/phase4/known_limitations.md`; confirmed (via repo
-search) that no `ConversationRelay`/streaming code exists yet.
+Derived from reading: `src/twilio/routes.py`, `src/twilio/conversation_relay.py`,
+`src/security/twilio_signature.py`, `src/utils/azure_tts.py`, `src/config.py`
+(voice/Twilio/Azure/CR vars), `src/main.py`, `scripts/simulate_calls.py`,
+`scripts/measure_voice_latency.py`, the verified Twilio ConversationRelay WebSocket +
+TwiML docs, and the Step-0 coupling audit.
