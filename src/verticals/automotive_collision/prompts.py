@@ -39,8 +39,7 @@ BIRCHWOOD_COLLISION_PROMPTS = {
         "it need a tow?"
     ),
     "damage_type": (
-        "Where's the damage on the vehicle? For example, is it just "
-        "glass - like a windshield - or is there body damage too?"
+        "In a sentence or two, what's the damage to the vehicle? Take your time."
     ),
     "vehicle_year": "What year is the vehicle?",
     "vehicle_make": "And the make - like Toyota or Ford?",
@@ -54,14 +53,12 @@ BIRCHWOOD_COLLISION_PROMPTS = {
         "And where did it happen? A street, intersection, or parking lot is perfect."
     ),
     "filing_insurance_claim": (
-        "For the repair, are you planning to go through insurance, or pay "
-        "out of pocket? Either way's absolutely fine - we'll take care of "
-        "the car either way."
+        "Have you opened an MPI claim for this yet? A yes or no is perfect - "
+        "the specialist can help with it either way."
     ),
     "claim_number": (
-        "If your insurance has given you a claim number, what is it? "
-        "Totally fine if you don't have one yet - it just helps us "
-        "coordinate your repair with them."
+        "If you have an MPI claim number, what is it? Totally fine if you "
+        "don't have one yet."
     ),
     "caller_name": (
         "Now just a couple of details so we can take care of you. What's "

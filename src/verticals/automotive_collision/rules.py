@@ -6,7 +6,6 @@ import re
 from typing import Any
 
 import src.config as config
-from src.safety.injury_detection import scan_for_injuries
 from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_DEFAULT_LOCATIONS,
     BIRCHWOOD_COLLISION_DEFAULT_LUXURY_BRANDS,
@@ -26,43 +25,61 @@ def classify_collision_intake(
     intake: AutomotiveCollisionIntake,
     dynamic_text: str = "",
 ) -> AutomotiveCollisionAssessment:
-    """Classify a Birchwood collision intake with offline deterministic rules.
+    """Minimal pure-intake completeness check — NO triage or decisions.
 
-    The injury safety branch (Invariant 3) is applied as an overlay AFTER the
-    routing gates so it cannot be bypassed by any routing outcome: every
-    assessment — transfer, decline, completed — carries the injury flag and
-    forces human review when injuries are mentioned (in the narrative OR via
-    the direct injury question) and not explicitly denied.
+    The collision specialist decides everything (estimate, coverage, fault,
+    decline, transfer). This only checks whether we captured what the specialist
+    needs, then hands off:
+      - all required fields present -> COMPLETED_INTAKE (ready for handoff)
+      - something required missing  -> INCOMPLETE_CALLBACK_NEEDED (capture + flag)
+
+    Flags are descriptive data for the specialist (needs_tow, private pay, MPI
+    claim status), never routing decisions. The reactive emergency reflex for a
+    spontaneous injury mention is the SHARED platform overlay (router); collision
+    intake never asks about injuries.
     """
-    scan = scan_for_injuries(_combined_text(intake, dynamic_text))
-    # Resolve the injury state once so missing-info checks and the record
-    # agree: an explicit answer wins; otherwise the narrative scan decides.
-    if intake.injuries_state not in ("reported", "denied"):
-        if scan.mentioned:
-            intake.injuries_state = "reported"
-        elif scan.denied:
-            intake.injuries_state = "denied"
+    data = intake.model_dump()
+    missing = [
+        field
+        for field in BIRCHWOOD_COLLISION_REQUIRED_FIELDS
+        if _is_missing(data.get(field))
+    ]
 
-    assessment = _classify_collision_intake_base(intake, dynamic_text)
-
-    if intake.injuries_state == "reported" or scan.mentioned:
-        assessment.flags = _dedupe(["injuries_reported", *assessment.flags])
-        assessment.rules_triggered = _dedupe(
-            [*assessment.rules_triggered, INJURY_SAFETY_RULE_ID]
+    flags: list[str] = []
+    if intake.is_drivable is False:
+        flags.append("needs_tow")
+    private_pay = intake.filing_insurance_claim is False
+    if private_pay:
+        flags.append("private_pay")
+    elif intake.filing_insurance_claim is True:
+        flags.append(
+            "mpi_claim_in_hand" if intake.claim_number else "mpi_claim_open_no_number"
         )
-        assessment.human_review_required = True
-    elif intake.injuries_state == "denied" or scan.denied:
-        assessment.flags = _dedupe([*assessment.flags, "injuries_denied"])
 
-    # A caller who said the readback was wrong (or left a correction note)
-    # needs a human to verify the record before the shop acts on it.
-    correction = _clean(intake.correction_note)
-    if intake.confirmation_ack == "no" or (
-        correction and correction.lower() not in {"none", "n/a", "no"}
-    ):
-        assessment.flags = _dedupe([*assessment.flags, "readback_correction"])
-        assessment.human_review_required = True
-    return assessment
+    if missing:
+        return _assessment(
+            outcome="INCOMPLETE_CALLBACK_NEEDED",
+            status="incomplete",
+            result="incomplete_callback_needed",
+            reason="Some required collision details are still needed.",
+            private_pay=private_pay,
+            flags=flags,
+            missing_information=missing,
+            rules_triggered=["automotive_collision:incomplete_callback_needed"],
+            callback_needed=True,
+            confidence=0.6,
+        )
+
+    return _assessment(
+        outcome="COMPLETED_INTAKE",
+        status="completed",
+        result="completed_intake",
+        reason="Collision intake captured; ready to hand off to a specialist.",
+        private_pay=private_pay,
+        flags=flags,
+        rules_triggered=["automotive_collision:completed_intake"],
+        confidence=0.9,
+    )
 
 
 def _classify_collision_intake_base(

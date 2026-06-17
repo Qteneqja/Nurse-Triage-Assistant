@@ -26,13 +26,10 @@ from src.safety.injury_detection import (
     scan_for_injuries,
 )
 from src.safety.red_flags import check_all, score_red_flags
-from src.twilio import webhook_stability as stability
 from src.verticals.automotive_collision.constants import (
     AUTOMOTIVE_COLLISION_VERTICAL,
     BIRCHWOOD_COLLISION_WORKFLOW_ID,
 )
-from src.verticals.automotive_collision.rules import classify_collision_intake
-from src.verticals.automotive_collision.schemas import AutomotiveCollisionIntake
 from src.verticals.automotive_collision.workflow import (
     BirchwoodCollisionIntakeWorkflow,
 )
@@ -190,66 +187,6 @@ def test_injury_mention_buried_in_long_story_still_detected():
     story = LONG_COLLISION_STORY + " and honestly my shoulder has been sore since."
     result = scan_for_injuries(story)
     assert result.mentioned is True
-
-
-# ---------------------------------------------------------------------------
-# Birchwood rules: injury overlay applies to every routing outcome
-# ---------------------------------------------------------------------------
-
-
-def _complete_intake(**overrides) -> AutomotiveCollisionIntake:
-    base = dict(
-        caller_name="Pat Caller",
-        phone="+12045550199",
-        email="pat@example.com",
-        address="12 Main St",
-        vehicle_year=2021,
-        vehicle_make="Toyota",
-        vehicle_model="Corolla",
-        license_plate="ABC 123",
-        is_drivable=True,
-        damage_type="rear bumper body damage",
-        incident_description="Rear-ended at a stop light. No one was hurt.",
-        incident_datetime="yesterday evening",
-        incident_location="Pembina at Stafford",
-        filing_insurance_claim=True,
-        claim_number="CLM-1234",
-        preferred_collision_center="BIRCHWOOD_COLLISION_LOCATION_1",
-        is_rebuilt_or_salvage=False,
-    )
-    base.update(overrides)
-    return AutomotiveCollisionIntake(**base)
-
-
-def test_injury_flag_on_completed_intake():
-    intake = _complete_intake(
-        incident_description="Rear-ended at a light and my neck hurts since."
-    )
-    assessment = classify_collision_intake(intake)
-    assert assessment.flags[0] == "injuries_reported"
-    assert assessment.human_review_required is True
-    assert "automotive_collision:injury_safety_branch" in assessment.rules_triggered
-
-
-def test_injury_flag_on_transfer_outcome():
-    intake = _complete_intake(
-        is_drivable=False,
-        incident_description="Car won't start and my back is sore.",
-    )
-    assessment = classify_collision_intake(intake)
-    assert assessment.outcome == "TRANSFER_COLLISION_CENTER"
-    assert "injuries_reported" in assessment.flags
-    assert assessment.human_review_required is True
-
-
-def test_injury_denial_recorded_without_forcing_review():
-    intake = _complete_intake(
-        incident_description="Fender bender, no one was hurt at all."
-    )
-    assessment = classify_collision_intake(intake)
-    assert "injuries_denied" in assessment.flags
-    assert "injuries_reported" not in assessment.flags
-    assert assessment.outcome == "COMPLETED_INTAKE"
 
 
 # ---------------------------------------------------------------------------
@@ -503,106 +440,8 @@ async def test_storage_failure_healthcare_keeps_original_wording():
 
 
 # ---------------------------------------------------------------------------
-# Long-story narrative capture (1B)
+# Injury safety advisory on the dynamic/final turn (shared platform overlay)
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_long_narrative_captured_across_segments_without_loss():
-    with pytest.MonkeyPatch.context() as mp, _TTS_OFF:
-        repo = _setup_memory_repo(mp)
-        _birchwood_session_at_stage(repo, "CA-LONG-STORY", "incident_description")
-
-        seg1 = "I was heading north on Pembina when a truck merged into my lane"
-        seg2 = "and it caught the front fender and pushed me onto the shoulder"
-        seg3 = "the police came and took a report, no one was hurt"
-
-        r1 = await _gather("CA-LONG-STORY", seg1)
-        assert "go on, i'm listening" in r1.body.decode().lower()
-        r2 = await _gather("CA-LONG-STORY", seg2)
-        assert "go on, i'm listening" in r2.body.decode().lower()
-        r3 = await _gather("CA-LONG-STORY", seg3)
-        assert "go on, i'm listening" in r3.body.decode().lower()
-        r4 = await _gather("CA-LONG-STORY", "that's everything")
-
-        stored = repo.load_session_by_call("CA-LONG-STORY")
-        narrative = stored.channel_metadata["scripted_intake"]["fields"][
-            "incident_description"
-        ]
-        assert narrative == f"{seg1} {seg2} {seg3}"
-        # Next stage was prompted — the caller was not cut off nor stuck.
-        assert "<Gather" in r4.body.decode()
-
-
-@pytest.mark.asyncio
-async def test_narrative_trailing_cue_completes_and_is_stripped():
-    with pytest.MonkeyPatch.context() as mp, _TTS_OFF:
-        repo = _setup_memory_repo(mp)
-        _birchwood_session_at_stage(repo, "CA-TRAIL-CUE", "incident_description")
-
-        await _gather("CA-TRAIL-CUE", "Someone backed into me in a parking lot")
-        await _gather("CA-TRAIL-CUE", "the rear door is dented and that's everything")
-
-        stored = repo.load_session_by_call("CA-TRAIL-CUE")
-        narrative = stored.channel_metadata["scripted_intake"]["fields"][
-            "incident_description"
-        ]
-        assert narrative == (
-            "Someone backed into me in a parking lot the rear door is dented"
-        )
-
-
-@pytest.mark.asyncio
-async def test_silence_after_story_completes_narrative_not_a_strike():
-    with pytest.MonkeyPatch.context() as mp, _TTS_OFF:
-        repo = _setup_memory_repo(mp)
-        _birchwood_session_at_stage(repo, "CA-PAUSE", "incident_description")
-
-        await _gather("CA-PAUSE", "I hit a deer on the highway near Selkirk")
-        response = await _gather("CA-PAUSE", None)  # caller done — silence
-
-        stored = repo.load_session_by_call("CA-PAUSE")
-        narrative = stored.channel_metadata["scripted_intake"]["fields"][
-            "incident_description"
-        ]
-        assert narrative == "I hit a deer on the highway near Selkirk"
-        assert not stored.is_finalized
-        assert "<Gather" in response.body.decode()  # moved on to next question
-
-
-@pytest.mark.asyncio
-async def test_very_long_single_utterance_passes_through_unmodified():
-    with pytest.MonkeyPatch.context() as mp, _TTS_OFF:
-        repo = _setup_memory_repo(mp)
-        _birchwood_session_at_stage(repo, "CA-VERBATIM", "incident_description")
-
-        await _gather("CA-VERBATIM", LONG_COLLISION_STORY)
-        await _gather("CA-VERBATIM", "that's all")
-
-        stored = repo.load_session_by_call("CA-VERBATIM")
-        narrative = stored.channel_metadata["scripted_intake"]["fields"][
-            "incident_description"
-        ]
-        assert LONG_COLLISION_STORY.strip() in narrative
-        assert len(narrative) >= len(LONG_COLLISION_STORY.strip())
-
-
-@pytest.mark.asyncio
-async def test_injury_mention_in_narrative_triggers_spoken_advisory_once():
-    with pytest.MonkeyPatch.context() as mp, _TTS_OFF:
-        repo = _setup_memory_repo(mp)
-        _birchwood_session_at_stage(repo, "CA-INJURY", "incident_description")
-
-        r1 = await _gather("CA-INJURY", "A car hit my door and my neck hurts")
-        body1 = r1.body.decode()
-        assert "9 1 1" in body1  # advisory spoken immediately
-
-        r2 = await _gather("CA-INJURY", "anyway the door is smashed in")
-        assert "9 1 1" not in r2.body.decode()  # advisory only once
-
-        stored = repo.load_session_by_call("CA-INJURY")
-        fields = stored.channel_metadata["scripted_intake"]["fields"]
-        assert fields["injury_mentions"]
 
 
 @pytest.mark.asyncio
@@ -681,65 +520,3 @@ def test_injury_advisory_text_gives_no_medical_advice_beyond_911():
     assert "9 1 1" in lowered
     for forbidden in ("diagnos", "medication", "dosage", "treat", "symptom"):
         assert forbidden not in lowered
-
-
-# ---------------------------------------------------------------------------
-# Narrative state machine unit coverage
-# ---------------------------------------------------------------------------
-
-
-def test_narrative_segment_cap_completes():
-    from src.orchestrator.schemas import OrchestratorSession
-
-    session = OrchestratorSession(session_id="s1", call_sid="CA-CAP")
-    workflow = BirchwoodCollisionIntakeWorkflow()
-    stage = next(
-        s
-        for s in workflow.get_scripted_intake_definition().stages
-        if s.field_name == "incident_description"
-    )
-    outcome = None
-    for i in range(stability.NARRATIVE_MAX_SEGMENTS + 1):
-        outcome = stability.narrative_ingest(session, stage, f"segment number {i}")
-        if outcome.completed:
-            break
-    assert outcome is not None and outcome.completed
-    assert "segment number 0" in outcome.joined_text
-
-
-def test_narrative_char_cap_completes():
-    from src.orchestrator.schemas import OrchestratorSession
-
-    session = OrchestratorSession(session_id="s2", call_sid="CA-CHARS")
-    workflow = BirchwoodCollisionIntakeWorkflow()
-    stage = next(
-        s
-        for s in workflow.get_scripted_intake_definition().stages
-        if s.field_name == "incident_description"
-    )
-    # A single utterance already over the cap completes immediately —
-    # capture everything said, but do not keep the call open indefinitely.
-    big = "x" * (stability.NARRATIVE_MAX_CHARS + 10)
-    outcome = stability.narrative_ingest(session, stage, big)
-    assert outcome.completed
-    assert big in outcome.joined_text
-
-
-@pytest.mark.parametrize(
-    "cue",
-    ["that's everything", "that's all", "nothing else", "I'm done", "no"],
-)
-def test_completion_cues_recognized(cue):
-    from src.orchestrator.schemas import OrchestratorSession
-
-    session = OrchestratorSession(session_id="s3", call_sid="CA-CUE")
-    workflow = BirchwoodCollisionIntakeWorkflow()
-    stage = next(
-        s
-        for s in workflow.get_scripted_intake_definition().stages
-        if s.field_name == "incident_description"
-    )
-    stability.narrative_ingest(session, stage, "the bumper is cracked")
-    outcome = stability.narrative_ingest(session, stage, cue)
-    assert outcome.completed
-    assert outcome.joined_text == "the bumper is cracked"

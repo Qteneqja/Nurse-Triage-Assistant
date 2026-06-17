@@ -164,11 +164,11 @@ async def test_twilio_shared_number_menu_routes_digit_three_to_automotive():
     body = response.body.decode()
     stored = repo.load_session_by_call("CA-SHARED-MENU-AUTO")
     assert "Birchwood Automotive Group" in body  # voice-pass branded greeting
-    # PR 2: narrative-first — the opening question invites the full story.
-    assert "take your time" in body.lower()
+    # Minimal pure-intake: the first question collects the caller's full name.
+    assert "full name" in body.lower()
     assert stored.vertical_key == "automotive_collision"
     assert stored.workflow_id == BIRCHWOOD_COLLISION_WORKFLOW_ID
-    assert stored.channel_metadata["stage"] == "INCIDENT_DESCRIPTION"
+    assert stored.channel_metadata["stage"] == "CALLER_NAME"
 
 
 def test_shared_number_menu_prefers_insurance_for_auto_claim_language():

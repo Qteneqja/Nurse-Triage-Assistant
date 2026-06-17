@@ -418,23 +418,22 @@ def _scripted_stage_definitions() -> list[ScriptedStageDefinition]:
 
     Built at call time because voice timeouts/profiles read live config.
     """
+    # Minimal pure-intake: only what a collision specialist needs, then hand
+    # off. NO injury question (the reactive emergency reflex is the shared
+    # platform overlay), no rebuilt/salvage, no narrative, no datetime/location
+    # gap-fill, no readback — those were the richer "old script" and are gone.
     return [
-        _stage("INCIDENT_DESCRIPTION", "incident_description", "free_text"),
-        _stage("INJURY_CHECK", "injuries_state", "text"),
-        _stage("DRIVABILITY_CHECK", "is_drivable", "text"),
-        _stage("DAMAGE_TYPE", "damage_type", "free_text"),
+        _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
+        _stage("PHONE", "phone", "phone", sensitivity="pii"),
         _stage("VEHICLE_YEAR", "vehicle_year", "integer"),
         _stage("VEHICLE_MAKE", "vehicle_make", "text"),
         _stage("VEHICLE_MODEL", "vehicle_model", "text"),
-        _stage("REBUILT_SALVAGE_STATUS", "rebuilt_salvage_status", "text"),
-        _stage("INCIDENT_DATETIME", "incident_datetime", "text"),
-        _stage("INCIDENT_LOCATION", "incident_location", "text"),
-        _stage("FILING_INSURANCE_CLAIM", "filing_insurance_claim", "text"),
+        _stage("DAMAGE_TYPE", "damage_type", "free_text"),
+        _stage("DRIVABILITY_CHECK", "is_drivable", "text"),
+        _stage(
+            "FILING_INSURANCE_CLAIM", "filing_insurance_claim", "text", required=False
+        ),
         _stage("CLAIM_NUMBER", "claim_number", "text", required=False),
-        _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
-        _stage("PHONE", "phone", "phone", sensitivity="pii"),
-        _stage("CONFIRMATION", "confirmation_ack", "text", dynamic_prompt=True),
-        _stage("CORRECTION_NOTE", "correction_note", "free_text", required=False),
     ]
 
 
