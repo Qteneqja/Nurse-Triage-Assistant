@@ -1,7 +1,8 @@
-"""Assertions for the vertical golden-call pack (Birchwood + insurance).
+"""Assertions for the vertical golden-call pack (insurance FNOL).
 
 Deterministic only — exercises production scripted-field parsing and the
-rules engines. The healthcare golden-call suite is separate and untouched.
+insurance rules engine. The healthcare golden-call suite is separate and
+untouched.
 """
 
 import json
@@ -20,11 +21,12 @@ _CASE_FILES = sorted(VERTICAL_CASES_DIR.rglob("*.json"))
 
 def test_vertical_cases_load_and_validate():
     cases = load_vertical_cases()
-    birchwood = [c for c in cases if c["vertical"] == "automotive_collision"]
     insurance = [c for c in cases if c["vertical"] == "insurance"]
-    # Birchwood is the pilot target — it must dominate the pack.
-    assert len(birchwood) >= 8
+    # The vertical golden pack is insurance-only now (the Birchwood
+    # collision flow is a minimal pure-intake workflow with its own
+    # deterministic unit tests; it no longer ships golden cases here).
     assert len(insurance) >= 2
+    assert all(c["vertical"] == "insurance" for c in cases)
 
 
 @pytest.mark.parametrize("case_file", _CASE_FILES, ids=lambda p: p.stem)

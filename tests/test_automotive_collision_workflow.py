@@ -1,3 +1,20 @@
+"""Tests for the MINIMAL Birchwood collision intake workflow.
+
+``birchwood_collision_intake_v1`` is now a pure-intake workflow: it collects
+only what a collision specialist needs and hands off. It does NOT triage,
+decide, adjudicate, transfer, or decline. ``classify_collision_intake`` returns
+exactly two outcomes:
+
+  - all required fields present  -> COMPLETED_INTAKE
+  - a required field missing     -> INCOMPLETE_CALLBACK_NEEDED
+
+Flags are descriptive data for the specialist (``needs_tow``, ``private_pay``,
+``mpi_claim_in_hand`` / ``mpi_claim_open_no_number``), never routing decisions.
+The reactive emergency reflex for a spontaneous injury mention is the SHARED
+platform overlay (router) and is exercised elsewhere; collision intake never
+asks about injuries.
+"""
+
 import re
 
 import pytest
@@ -16,16 +33,32 @@ from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_DISPLAY_NAME,
     BIRCHWOOD_COLLISION_PHONE_PLACEHOLDER,
     BIRCHWOOD_COLLISION_POWERED_BY,
+    BIRCHWOOD_COLLISION_REQUIRED_FIELDS,
     BIRCHWOOD_COLLISION_STATUS,
     BIRCHWOOD_COLLISION_WORKFLOW_ID,
 )
 from src.verticals.automotive_collision.extraction import (
     AutomotiveCollisionExtractionAgent,
 )
+from src.verticals.automotive_collision.rules import classify_collision_intake
+from src.verticals.automotive_collision.schemas import AutomotiveCollisionIntake
 from src.verticals.automotive_collision.workflow import (
     BirchwoodCollisionIntakeWorkflow,
 )
 from src.verticals.healthcare.constants import HEALTHCARE_TRIAGE_WORKFLOW_ID
+
+
+# Required fields for the minimal pure-intake flow (no injury, no rebuilt, no
+# narrative, no datetime/location, no readback).
+MINIMAL_REQUIRED_FIELDS = [
+    "caller_name",
+    "phone",
+    "vehicle_year",
+    "vehicle_make",
+    "vehicle_model",
+    "damage_type",
+    "is_drivable",
+]
 
 
 def _context(session_id: str = "collision-session") -> WorkflowContext:
@@ -38,28 +71,37 @@ def _context(session_id: str = "collision-session") -> WorkflowContext:
 
 
 def _scripted_fields(**overrides) -> dict:
+    """The minimal scripted fields a collision specialist needs."""
     base = {
-        "is_drivable": "yes",
-        "damage_type": "front bumper body damage",
-        "vehicle_year": 2020,
-        "rebuilt_salvage_status": "no",
         "caller_name": "John Smith",
         "phone": "+12045550123",
-        "email": "john.smith@example.com",
-        "address": "123 Demo Street, Winnipeg, MB R3C 1A1",
+        "vehicle_year": 2020,
         "vehicle_make": "Toyota",
         "vehicle_model": "Camry",
-        "license_plate": "ABC123",
-        "incident_description": "Hit a pole in a parking lot.",
-        "incident_datetime": "2026-05-17 14:00",
-        "incident_location": "parking lot on Demo Street",
-        "injuries_state": "denied",
+        "damage_type": "front bumper body damage",
+        "is_drivable": "yes",
         "filing_insurance_claim": "yes",
         "claim_number": "CLM-2026-12345",
-        "preferred_collision_center": "BIRCHWOOD_COLLISION_LOCATION_1",
     }
     base.update(overrides)
     return base
+
+
+def _intake(**overrides) -> AutomotiveCollisionIntake:
+    """A complete minimal intake, with deterministic-typed values."""
+    base = {
+        "caller_name": "John Smith",
+        "phone": "+12045550123",
+        "vehicle_year": 2020,
+        "vehicle_make": "Toyota",
+        "vehicle_model": "Camry",
+        "damage_type": "front bumper body damage",
+        "is_drivable": True,
+        "filing_insurance_claim": True,
+        "claim_number": "CLM-2026-12345",
+    }
+    base.update(overrides)
+    return AutomotiveCollisionIntake(**base)
 
 
 def _session_for_fields(
@@ -94,6 +136,11 @@ def _record(result):
     ]["intake_record"]
 
 
+# ---------------------------------------------------------------------------
+# Registration / definition (still-valid — must not change the live pilot)
+# ---------------------------------------------------------------------------
+
+
 def test_workflow_is_registered():
     reset_workflow_registry()
     registry = ensure_default_workflows_registered()
@@ -103,9 +150,20 @@ def test_workflow_is_registered():
 
     assert isinstance(workflow, BirchwoodCollisionIntakeWorkflow)
     assert workflow.get_definition().vertical == AUTOMOTIVE_COLLISION_VERTICAL
+    # Registering the collision workflow must not disturb the healthcare default.
     assert (
         default_healthcare.get_definition().workflow_id == HEALTHCARE_TRIAGE_WORKFLOW_ID
     )
+
+
+def test_definition_is_minimal_pure_intake():
+    definition = BirchwoodCollisionIntakeWorkflow().get_definition()
+
+    assert definition.workflow_id == BIRCHWOOD_COLLISION_WORKFLOW_ID
+    assert definition.vertical == AUTOMOTIVE_COLLISION_VERTICAL
+    # The minimal required-field set drives the only two outcomes.
+    assert definition.required_fields == MINIMAL_REQUIRED_FIELDS
+    assert list(BIRCHWOOD_COLLISION_REQUIRED_FIELDS) == MINIMAL_REQUIRED_FIELDS
 
 
 def test_route_resolves_from_birchwood_collision_phone_number(monkeypatch):
@@ -115,9 +173,6 @@ def test_route_resolves_from_birchwood_collision_phone_number(monkeypatch):
         BIRCHWOOD_COLLISION_PHONE_PLACEHOLDER,
         raising=False,
     )
-    # The live pilot route applies when the number is configured for it. (The
-    # default now routes to the minimal workflow — see test_birchwood_collision
-    # _min_routing.py.) The live WORKFLOW itself is unchanged.
     monkeypatch.setattr(
         "src.platform.workflows.router.config.BIRCHWOOD_COLLISION_WORKFLOW_ID",
         BIRCHWOOD_COLLISION_WORKFLOW_ID,
@@ -153,100 +208,124 @@ def test_missing_birchwood_phone_number_does_not_crash(monkeypatch):
     assert route.vertical_key == "healthcare"
 
 
-def test_scripted_intake_definition_exists():
+def test_scripted_intake_is_minimal_pure_intake():
     intake = BirchwoodCollisionIntakeWorkflow().get_scripted_intake_definition()
 
     assert intake.intro_text
-    # PR 2: narrative-first — the story comes before any structured question,
-    # then the injury check (Invariant 3), then targeted vehicle gap-fill.
-    assert [stage.field_name for stage in intake.stages[:4]] == [
-        "incident_description",
-        "injuries_state",
-        "is_drivable",
+    field_names = [stage.field_name for stage in intake.stages]
+    # Exactly the minimal scripted questions, in order: contact, vehicle,
+    # damage, drivability, then optional MPI claim status.
+    assert field_names == [
+        "caller_name",
+        "phone",
+        "vehicle_year",
+        "vehicle_make",
+        "vehicle_model",
         "damage_type",
+        "is_drivable",
+        "filing_insurance_claim",
+        "claim_number",
     ]
-    # The readback confirmation closes the scripted flow.
-    assert intake.stages[-2].field_name == "confirmation_ack"
-    assert intake.stages[-2].dynamic_prompt is True
-    assert intake.stages[-1].field_name == "correction_note"
-    # Voice pass: the greeting speaks in Birchwood's brand voice (ORCA stays
-    # vendor-facing in materials/metadata, not in the customer greeting).
+    # No injury question (the reactive reflex is the shared platform overlay),
+    # no narrative, no rebuilt/salvage, no datetime/location, no readback.
+    assert not any("injur" in name.lower() for name in field_names)
+    assert "incident_description" not in field_names
+    assert "rebuilt_salvage_status" not in field_names
+    assert "incident_datetime" not in field_names
+    assert "incident_location" not in field_names
+    assert "confirmation_ack" not in field_names
+    assert "correction_note" not in field_names
+    # Required questions are required; the MPI claim pair is optional.
+    by_field = {stage.field_name: stage for stage in intake.stages}
+    for field in MINIMAL_REQUIRED_FIELDS:
+        assert by_field[field].required is True
+    assert by_field["filing_insurance_claim"].required is False
+    assert by_field["claim_number"].required is False
+    # Voice pass: the greeting speaks in Birchwood's brand voice.
     assert "Birchwood Automotive Group" in intake.intro_text
     assert "recorded for training and quality purposes" in intake.intro_text
 
 
+# ---------------------------------------------------------------------------
+# classify_collision_intake — the only two outcomes + descriptive flags
+# ---------------------------------------------------------------------------
+
+
+def test_complete_intake_is_completed():
+    assessment = classify_collision_intake(_intake())
+
+    assert assessment.outcome == "COMPLETED_INTAKE"
+    assert assessment.missing_information == []
+    assert assessment.callback_needed is False
+
+
+@pytest.mark.parametrize("field", MINIMAL_REQUIRED_FIELDS)
+def test_missing_required_field_is_incomplete_callback(field):
+    assessment = classify_collision_intake(_intake(**{field: None}))
+
+    assert assessment.outcome == "INCOMPLETE_CALLBACK_NEEDED"
+    assert field in assessment.missing_information
+    assert assessment.callback_needed is True
+
+
+def test_non_drivable_flags_needs_tow_without_transferring():
+    # is_drivable False is descriptive data (needs a tow), NOT a transfer.
+    assessment = classify_collision_intake(_intake(is_drivable=False))
+
+    assert assessment.outcome == "COMPLETED_INTAKE"
+    assert "needs_tow" in assessment.flags
+
+
+def test_private_pay_flags_private_pay():
+    assessment = classify_collision_intake(
+        _intake(filing_insurance_claim=False, claim_number=None)
+    )
+
+    assert assessment.outcome == "COMPLETED_INTAKE"
+    assert assessment.private_pay is True
+    assert "private_pay" in assessment.flags
+
+
+def test_mpi_claim_status_is_descriptive_data_only():
+    in_hand = classify_collision_intake(_intake(claim_number="CLM-1"))
+    assert "mpi_claim_in_hand" in in_hand.flags
+
+    no_number = classify_collision_intake(_intake(claim_number=None))
+    assert "mpi_claim_open_no_number" in no_number.flags
+
+
+# ---------------------------------------------------------------------------
+# End-to-end via handle_turn — minimal flow only ever completes or callbacks
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_non_drivable_vehicle_transfers_to_collision_center():
+async def test_complete_run_completes_intake():
+    result = await _run_case()
+
+    assert result.recommended_disposition == "COMPLETED_INTAKE"
+    assert result.escalation_required is False
+
+
+@pytest.mark.asyncio
+async def test_missing_required_field_run_requests_callback():
+    result = await _run_case(vehicle_make="")
+
+    assert result.recommended_disposition == "INCOMPLETE_CALLBACK_NEEDED"
+    assert "vehicle_make" in _record(result)["missing_information"]
+    assert _record(result)["callback_needed"] is True
+
+
+@pytest.mark.asyncio
+async def test_non_drivable_run_completes_with_needs_tow():
     result = await _run_case(is_drivable="no, it needs towing")
 
-    assert result.recommended_disposition == "TRANSFER_COLLISION_CENTER"
-    assert "non_drivable_transfer" in result.rules_triggered[0] or (
-        "non_drivable_transfer" in _record(result)["flags"]
-    )
-    assert _record(result)["transfer_department"] == "collision_center"
-
-
-@pytest.mark.asyncio
-async def test_unsure_drivability_transfers_to_collision_center():
-    result = await _run_case(is_drivable="I am not sure")
-
-    assert result.recommended_disposition == "TRANSFER_COLLISION_CENTER"
-    assert "non_drivable_transfer" in _record(result)["flags"]
-
-
-@pytest.mark.asyncio
-async def test_glass_only_damage_transfers_to_glass_department():
-    result = await _run_case(damage_type="windshield glass only")
-
-    assert result.recommended_disposition == "TRANSFER_GLASS_DEPARTMENT"
-    assert _record(result)["transfer_department"] == "glass_department"
-    assert "glass_only_transfer" in _record(result)["flags"]
-
-
-@pytest.mark.asyncio
-async def test_glass_plus_body_damage_continues_intake():
-    result = await _run_case(damage_type="windshield and front bumper body damage")
-
     assert result.recommended_disposition == "COMPLETED_INTAKE"
-    assert _record(result)["incident"]["body_damage"] is True
+    assert "needs_tow" in _record(result)["flags"]
 
 
 @pytest.mark.asyncio
-async def test_2011_or_older_vehicle_declines_politely():
-    result = await _run_case(vehicle_year=2011)
-
-    assert result.recommended_disposition == "DECLINED_VEHICLE_YEAR"
-    assert "vehicles from 2012 and newer" in result.assistant_text
-    assert "vehicle_year_declined" in _record(result)["flags"]
-
-
-@pytest.mark.asyncio
-async def test_2012_or_newer_vehicle_continues():
-    result = await _run_case(vehicle_year=2012)
-
-    assert result.recommended_disposition == "COMPLETED_INTAKE"
-
-
-@pytest.mark.asyncio
-async def test_rebuilt_salvage_vehicle_declines_politely():
-    result = await _run_case(rebuilt_salvage_status="yes, it is rebuilt")
-
-    assert result.recommended_disposition == "DECLINED_REBUILT_SALVAGE"
-    assert "rebuilt or salvage title vehicles" in result.assistant_text
-    assert "rebuilt_salvage_declined" in _record(result)["flags"]
-
-
-@pytest.mark.asyncio
-async def test_unsure_rebuilt_continues_with_staff_review_flag():
-    result = await _run_case(rebuilt_salvage_status="not sure")
-
-    assert result.recommended_disposition == "COMPLETED_INTAKE"
-    assert "staff_review_rebuilt_status" in _record(result)["flags"]
-    assert _record(result)["human_review_required"] is True
-
-
-@pytest.mark.asyncio
-async def test_private_pay_skips_claim_number_and_flags_private_pay():
+async def test_private_pay_run_completes_with_private_pay_flag():
     result = await _run_case(
         filing_insurance_claim="no, private pay",
         claim_number="",
@@ -254,78 +333,14 @@ async def test_private_pay_skips_claim_number_and_flags_private_pay():
 
     assert result.recommended_disposition == "COMPLETED_INTAKE"
     assert "private_pay" in _record(result)["flags"]
-    assert "missing_claim_number" not in _record(result)["flags"]
 
 
-@pytest.mark.asyncio
-async def test_filing_insurance_without_claim_number_flags_callback_needed():
-    result = await _run_case(filing_insurance_claim="yes", claim_number="")
-
-    assert result.recommended_disposition == "INCOMPLETE_CALLBACK_NEEDED"
-    assert "missing_claim_number" in _record(result)["flags"]
-    assert _record(result)["callback_needed"] is True
+# ---------------------------------------------------------------------------
+# Record / extraction shape (unchanged — just fewer fields populated)
+# ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_missing_license_plate_is_optional_and_does_not_flag_callback():
-    # PR 2: the plate is optional — captured when offered, never a reason to
-    # mark an otherwise-complete intake incomplete.
-    result = await _run_case(license_plate="")
-
-    assert result.recommended_disposition == "COMPLETED_INTAKE"
-    assert "missing_license_plate" not in _record(result)["flags"]
-
-
-@pytest.mark.asyncio
-async def test_vw_offers_all_three_location_placeholders():
-    result = await _run_case(
-        vehicle_make="Volkswagen",
-        preferred_collision_center="",
-    )
-
-    record = _record(result)
-    assert record["is_vw"] is True
-    assert record["location"]["available_centers"] == [
-        "BIRCHWOOD_COLLISION_LOCATION_1",
-        "BIRCHWOOD_COLLISION_LOCATION_2",
-        "BIRCHWOOD_COLLISION_LOCATION_3",
-    ]
-    assert "vw_location_choice" in record["flags"]
-
-
-@pytest.mark.asyncio
-async def test_luxury_brand_auto_assigns_luxury_location():
-    result = await _run_case(vehicle_make="BMW", preferred_collision_center="")
-
-    record = _record(result)
-    assert result.recommended_disposition == "COMPLETED_INTAKE"
-    assert record["preferred_collision_center"] == "BIRCHWOOD_COLLISION_LUXURY_LOCATION"
-    assert "luxury_auto_assigned" in record["flags"]
-
-
-@pytest.mark.asyncio
-async def test_customer_pressing_zero_transfers():
-    workflow = BirchwoodCollisionIntakeWorkflow()
-    context = _context("collision-zero")
-    session = _session_for_fields(workflow, context)
-
-    result = await workflow.handle_turn(
-        context,
-        WorkflowInput(user_text="0", session_state=session.model_dump(mode="json")),
-    )
-
-    assert result.recommended_disposition == "TRANSFER_COLLISION_CENTER"
-    assert "caller_requested_transfer" in _record(result)["flags"]
-
-
-@pytest.mark.asyncio
-async def test_possible_duplicate_flag_works():
-    result = await _run_case(already_spoke_to_someone=True)
-
-    assert "possible_duplicate" in _record(result)["flags"]
-
-
-def test_extraction_produces_required_fields():
+def test_extraction_produces_core_required_fields():
     workflow = BirchwoodCollisionIntakeWorkflow()
     context = _context("collision-extraction")
     session = _session_for_fields(workflow, context)
@@ -343,6 +358,9 @@ def test_extraction_produces_required_fields():
         extraction_schema=workflow.get_extraction_schema(),
     )
 
+    # The minimal flow populates the collision-specialist core plus the
+    # platform/branding metadata. (Optional fields like preferred_collision_center
+    # are simply unset now, so the extractor omits them.)
     required_fields = [
         "workflow_id",
         "vertical",
@@ -351,24 +369,16 @@ def test_extraction_produces_required_fields():
         "status",
         "caller_name",
         "phone",
-        "email",
-        "address",
         "vehicle_year",
         "vehicle_make",
         "vehicle_model",
-        "license_plate",
         "is_drivable",
         "damage_type",
         "glass_only",
         "body_damage",
-        "incident_description",
         "filing_insurance_claim",
         "claim_number",
         "private_pay",
-        "preferred_collision_center",
-        "is_luxury",
-        "is_vw",
-        "is_rebuilt_or_salvage",
         "flags",
         "missing_information",
         "recommended_routing",

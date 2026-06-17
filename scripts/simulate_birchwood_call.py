@@ -1,12 +1,21 @@
-"""Offline Birchwood conversation simulator (PR 2).
+"""Offline Birchwood conversation simulator (minimal pure-intake flow).
 
 Drives the REAL Twilio webhook handlers (handle_gather / handle_thinking)
 with an in-memory backend and TTS disabled — no Twilio, no LLM, no network.
 Prints the full conversation and the resulting intake record summary.
 
+The Birchwood workflow is now a MINIMAL pure-intake flow: it only collects
+what a collision specialist needs (name, phone, vehicle year/make/model,
+damage, drivability, optional MPI claim) and hands off. It never triages,
+declines, or transfers; outcomes are only COMPLETED_INTAKE or
+INCOMPLETE_CALLBACK_NEEDED. There is no injury question, no narrative
+"walk me through what happened" stage, and no readback — so the scenarios
+below are purely QUESTION-DRIVEN: the driver answers whatever scripted
+stage the engine asks next, keyed by the minimal field name.
+
 Usage:
     python -m scripts.simulate_birchwood_call                 # all scenarios
-    python -m scripts.simulate_birchwood_call --scenario injury_branch
+    python -m scripts.simulate_birchwood_call --scenario needs_tow
     python -m scripts.simulate_birchwood_call --list
 """
 
@@ -20,238 +29,96 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-# Scenarios are QUESTION-DRIVEN: the driver answers whatever stage the
-# engine actually asks next (gap-fill skips questions the story already
-# answered, so a fixed turn list would drift out of sync).
+# Scenarios are QUESTION-DRIVEN: the driver answers whatever scripted stage
+# the engine asks next, keyed by the minimal field name. Required fields:
+# caller_name, phone, vehicle_year, vehicle_make, vehicle_model, damage_type,
+# is_drivable. Optional: filing_insurance_claim, claim_number.
+#
+# Flags are descriptive data for the specialist (never routing decisions):
+#   needs_tow             -> is_drivable is False
+#   private_pay           -> filing_insurance_claim is False
+#   mpi_claim_in_hand     -> filing_insurance_claim True and a claim number given
+#   mpi_claim_open_no_number -> filing_insurance_claim True, no number yet
 SCENARIOS: dict[str, dict] = {
-    "rich_story_completed": {
-        "description": "Detailed story — extraction prefills, minimal gap-fill",
-        "story": [
-            "I got rear-ended yesterday evening at Pembina and Stafford. "
-            "It's my 2021 Toyota Corolla - the rear bumper and trunk are "
-            "smashed up but it still drives fine. The other driver and I "
-            "exchanged information, the police came and took a report, and "
-            "I took some photos. I'm going through MPI, the claim number "
-            "is MPI-4452-21, and nobody was hurt.",
-            "that's everything",
-        ],
+    "completed_drivable_claim": {
+        "description": "Drivable Toyota, MPI claim in hand — completed intake",
         "answers": {
-            "rebuilt_salvage_status": "no never",
-            "caller_name": "Pat Tester",
+            "caller_name": "John Smith",
             "phone": "204 555 0101",
-            "confirmation_ack": "yes that's right",
+            "vehicle_year": "2020",
+            "vehicle_make": "Toyota",
+            "vehicle_model": "Camry",
+            "damage_type": "front bumper and grille",
+            "is_drivable": "yes, I can drive it in",
+            "filing_insurance_claim": "yes, I've opened an MPI claim",
+            "claim_number": "MPI-DEMO-1001",
         },
         "expect_outcome": "COMPLETED_INTAKE",
-        "expect_flags": ["injuries_denied"],
+        "expect_flags": ["mpi_claim_in_hand"],
     },
-    "injury_branch": {
-        "description": "Injury mentioned mid-story — advisory + flagged record",
-        "story": [
-            "Someone ran a stop sign and hit my driver door, and my neck "
-            "has been sore since it happened.",
-            "that's everything",
-        ],
+    "completed_private_pay": {
+        "description": "Drivable Mazda, paying privately — completed intake",
         "answers": {
-            "is_drivable": "yes it still drives",
-            "damage_type": "driver door and front fender",
-            "vehicle_year": "2019",
-            "vehicle_make": "Honda",
-            "vehicle_model": "Civic",
-            "rebuilt_salvage_status": "no never",
-            "incident_datetime": "this morning",
-            "incident_location": "McPhillips and Leila",
-            "filing_insurance_claim": "going through MPI",
-            "claim_number": "I don't have it yet",
-            "caller_name": "Sam Caller",
-            "phone": "204 555 0199",
-            "confirmation_ack": "yes",
-        },
-        "expect_flags": ["injuries_reported"],
-    },
-    "sparse_story_gap_fill": {
-        "description": "One-line story — targeted gap-fill asks each required field",
-        "story": [
-            "Someone bumped into my car.",
-            "that's everything",
-        ],
-        "answers": {
-            "injuries_state": "no nobody was hurt",
-            "is_drivable": "yes it's drivable",
-            "damage_type": "rear bumper",
+            "caller_name": "Alex Example",
+            "phone": "204 555 0123",
             "vehicle_year": "2022",
             "vehicle_make": "Mazda",
             "vehicle_model": "CX-5",
-            "rebuilt_salvage_status": "no",
-            "incident_datetime": "last Friday",
-            "incident_location": "Osborne Village",
-            "filing_insurance_claim": "paying out of pocket myself",
-            "caller_name": "Alex Example",
-            "phone": "204 555 0123",
-            "confirmation_ack": "yes that's correct",
+            "damage_type": "rear bumper",
+            "is_drivable": "yes, it's safe to drive",
+            "filing_insurance_claim": "no, I'll be paying out of pocket",
         },
         "expect_outcome": "COMPLETED_INTAKE",
         "expect_flags": ["private_pay"],
     },
-    "completed_toyota": {
-        "description": "Drivable Toyota with claim number — clean completed intake",
-        "story": [
-            "Another driver backed into me in a parking lot yesterday "
-            "afternoon and crunched the front bumper and grille. It's my "
-            "2020 Toyota Camry, it's still safe to drive, and nobody was "
-            "hurt. I'm going through insurance - the claim number is "
-            "CLM-DEMO-1001.",
-            "that's everything",
-        ],
+    "needs_tow": {
+        "description": "Front end crushed, needs a tow — completed intake, flagged",
         "answers": {
-            "injuries_state": "no, nobody was hurt",
-            "is_drivable": "yes, it's safe to drive",
-            "damage_type": "front bumper and grille body damage",
-            "vehicle_year": "2020",
-            "vehicle_make": "Toyota",
-            "vehicle_model": "Camry",
-            "rebuilt_salvage_status": "no, clean title",
-            "incident_datetime": "yesterday afternoon",
-            "incident_location": "a parking lot",
-            "filing_insurance_claim": "going through insurance",
-            "claim_number": "CLM-DEMO-1001",
-            "caller_name": "John Smith",
-            "phone": "204 555 0101",
-            "confirmation_ack": "yes that's right",
-        },
-        "expect_outcome": "COMPLETED_INTAKE",
-        "expect_flags": ["injuries_denied"],
-    },
-    "non_drivable_transfer": {
-        "description": "Vehicle needs a tow — transfers to the collision team",
-        "story": [
-            "I got hit hard and the whole front end is crushed in - it's "
-            "not safe to drive.",
-            "that's everything",
-        ],
-        "answers": {
-            "injuries_state": "no, everyone's okay",
-            "is_drivable": "no, it's not drivable, it needs a tow",
-            "damage_type": "front end body damage",
+            "caller_name": "Avery Lee",
+            "phone": "204 555 0102",
             "vehicle_year": "2018",
             "vehicle_make": "Ford",
             "vehicle_model": "Escape",
-            "rebuilt_salvage_status": "no, clean title",
-            "incident_datetime": "this afternoon",
-            "incident_location": "Portage and Main",
-            "filing_insurance_claim": "going through insurance",
-            "claim_number": "CLM-DEMO-2002",
-            "caller_name": "Avery Lee",
-            "phone": "204 555 0102",
-            "confirmation_ack": "yes",
+            "damage_type": "front end is crushed in",
+            "is_drivable": "no, it's not drivable, it needs a tow",
+            "filing_insurance_claim": "yes, going through MPI",
+            "claim_number": "MPI-DEMO-2002",
         },
-        "expect_outcome": "TRANSFER_COLLISION_CENTER",
-        "expect_flags": ["non_drivable_transfer"],
+        "expect_outcome": "COMPLETED_INTAKE",
+        "expect_flags": ["needs_tow", "mpi_claim_in_hand"],
     },
-    "glass_only_transfer": {
-        "description": "Windshield-only damage — routes to the glass team",
-        "story": [
-            "A rock flew up on the highway and cracked my windshield - it's "
-            "just the glass, no other damage. The car still drives fine and "
-            "nobody was hurt.",
-            "that's everything",
-        ],
+    "claim_open_no_number": {
+        "description": "MPI claim opened but no number yet — completed intake, flagged",
         "answers": {
-            "injuries_state": "no",
-            "is_drivable": "yes, it's drivable",
-            "damage_type": "just the windshield, glass only",
-            "vehicle_year": "2021",
-            "vehicle_make": "Honda",
-            "vehicle_model": "Accord",
-            "rebuilt_salvage_status": "no",
-            "incident_datetime": "this morning",
-            "incident_location": "the highway",
-            "filing_insurance_claim": "paying out of pocket",
-            "caller_name": "Morgan Patel",
-            "phone": "204 555 0103",
-            "confirmation_ack": "yes",
-        },
-        "expect_outcome": "TRANSFER_GLASS_DEPARTMENT",
-        "expect_flags": ["glass_only_transfer"],
-    },
-    "old_vehicle_decline": {
-        "description": "2010 vehicle — polite decline on the vehicle-year gate",
-        "story": [
-            "Someone rear-ended me and dented the back bumper. The car "
-            "still drives and no one was hurt.",
-            "that's everything",
-        ],
-        "answers": {
-            "injuries_state": "no",
-            "is_drivable": "yes, safe to drive",
-            "damage_type": "rear bumper body damage",
-            "vehicle_year": "2010",
-            "vehicle_make": "Toyota",
-            "vehicle_model": "Corolla",
-            "rebuilt_salvage_status": "no",
-            "incident_datetime": "yesterday",
-            "incident_location": "Main Street",
-            "filing_insurance_claim": "going through insurance",
-            "claim_number": "CLM-DEMO-4004",
-            "caller_name": "Casey Nguyen",
-            "phone": "204 555 0104",
-            "confirmation_ack": "yes",
-        },
-        "expect_outcome": "DECLINED_VEHICLE_YEAR",
-        "expect_flags": ["vehicle_year_declined"],
-    },
-    "missing_claim_callback": {
-        "description": "Insurance with no claim number yet — callback flagged",
-        "story": [
-            "I was sideswiped on the freeway and there's damage along the "
-            "passenger side. The car drives okay and nobody was hurt. I'll "
-            "be going through insurance but I don't have a claim number yet.",
-            "that's everything",
-        ],
-        "answers": {
-            "injuries_state": "no",
-            "is_drivable": "yes, it drives okay",
-            "damage_type": "passenger side panels",
+            "caller_name": "Taylor Johnson",
+            "phone": "204 555 0106",
             "vehicle_year": "2019",
             "vehicle_make": "Nissan",
             "vehicle_model": "Rogue",
-            "rebuilt_salvage_status": "no",
-            "incident_datetime": "last night",
-            "incident_location": "the freeway",
-            "filing_insurance_claim": "going through insurance",
+            "damage_type": "passenger side panels",
+            "is_drivable": "yes, it drives okay",
+            "filing_insurance_claim": "yes, going through MPI",
             "claim_number": "I don't have it yet",
-            "caller_name": "Taylor Johnson",
-            "phone": "204 555 0106",
-            "confirmation_ack": "yes",
-        },
-        "expect_outcome": "INCOMPLETE_CALLBACK_NEEDED",
-        "expect_flags": ["missing_claim_number", "callback_needed"],
-    },
-    "luxury_completed": {
-        "description": "Luxury brand — auto-assigned to the luxury location",
-        "story": [
-            "Someone clipped my front fender in a parking garage. It's my "
-            "2022 BMW X5, it still drives fine, and no one was hurt. I'll be "
-            "going through insurance, claim number CLM-DEMO-8008.",
-            "that's everything",
-        ],
-        "answers": {
-            "injuries_state": "no",
-            "is_drivable": "yes",
-            "damage_type": "front fender body damage",
-            "vehicle_year": "2022",
-            "vehicle_make": "BMW",
-            "vehicle_model": "X5",
-            "rebuilt_salvage_status": "no",
-            "incident_datetime": "this morning",
-            "incident_location": "a parking garage",
-            "filing_insurance_claim": "going through insurance",
-            "claim_number": "CLM-DEMO-8008",
-            "caller_name": "Sam Rivera",
-            "phone": "204 555 0108",
-            "confirmation_ack": "yes",
         },
         "expect_outcome": "COMPLETED_INTAKE",
-        "expect_flags": ["luxury_auto_assigned"],
+        "expect_flags": ["mpi_claim_open_no_number"],
+    },
+    "incomplete_missing_year": {
+        "description": "Caller can't recall the vehicle year — callback needed",
+        "answers": {
+            "caller_name": "Casey Nguyen",
+            "phone": "204 555 0104",
+            # vehicle_year intentionally omitted -> driver answers "I'm not
+            # sure", which never parses to a year, so the required field stays
+            # missing and the intake finalizes as a callback.
+            "vehicle_make": "Honda",
+            "vehicle_model": "Civic",
+            "damage_type": "driver door",
+            "is_drivable": "yes, safe to drive",
+            "filing_insurance_claim": "no, paying out of pocket",
+        },
+        "expect_outcome": "INCOMPLETE_CALLBACK_NEEDED",
+        "expect_flags": ["private_pay"],
     },
 }
 
@@ -367,17 +234,22 @@ async def _simulate(
                 questions_asked += 1
             return body
 
-        for turn in scenario["story"]:
+        # Some scenarios may still open with free-text turns; the minimal
+        # flow has no narrative stage, so this is normally empty.
+        for turn in scenario.get("story", []):
             await _send(turn)
 
-        # Answer whatever the engine asks next, until the call finalizes.
+        # Answer whatever scripted stage the engine asks next, until the call
+        # finalizes. A field omitted from `answers` (e.g. vehicle_year in the
+        # incomplete scenario) is answered with "I'm not sure", which never
+        # parses to a valid value — so the required field stays missing.
         answers: dict[str, str] = scenario.get("answers", {})
         for _ in range(_MAX_TURNS):
             stored = repo.load_session_by_call(call_sid)
             if stored is None or stored.is_finalized:
                 break
             stage = stage_by_id.get(stored.channel_metadata.get("stage"))
-            if stage is None:  # DYNAMIC or unknown — let the engine finalize
+            if stage is None:  # FINAL or unknown — let the engine finalize
                 break
             answer = answers.get(stage.field_name)
             if answer is None:
@@ -395,12 +267,8 @@ async def _simulate(
             "questions_asked": questions_asked,
             "outcome": record.get("recommended_routing"),
             "flags": record.get("flags", []),
-            "injuries_state": record.get("injuries_state"),
             "plain_summary": record.get("plain_summary", ""),
             "shop_summary": record.get("shop_summary", ""),
-            "narrative_extraction": stored.channel_metadata.get(
-                "narrative_extraction", {}
-            ),
         }
 
 
@@ -426,10 +294,7 @@ def _print_result(result: dict) -> None:
     print("-" * 72)
     print(f"Outcome          : {result['outcome']}")
     print(f"Flags            : {', '.join(result['flags']) or 'none'}")
-    print(f"Injuries state   : {result['injuries_state']}")
     print(f"Questions asked  : {result['questions_asked']}")
-    prefilled = result["narrative_extraction"].get("prefilled", [])
-    print(f"Prefilled fields : {', '.join(e['field'] for e in prefilled) or 'none'}")
     print("\nSHOP SUMMARY\n" + result["shop_summary"])
     print("\nCALLER SUMMARY\n" + result["plain_summary"])
     print()
