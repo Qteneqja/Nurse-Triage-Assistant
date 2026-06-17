@@ -1,0 +1,33 @@
+{
+  "workflow_id": "birchwood_collision_intake_min_v1",
+  "vertical": "automotive_collision_min",
+  "powered_by": "ORCA",
+  "client_target": "Birchwood Automotive Group",
+  "status": "demo/pilot",
+  "caller_name": "Avery Lee",
+  "callback_number": "204 555 0142",
+  "vehicle_year": 2019,
+  "vehicle_make": "Honda",
+  "vehicle_model": "CR-V",
+  "vehicle_color": null,
+  "license_plate": null,
+  "vin": null,
+  "damage_description": "front end is crushed",
+  "drivable_status": "not_drivable",
+  "vehicle_location": "Portage and Main, Winnipeg",
+  "mpi_claim_opened": true,
+  "mpi_claim_number": "CLM-DEMO-1002",
+  "flags": [
+    "needs_tow",
+    "mpi_claim_in_hand"
+  ],
+  "missing_information": [],
+  "recommended_routing": "READY_FOR_SPECIALIST",
+  "handoff_mode": "warm_transfer",
+  "handoff_summary": "CALLER: Avery Lee, callback 204 555 0142. VEHICLE: 2019 Honda CR-V (NOT drivable (needs tow)). Location: Portage and Main, Winnipeg. DAMAGE: front end is crushed. INSURANCE: MPI claim CLM-DEMO-1002. HANDOFF: READY_FOR_SPECIALIST (missing: none).",
+  "disclaimers_given": [
+    "ORCA collects your collision details for a Birchwood specialist; it does not estimate cost, coverage, fault, or repair time."
+  ],
+  "confidence": 0.9,
+  "human_review_required": false
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "scenario_id": "CMIN_001_DRIVABLE_WITH_CLAIM",
+    "title": "Drivable vehicle, MPI claim in hand - full intake, handoff",
+    "workflow_id": "birchwood_collision_intake_min_v1",
+    "vertical": "automotive_collision_min",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "simulation_scenario": "drivable_with_claim",
+    "caller_profile": { "name": "John Smith", "phone": "204-555-0141", "demo_only": true },
+    "expected_outcome": "READY_FOR_SPECIALIST",
+    "expected_flags": ["drivable", "mpi_claim_in_hand"],
+    "dashboard_summary": "Full minimal intake captured; warm transfer to a collision specialist.",
+    "demo_notes": "Run: python -m scripts.simulate_collision_min_call --scenario drivable_with_claim"
+  },
+  {
+    "scenario_id": "CMIN_002_NOT_DRIVABLE_TOW",
+    "title": "Not drivable - location captured, tow flagged, handoff",
+    "workflow_id": "birchwood_collision_intake_min_v1",
+    "vertical": "automotive_collision_min",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "simulation_scenario": "not_drivable_tow",
+    "caller_profile": { "name": "Avery Lee", "phone": "204-555-0142", "demo_only": true },
+    "expected_outcome": "READY_FOR_SPECIALIST",
+    "expected_flags": ["needs_tow"],
+    "dashboard_summary": "Not drivable; tow flagged with vehicle location; handoff to specialist.",
+    "demo_notes": "Run: python -m scripts.simulate_collision_min_call --scenario not_drivable_tow"
+  },
+  {
+    "scenario_id": "CMIN_003_NO_CLAIM_YET",
+    "title": "No MPI claim yet - intake captured, no-claim flagged, handoff",
+    "workflow_id": "birchwood_collision_intake_min_v1",
+    "vertical": "automotive_collision_min",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "simulation_scenario": "no_claim_yet",
+    "caller_profile": { "name": "Morgan Patel", "phone": "204-555-0143", "demo_only": true },
+    "expected_outcome": "READY_FOR_SPECIALIST",
+    "expected_flags": ["no_mpi_claim"],
+    "dashboard_summary": "No MPI claim opened yet; captured as data; handoff to specialist.",
+    "demo_notes": "Run: python -m scripts.simulate_collision_min_call --scenario no_claim_yet"
+  },
+  {
+    "scenario_id": "CMIN_004_ASKS_FOR_ESTIMATE",
+    "title": "Caller asks cost/coverage - agent defers, completes intake, handoff",
+    "workflow_id": "birchwood_collision_intake_min_v1",
+    "vertical": "automotive_collision_min",
+    "powered_by": "ORCA",
+    "client_target": "Birchwood Automotive Group",
+    "simulation_scenario": "asks_for_estimate",
+    "caller_profile": { "name": "Casey Nguyen", "phone": "204-555-0144", "demo_only": true },
+    "expected_outcome": "READY_FOR_SPECIALIST",
+    "expected_flags": ["estimate_request_deflected"],
+    "dashboard_summary": "Cost/coverage question deferred to the specialist; intake completed; handoff.",
+    "demo_notes": "Run: python -m scripts.simulate_collision_min_call --scenario asks_for_estimate. The agent never estimates or answers coverage/fault/cost."
+  }
+]

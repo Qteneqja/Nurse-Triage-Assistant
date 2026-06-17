@@ -101,6 +101,9 @@ def ensure_default_workflows_registered() -> WorkflowRegistry:
             from src.verticals.automotive_collision.workflow import (
                 BirchwoodCollisionIntakeWorkflow,
             )
+            from src.verticals.collision_intake_min.workflow import (
+                BirchwoodCollisionMinIntakeWorkflow,
+            )
 
             registry.register(HealthcareTriageWorkflow(), make_default=True)
             registry.register(
@@ -113,6 +116,12 @@ def ensure_default_workflows_registered() -> WorkflowRegistry:
             )
             registry.register(
                 BirchwoodCollisionIntakeWorkflow(),
+                make_default=False,
+            )
+            # Minimal pure-intake collision workflow (separate from the live
+            # pilot above; not converged - see verticals/collision_intake_min).
+            registry.register(
+                BirchwoodCollisionMinIntakeWorkflow(),
                 make_default=False,
             )
             # Spec-defined workflows: built-in definitions/ directory plus

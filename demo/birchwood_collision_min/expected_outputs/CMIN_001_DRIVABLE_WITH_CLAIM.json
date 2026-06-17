@@ -1,0 +1,33 @@
+{
+  "workflow_id": "birchwood_collision_intake_min_v1",
+  "vertical": "automotive_collision_min",
+  "powered_by": "ORCA",
+  "client_target": "Birchwood Automotive Group",
+  "status": "demo/pilot",
+  "caller_name": "John Smith",
+  "callback_number": "204 555 0141",
+  "vehicle_year": 2020,
+  "vehicle_make": "Toyota",
+  "vehicle_model": "Camry",
+  "vehicle_color": null,
+  "license_plate": null,
+  "vin": null,
+  "damage_description": "front bumper and grille",
+  "drivable_status": "drivable",
+  "vehicle_location": null,
+  "mpi_claim_opened": true,
+  "mpi_claim_number": "CLM-DEMO-1001",
+  "flags": [
+    "drivable",
+    "mpi_claim_in_hand"
+  ],
+  "missing_information": [],
+  "recommended_routing": "READY_FOR_SPECIALIST",
+  "handoff_mode": "warm_transfer",
+  "handoff_summary": "CALLER: John Smith, callback 204 555 0141. VEHICLE: 2020 Toyota Camry (drivable). DAMAGE: front bumper and grille. INSURANCE: MPI claim CLM-DEMO-1001. HANDOFF: READY_FOR_SPECIALIST (missing: none).",
+  "disclaimers_given": [
+    "ORCA collects your collision details for a Birchwood specialist; it does not estimate cost, coverage, fault, or repair time."
+  ],
+  "confidence": 0.9,
+  "human_review_required": false
+}

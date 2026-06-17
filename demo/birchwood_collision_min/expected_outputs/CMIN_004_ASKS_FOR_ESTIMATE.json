@@ -1,0 +1,34 @@
+{
+  "workflow_id": "birchwood_collision_intake_min_v1",
+  "vertical": "automotive_collision_min",
+  "powered_by": "ORCA",
+  "client_target": "Birchwood Automotive Group",
+  "status": "demo/pilot",
+  "caller_name": "Casey Nguyen",
+  "callback_number": "204 555 0144",
+  "vehicle_year": 2022,
+  "vehicle_make": "Subaru",
+  "vehicle_model": "Outback",
+  "vehicle_color": null,
+  "license_plate": null,
+  "vin": null,
+  "damage_description": "driver door dented",
+  "drivable_status": "drivable",
+  "vehicle_location": null,
+  "mpi_claim_opened": true,
+  "mpi_claim_number": "CLM-DEMO-1004",
+  "flags": [
+    "drivable",
+    "mpi_claim_in_hand",
+    "estimate_request_deflected"
+  ],
+  "missing_information": [],
+  "recommended_routing": "READY_FOR_SPECIALIST",
+  "handoff_mode": "warm_transfer",
+  "handoff_summary": "CALLER: Casey Nguyen, callback 204 555 0144. VEHICLE: 2022 Subaru Outback (drivable). DAMAGE: driver door dented. INSURANCE: MPI claim CLM-DEMO-1004. HANDOFF: READY_FOR_SPECIALIST (missing: none).",
+  "disclaimers_given": [
+    "ORCA collects your collision details for a Birchwood specialist; it does not estimate cost, coverage, fault, or repair time."
+  ],
+  "confidence": 0.9,
+  "human_review_required": false
+}
