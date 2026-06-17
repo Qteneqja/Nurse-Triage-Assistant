@@ -17,7 +17,10 @@ from src.api.dashboard import require_dashboard_api_access
 from src.api.routes import router as intake_router
 from src.api.reports import router as reports_router
 from src.twilio.routes import router as twilio_router
-from src.twilio.conversation_relay import ws_router as conversation_relay_ws_router
+from src.twilio.conversation_relay import (
+    ws_router as conversation_relay_ws_router,
+    http_router as conversation_relay_http_router,
+)
 from src.storage.factory import get_storage_backend
 from src.config import (
     APP_ENV,
@@ -194,6 +197,11 @@ app.include_router(twilio_router, prefix="/api/v1/voice", tags=["Twilio Voice"])
 # upgrade carries no X-Twilio-Signature header — auth is via the ?token= param).
 app.include_router(
     conversation_relay_ws_router, prefix="/api/v1/voice", tags=["Twilio Voice"]
+)
+# CR <Connect action> handoff callback (/api/v1/voice/relay-action) — a normal
+# signature-validated Twilio webhook that <Dial>s the nurse or hangs up.
+app.include_router(
+    conversation_relay_http_router, prefix="/api/v1/voice", tags=["Twilio Voice"]
 )
 app.include_router(admin_router, prefix="/admin", tags=["Admin Dashboard"])
 app.include_router(

@@ -1,33 +1,36 @@
 """
-Twilio ConversationRelay transport (streaming WebSocket) — SKELETON.
+Twilio ConversationRelay transport (streaming WebSocket).
 
-This is the additive streaming voice transport that runs ALONGSIDE the legacy
-``<Gather>``/TwiML path in ``routes.py``. It is selected by
-``VOICE_PIPELINE=conversation_relay`` and feeds the EXISTING, unchanged
-orchestrator / workflow-engine entry points — it contains ZERO triage or safety
-logic of its own (see ADR-0002 and the voice-pipeline-operations skill).
+The additive streaming voice transport that runs ALONGSIDE the legacy
+``<Gather>``/TwiML path in ``routes.py``. Selected by
+``VOICE_PIPELINE=conversation_relay``. It feeds the EXISTING, unchanged
+orchestrator / workflow-engine entry points and reuses the SAME
+transport-neutral helpers the gather path uses (scripted-intake state machine,
+narrative capture, injury advisory, finalize/report dispatch) — it contains ZERO
+triage or safety logic of its own (see ADR-0002 + the voice-pipeline-operations
+skill). The gather path is left untouched, so the live pilot cannot regress.
 
 Audit basis (Step 0): the orchestrator/engine accept plain caller text + a
 session and return plain text; ``src/safety`` and ``src/orchestrator`` are
-transport-agnostic, so this swap is purely additive transport glue.
+transport-agnostic. Output is turn-batched (one complete gated string per turn),
+so token streaming is purely a transport concern — the orchestrator is NOT a
+generator and the safety gate still runs on the complete text.
 
-SKELETON SCOPE (checkpoint 1): WebSocket lifecycle + provider seam + the
-simplest end-to-end turn through the unchanged workflow engine:
-  setup -> greeting; prompt(last) -> one dynamic turn -> response; finalize /
-  escalate -> out-of-band report + ``end``.
+Parity covered: scripted intake (incl. multi-segment narrative + injury advisory
++ dynamic/readback prompts), the dynamic orchestrator turn, finalize/escalate
+with OUT-OF-BAND report dispatch (deferred-finalize contract preserved), nurse
+warm-transfer on healthcare finalize (CR ``end`` -> ``<Connect action>`` ->
+``<Dial>``), Birchwood "0"/spoken transfer, DTMF + barge-in/interrupt handling,
+and WS reconnect/duplicate-setup reuse.
 
-DEFERRED to checkpoint 2 (re-host the remaining transport glue from routes.py):
-  the scripted-intake state machine, the shared-number vertical menu, DTMF /
-  Birchwood "0" transfer, full idempotency / WS reconnect-resume, richer
-  fail-closed handling, barge-in/interrupt semantics, and the nurse warm-transfer
-  (``<Dial>`` -> CR handoff). Until then, a CR call goes straight to the dynamic
-  orchestrator turn.
+DEFERRED (documented): the shared-number vertical menu (a non-pilot config that
+needs a WS menu rendering) — a CR call to a shared-menu number proceeds straight
+to its resolved workflow's scripted intake. The legacy gather path still serves
+shared-menu numbers.
 
-Provider seam (``VOICE_OUTPUT_MODE``):
-  "azure_play" (default, no voice regression) — render with the existing Azure
-  TTS pipeline and send the MP3 URL as a CR ``play`` message.
-  "cr_native" — stream assistant text as CR ``text`` tokens; Twilio's CR TTS
-  renders it (changes the voice identity).
+Provider seam (``VOICE_OUTPUT_MODE``): "azure_play" (default, no voice
+regression) renders via the existing Azure TTS pipeline and sends the MP3 URL as
+a CR ``play`` message; "cr_native" streams ``text`` tokens for Twilio's CR TTS.
 """
 
 from __future__ import annotations
@@ -38,7 +41,8 @@ import json
 import logging
 from xml.sax import saxutils
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 
 import src.config as config
 from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
@@ -49,19 +53,36 @@ from src.platform.workflows.router import (
 )
 from src.platform.workflows.schemas import WorkflowInput
 from src.safety.injury_detection import INJURY_SAFETY_ADVISORY
+from src.security.twilio_signature import validate_twilio_signature
 from src.storage.session_repository import get_session_repository
+from src.twilio import routes as rt
 from src.twilio import webhook_stability as stability
 
 logger = logging.getLogger(__name__)
 
-# Separate router: NO Twilio-signature HTTP dependency (a WebSocket upgrade does
-# not carry the X-Twilio-Signature header). Auth is via the ?token= query param.
+# WebSocket router: NO Twilio-signature HTTP dependency (a WS upgrade carries no
+# X-Twilio-Signature header). Auth is via the ?token= query param.
 ws_router = APIRouter()
 
+# HTTP router for the <Connect action> handoff callback — signature-validated
+# like every other Twilio webhook.
+http_router = APIRouter(dependencies=[Depends(validate_twilio_signature)])
+
 
 # ---------------------------------------------------------------------------
-# TwiML entry: <Connect><ConversationRelay .../></Connect>
+# URL derivation + TwiML entry
 # ---------------------------------------------------------------------------
+
+
+def _base_host() -> str:
+    if config.CONVERSATION_RELAY_WSS_URL:
+        return config.CONVERSATION_RELAY_WSS_URL.split("://", 1)[-1].rsplit("/api/", 1)[
+            0
+        ]
+    base = config.TWILIO_WEBHOOK_BASE_URL.strip()
+    if not base:
+        return ""
+    return base.split("://", 1)[-1].rstrip("/")
 
 
 def derive_wss_url() -> str:
@@ -69,15 +90,20 @@ def derive_wss_url() -> str:
     if config.CONVERSATION_RELAY_WSS_URL:
         url = config.CONVERSATION_RELAY_WSS_URL
     else:
-        base = config.TWILIO_WEBHOOK_BASE_URL.strip()
-        if not base:
+        host = _base_host()
+        if not host:
             return ""
-        scheme_stripped = base.split("://", 1)[-1].rstrip("/")
-        url = f"wss://{scheme_stripped}/api/v1/voice/relay"
+        url = f"wss://{host}/api/v1/voice/relay"
     if config.CONVERSATION_RELAY_WS_TOKEN:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}token={config.CONVERSATION_RELAY_WS_TOKEN}"
     return url
+
+
+def _derive_action_url() -> str:
+    """HTTPS URL Twilio calls when the ConversationRelay <Connect> ends."""
+    host = _base_host()
+    return f"https://{host}/api/v1/voice/relay-action" if host else ""
 
 
 def build_conversation_relay_twiml() -> str:
@@ -90,16 +116,20 @@ def build_conversation_relay_twiml() -> str:
     if not url:
         return ""
 
+    connect_attrs = ""
+    action_url = _derive_action_url()
+    if action_url:
+        connect_attrs = f" action={saxutils.quoteattr(action_url)}"
+
     attrs = [f"url={saxutils.quoteattr(url)}"]
-    # STT (transcription) provider/model.
     if config.CR_TRANSCRIPTION_PROVIDER:
         attrs.append(
             f"transcriptionProvider={saxutils.quoteattr(config.CR_TRANSCRIPTION_PROVIDER)}"
         )
     if config.CR_SPEECH_MODEL:
         attrs.append(f"speechModel={saxutils.quoteattr(config.CR_SPEECH_MODEL)}")
-    # TTS provider/voice only matter when CR renders speech (cr_native or the
-    # welcome greeting). We send our own greeting on setup, so omit welcomeGreeting.
+    # TTS provider/voice only matter when CR renders speech (cr_native). We send
+    # our own greeting on setup, so omit welcomeGreeting.
     if config.VOICE_OUTPUT_MODE == "cr_native":
         if config.CR_TTS_PROVIDER:
             attrs.append(f"ttsProvider={saxutils.quoteattr(config.CR_TTS_PROVIDER)}")
@@ -112,11 +142,60 @@ def build_conversation_relay_twiml() -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<Response>\n"
-        "  <Connect>\n"
+        f"  <Connect{connect_attrs}>\n"
         f"    <ConversationRelay {attr_str}/>\n"
         "  </Connect>\n"
         "</Response>"
     )
+
+
+# ---------------------------------------------------------------------------
+# <Connect action> handoff callback: Dial the nurse or hang up.
+# ---------------------------------------------------------------------------
+
+
+@http_router.post("/relay-action")
+async def conversation_relay_action(
+    request: Request,
+    CallSid: str = Form(...),
+    HandoffData: str | None = Form(None),
+):
+    """Called by Twilio when the ConversationRelay <Connect> ends.
+
+    Reproduces generate_twiml_handoff: <Dial> the nurse queue when the WS handler
+    requested it via the `end` message's handoffData (healthcare finalize +
+    NURSE_TRANSFER_NUMBER), otherwise <Hangup>.
+
+    The decision is carried in handoffData (set server-side at finalize time)
+    rather than reloaded from storage, because a finalized session is no longer
+    returned by load_session_by_call. The dial NUMBER is never trusted from the
+    payload — only the dial/hangup intent — and the number comes from config.
+    NOTE: the exact param name Twilio uses ("HandoffData") should be confirmed in
+    staging; an unrecognized/absent payload safely falls back to <Hangup>.
+    """
+    action = None
+    raw = HandoffData
+    if raw is None:
+        form = await request.form()
+        raw = form.get("HandoffData") or form.get("handoffData")
+    if raw:
+        try:
+            action = (json.loads(raw) or {}).get("action")
+        except (json.JSONDecodeError, TypeError):
+            action = None
+
+    if action == "dial" and config.NURSE_TRANSFER_NUMBER:
+        num = saxutils.escape(config.NURSE_TRANSFER_NUMBER)
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f"<Response>\n    <Dial>{num}</Dial>\n</Response>"
+        )
+    else:
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<Response>\n    <Hangup/>\n</Response>"
+        )
+    return Response(content=twiml, media_type="application/xml")
 
 
 # ---------------------------------------------------------------------------
@@ -163,14 +242,16 @@ class ConversationRelaySession:
             await self._handle_setup(msg)
         elif msg_type == "prompt":
             await self._handle_prompt(msg)
-        elif msg_type == "interrupt":
-            # Barge-in: CR already stopped playback. Full re-host of interrupt
-            # semantics is checkpoint 2.
-            logger.info("[CR] interrupt (call_sid=%s)", self.call_sid)
         elif msg_type == "dtmf":
-            # DTMF menu/transfer routing is checkpoint 2.
+            await self._handle_dtmf(msg)
+        elif msg_type == "interrupt":
+            # Barge-in: CR already stopped playback (interruptible="any"). We log
+            # how much was spoken; trimming the stored transcript to the heard
+            # portion is a refinement left as a TODO.
             logger.info(
-                "[CR] dtmf digit=%s (call_sid=%s)", msg.get("digit"), self.call_sid
+                "[CR] interrupt after %sms (call_sid=%s)",
+                msg.get("durationUntilInterruptMs"),
+                self.call_sid,
             )
         elif msg_type == "error":
             logger.error(
@@ -196,108 +277,223 @@ class ConversationRelaySession:
 
         existing = repo.load_session_by_call(self.call_sid)
         if existing is not None and not existing.is_finalized:
-            session = existing
+            # WS reconnect / duplicate setup — resume the existing session and
+            # re-prompt the current stage rather than creating a second session.
+            self.session_id = existing.session_id
             logger.info(
                 "[CR] reconnect/duplicate setup for active call %s (session %s)",
                 self.call_sid,
-                session.session_id,
+                existing.session_id,
             )
-        else:
-            route = get_workflow_route_resolver().resolve(called_phone_number=called)
-            if route.safe_response_required:
-                logger.error("[CR] call could not be safely routed — ending")
-                await self._send_text(
-                    "We are unable to safely route this call right now. If this is "
-                    "an emergency, please hang up and call 9 1 1."
-                )
-                await self._end()
-                return
-            session = repo.create_session(call_sid=self.call_sid, workflow_route=route)
-            session.channel_metadata["called_phone_number"] = called
-            session.channel_metadata["channel"] = "conversationrelay"
-            # SKELETON: go straight to the dynamic orchestrator turn. The
-            # scripted-intake state machine is re-hosted in checkpoint 2.
-            session.channel_metadata["stage"] = "DYNAMIC"
+            await self._reprompt_current(existing)
+            return
 
+        route = get_workflow_route_resolver().resolve(called_phone_number=called)
+        if route.safe_response_required:
+            logger.error("[CR] call could not be safely routed — ending")
+            await self._send_response(
+                "We are unable to safely route this call right now. If this is "
+                "an emergency, please hang up and call 9 1 1.",
+                None,
+                interruptible=False,
+            )
+            await self._end()
+            return
+
+        session = repo.create_session(call_sid=self.call_sid, workflow_route=route)
+        session.channel_metadata["called_phone_number"] = called
+        session.channel_metadata["channel"] = "conversationrelay"
         self.session_id = session.session_id
 
-        greeting = self._greeting_for(session)
+        intake = rt._get_scripted_intake_for_session(session)
+        first_stage = (
+            rt._initialize_scripted_intake(session, intake)
+            if intake is not None
+            else None
+        )
+        greeting = intake.intro_text if intake and intake.intro_text else ""
         if greeting:
             session.conversation.append(
                 ConversationTurn(role="assistant", text=greeting)
             )
+
+        if first_stage is None:
+            # No scripted intake — go straight to the dynamic orchestrator turn.
+            session.channel_metadata.setdefault("stage", rt.STAGE_DYNAMIC)
+            repo.persist_session(session)
+            await self._send_response(
+                greeting or "Hello, thank you for calling. How can I help you today?",
+                session,
+                interruptible=False,
+            )
+            return
+
         repo.persist_session(session)
+        # Greeting/disclaimer first (non-interruptible), then the first question.
         if greeting:
-            await self._send_response(greeting, session)
+            await self._send_response(greeting, session, interruptible=False)
+        await self._send_stage_prompt(session, first_stage)
         logger.info(
             "[CR] session %s ready for call %s", session.session_id, self.call_sid
         )
 
-    def _greeting_for(self, session: OrchestratorSession) -> str:
-        try:
-            workflow = ensure_default_workflows_registered().get(session.workflow_id)
-            intake = workflow.get_scripted_intake_definition()
-            if intake is not None and getattr(intake, "intro_text", ""):
-                return intake.intro_text
-        except Exception:
-            logger.debug("[CR] no scripted intro available", exc_info=True)
-        return "Hello, thank you for calling. How can I help you today?"
+    async def _reprompt_current(self, session: OrchestratorSession) -> None:
+        intake = rt._get_scripted_intake_for_session(session)
+        stage = rt._current_scripted_stage(session, intake)
+        if stage is not None:
+            await self._send_stage_prompt(session, stage)
+        else:
+            await self._send_response(
+                "Sorry, let's continue. Could you repeat your last answer?",
+                session,
+            )
 
     # -- prompt (one caller turn) ------------------------------------------
 
     async def _handle_prompt(self, msg: dict) -> None:
-        # Only act on a completed utterance; partials (last=False) are ignored
-        # in the skeleton.
         if not msg.get("last", False):
-            return
+            return  # ignore partial transcripts
         speech = (msg.get("voicePrompt") or "").strip()
         if not speech or self.call_sid is None:
             return
 
-        # Serialize turns: never run two orchestrator turns for one call at once.
         async with self._turn_lock:
             repo = get_session_repository()
             session = repo.load_session_by_call(self.call_sid)
             if session is None or session.is_finalized:
                 logger.warning(
-                    "[CR] prompt for missing/finalized session (call %s)", self.call_sid
+                    "[CR] prompt for missing/finalized session (call %s)",
+                    self.call_sid,
+                )
+                return
+            try:
+                await self._advance(session, repo, speech, digits=None)
+            except Exception:
+                logger.error("[CR] turn failed — failing closed", exc_info=True)
+                await self._fail_closed(session, repo, reason="cr_turn_error")
+
+    async def _handle_dtmf(self, msg: dict) -> None:
+        digit = msg.get("digit")
+        if self.call_sid is None:
+            return
+        async with self._turn_lock:
+            repo = get_session_repository()
+            session = repo.load_session_by_call(self.call_sid)
+            if session is None or session.is_finalized:
+                return
+            if rt._is_birchwood_scripted_transfer_request(session, None, digit):
+                await self._run_transfer(session, repo, digit or "0")
+                return
+            logger.info("[CR] dtmf digit=%s (no binding) call=%s", digit, self.call_sid)
+
+    async def _advance(
+        self,
+        session: OrchestratorSession,
+        repo,
+        speech: str,
+        digits: str | None,
+    ) -> None:
+        """Mirror handle_gather's per-turn sequencing over the WebSocket."""
+        # Birchwood "0"/spoken transfer.
+        if rt._is_birchwood_scripted_transfer_request(session, speech, digits):
+            await self._run_transfer(session, repo, digits if digits == "0" else speech)
+            return
+
+        intake = rt._get_scripted_intake_for_session(session)
+        if session.channel_metadata.get("stage") is None and intake and intake.stages:
+            session.channel_metadata["stage"] = intake.stages[0].stage_id
+        scripted_stage = rt._current_scripted_stage(session, intake)
+
+        if intake is not None and scripted_stage is not None:
+            injury_advisory = stability.injury_advisory_if_needed(session, speech)
+
+            # Multi-segment narrative capture: keep listening until the caller
+            # signals they're done (or the hard cap is hit).
+            if stability.stage_is_multi_segment(scripted_stage):
+                session.conversation.append(
+                    ConversationTurn(role="caller", text=speech)
+                )
+                ingest = stability.narrative_ingest(session, scripted_stage, speech)
+                if not ingest.completed:
+                    repo.persist_session(session)
+                    await self._send_response(
+                        stability.join_preamble(
+                            injury_advisory, ingest.continuation_prompt
+                        ),
+                        session,
+                    )
+                    return
+                speech = ingest.joined_text or speech
+                rt._apply_narrative_prefill(session, scripted_stage, speech)
+            else:
+                session.conversation.append(
+                    ConversationTurn(role="caller", text=speech)
+                )
+
+            next_stage, reprompt = await rt._handle_scripted_stage_response(
+                session, intake, scripted_stage, speech
+            )
+            if injury_advisory is None:
+                injury_advisory = stability.injury_advisory_for_recorded_state(session)
+
+            if reprompt:
+                repo.persist_session(session)
+                await self._send_response(
+                    stability.join_preamble(injury_advisory, reprompt), session
                 )
                 return
 
+            if next_stage is not None:
+                repo.persist_session(session)
+                preamble = stability.join_preamble(
+                    injury_advisory, rt._scripted_stage_acknowledgement(scripted_stage)
+                )
+                await self._send_stage_prompt(session, next_stage, preamble=preamble)
+                return
+
+            # Scripted intake complete → DYNAMIC.
+            repo.persist_session(session)
+            if (
+                rt._is_healthcare_session(session)
+                and scripted_stage.stage_id != rt.STAGE_CHIEF_COMPLAINT
+            ):
+                first_dynamic_question = "Thank you. When did this symptom first start?"
+                session.conversation.append(
+                    ConversationTurn(role="assistant", text=first_dynamic_question)
+                )
+                repo.persist_session(session)
+                await self._send_response(first_dynamic_question, session)
+                return
+            # else: fall through to a dynamic turn using this same utterance.
+
+        # DYNAMIC stage — the multi-agent orchestrator (UNCHANGED).
+        if session.channel_metadata.get("stage") == rt.STAGE_DYNAMIC:
             result, session = await self._run_turn(session, speech)
             action = result["action"]
             spoken = result["message"]
 
-            # Injury advisory (Invariant 3): prepend once if the final result
-            # flagged injuries and it was never spoken. Healthcare never enters
-            # this branch. Mirrors the /thinking handler.
-            from src.twilio.routes import (
-                _is_healthcare_session,
-                _workflow_result_flags,
-            )
-
             if (
-                not _is_healthcare_session(session)
+                not rt._is_healthcare_session(session)
                 and not stability.injury_advisory_already_given(session)
-                and "injuries_reported" in _workflow_result_flags(session)
+                and "injuries_reported" in rt._workflow_result_flags(session)
             ):
                 spoken = f"{INJURY_SAFETY_ADVISORY} {spoken}"
                 stability.mark_injury_advisory_given(session)
 
             if action in ("finalize", "escalate"):
-                await self._finalize(session, result, action, spoken)
+                await self._finalize(session, repo, result, action, spoken)
             else:
                 await self._send_response(spoken, session)
+            return
+
+        logger.error(
+            "[CR] unexpected state for call %s — failing closed", self.call_sid
+        )
+        await self._fail_closed(session, repo, reason="cr_unexpected_state")
 
     async def _run_turn(self, session: OrchestratorSession, text: str):
         """Run one workflow-engine turn — the SAME path the gather route uses."""
-        # Imported lazily to avoid any import-order coupling with routes.py.
-        from src.twilio.routes import (
-            _build_workflow_context,
-            _workflow_turn_to_legacy_result,
-        )
-
-        context = _build_workflow_context(session)
+        context = rt._build_workflow_context(session)
         workflow_input = WorkflowInput(
             user_text=text,
             session_state=session.model_dump(mode="json"),
@@ -307,29 +503,46 @@ class ConversationRelaySession:
         turn_result = await get_workflow_engine().handle_turn(context, workflow_input)
         updated = OrchestratorSession.model_validate(turn_result.updated_state)
         get_session_repository().persist_session(updated)
-        return _workflow_turn_to_legacy_result(turn_result), updated
+        return rt._workflow_turn_to_legacy_result(turn_result), updated
+
+    async def _run_transfer(
+        self, session: OrchestratorSession, repo, user_text: str
+    ) -> None:
+        """Birchwood scripted transfer: run the workflow turn, speak, end."""
+        session.conversation.append(ConversationTurn(role="caller", text=user_text))
+        workflow_user_text = "0" if user_text != "0" else user_text
+        context = rt._build_workflow_context(session)
+        workflow_input = WorkflowInput(
+            user_text=workflow_user_text,
+            session_state=session.model_dump(mode="json"),
+            called_phone_number=session.channel_metadata.get("called_phone_number"),
+            metadata={
+                "channel": "conversationrelay",
+                "scripted_transfer_request": True,
+            },
+        )
+        turn_result = await rt._get_workflow_for_session(session).handle_turn(
+            context, workflow_input
+        )
+        updated = OrchestratorSession.model_validate(turn_result.updated_state)
+        if not updated.is_finalized:
+            updated.is_finalized = True
+        repo.persist_session(updated)
+        await self._send_response(turn_result.assistant_text, updated)
+        await self._end()
 
     async def _finalize(
         self,
         session: OrchestratorSession,
+        repo,
         result: dict,
         action: str,
         spoken: str,
     ) -> None:
-        """Preserve the deferred-finalize contract: speak, then dispatch the
-        real finalize()/report OUT-OF-BAND, then end the call."""
-        from src.twilio.routes import (
-            _build_session_metadata,
-            _generate_orchestrator_report_background,
-            _generate_platform_report_background,
-            _is_healthcare_session,
-            _maybe_schedule_enrichment,
-            _persist_finalization_reason_from_result,
-        )
-
-        repo = get_session_repository()
+        """Speak, dispatch the real finalize()/report OUT-OF-BAND, then end —
+        preserving the deferred-finalize contract (finalize() never inline)."""
         session.is_finalized = True
-        _persist_finalization_reason_from_result(
+        rt._persist_finalization_reason_from_result(
             session,
             result,
             default_reason=(
@@ -339,56 +552,118 @@ class ConversationRelaySession:
         repo.persist_session(session)
 
         scheduler = _AsyncTaskScheduler()
-        if _is_healthcare_session(session):
+        if rt._is_healthcare_session(session):
             scheduler.add_task(
-                _generate_orchestrator_report_background,
+                rt._generate_orchestrator_report_background,
                 session_id=session.session_id,
                 orch_session=session,
-                session_metadata=_build_session_metadata(session),
+                session_metadata=rt._build_session_metadata(session),
             )
         else:
             scheduler.add_task(
-                _generate_platform_report_background,
+                rt._generate_platform_report_background,
                 session_id=session.session_id,
                 session=session,
             )
-        _maybe_schedule_enrichment(scheduler, session)
+        rt._maybe_schedule_enrichment(scheduler, session)
 
         await self._send_response(spoken, session)
-        # NOTE: nurse warm-transfer (<Dial> -> CR handoff) is checkpoint 2; the
-        # skeleton ends the session after the closing message.
+        # Nurse warm-transfer (healthcare finalize + NURSE_TRANSFER_NUMBER) is
+        # performed by the <Connect action> callback (/relay-action) after `end`.
+        # We decide dial-vs-hangup HERE (we still hold the live session) and carry
+        # the intent in handoffData; escalations always hang up.
+        should_dial = (
+            action == "finalize"
+            and rt._is_healthcare_session(session)
+            and bool(config.NURSE_TRANSFER_NUMBER)
+        )
+        await self._end(handoff={"action": "dial" if should_dial else "hangup"})
+
+    async def _fail_closed(
+        self, session: OrchestratorSession, repo, *, reason: str
+    ) -> None:
+        """Terminal fail-closed: flag the record, say goodbye, end. Never crash."""
+        try:
+            if not rt._is_healthcare_session(session):
+                session.is_finalized = True
+                if not session.finalization_reason:
+                    session.finalization_reason = "system_error_fail_closed"
+                session.channel_metadata["finalization_reason"] = (
+                    session.finalization_reason
+                )
+                stability.flag_incomplete(session, reason)
+                repo.persist_session(session)
+        except Exception:
+            logger.critical(
+                "[CR] fail-closed flagging could not be persisted for call %s",
+                self.call_sid,
+                exc_info=True,
+            )
+        await self._send_response(stability.fail_closed_error_message(session), session)
         await self._end()
 
     # -- output provider seam ----------------------------------------------
 
+    async def _send_stage_prompt(
+        self,
+        session: OrchestratorSession,
+        stage,
+        *,
+        preamble: str | None = None,
+    ) -> None:
+        rt._record_scripted_prompt_metadata(session, stage)
+        prompt = rt._stage_prompt_for_session(session, stage)
+        text = f"{preamble} {prompt}" if preamble else prompt
+        session.conversation.append(ConversationTurn(role="assistant", text=prompt))
+        get_session_repository().persist_session(session)
+        await self._send_response(text, session)
+
     async def _send_response(
-        self, text: str, session: OrchestratorSession | None
+        self,
+        text: str,
+        session: OrchestratorSession | None,
+        *,
+        interruptible: bool = True,
     ) -> None:
         if not text:
             return
         if config.VOICE_OUTPUT_MODE == "cr_native":
-            await self._send_text(text)
+            await self._send_text(text, interruptible=interruptible)
             return
         # azure_play (default): keep the exact Azure voice via a play URL.
-        from src.twilio.routes import _tts_audio_url
-
         try:
-            url = await _tts_audio_url(text, session)
+            url = await rt._tts_audio_url(text, session)
         except Exception:
             logger.warning(
                 "[CR] Azure TTS failed; falling back to CR text", exc_info=True
             )
             url = None
         if url:
-            await self._send(json.dumps({"type": "play", "source": url}))
+            await self._send(
+                json.dumps(
+                    {"type": "play", "source": url, "interruptible": interruptible}
+                )
+            )
         else:
-            await self._send_text(text)
+            await self._send_text(text, interruptible=interruptible)
 
-    async def _send_text(self, text: str) -> None:
-        await self._send(json.dumps({"type": "text", "token": text, "last": True}))
+    async def _send_text(self, text: str, *, interruptible: bool = True) -> None:
+        await self._send(
+            json.dumps(
+                {
+                    "type": "text",
+                    "token": text,
+                    "last": True,
+                    "interruptible": interruptible,
+                }
+            )
+        )
 
-    async def _end(self) -> None:
-        await self._send(json.dumps({"type": "end"}))
+    async def _end(self, handoff: dict | None = None) -> None:
+        msg: dict = {"type": "end"}
+        if handoff is not None:
+            msg["handoffData"] = json.dumps(handoff)
+        await self._send(json.dumps(msg))
         self.closed = True
 
     async def _send(self, payload: str) -> None:
