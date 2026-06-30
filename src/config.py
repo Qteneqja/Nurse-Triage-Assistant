@@ -420,6 +420,11 @@ CR_SPEECH_MODEL: str = os.getenv("CR_SPEECH_MODEL", "nova-2").strip()
 CR_FINAL_SPEECH_SETTLE_MAX_S: float = float(
     os.getenv("CR_FINAL_SPEECH_SETTLE_MAX_S", "30")
 )
+# Perceived-latency: play a short, pre-approved acknowledgment ("Okay.", "Got it.")
+# the instant the caller finishes, while the gated LLM turn computes behind it — so
+# the caller hears a response in well under a second even though the real (safety-
+# gated) reply takes the usual round-trip. Off by default; A/B it on the line.
+CR_INSTANT_ACK: bool = _env_flag("CR_INSTANT_ACK", "false")
 
 # ---------------------------------------------------------------------------
 # Security
