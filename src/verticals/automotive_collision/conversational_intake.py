@@ -26,6 +26,7 @@ Safety design (consistent with ORCA's invariants):
 from __future__ import annotations
 
 import json
+import re
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -126,6 +127,7 @@ REQUIRED details to collect before finishing:
 Nice to have: whether they've opened an MPI claim (filing_insurance_claim "yes"/"no") and the MPI claim_number if they have it.
 
 RULES (important):
+- CAPTURE AS YOU GO: the moment the caller gives a detail (their name, phone number, vehicle year / make / model, the damage, whether it's drivable, claim info), you MUST copy it into the matching JSON field on that SAME turn. Do not merely acknowledge it in words and leave the field empty — an empty field means we have to ask again.
 - Only collect the fields above. NEVER ask for a home address, an email, an SSN, credit-card or bank details, or an insurance "policy number". If you need the claim reference, ask for the "MPI claim number".
 - You are an automotive intake assistant, NOT a medical professional. Never claim to be a nurse, doctor, or clinician, and never say you can diagnose, prescribe, or treat anything.
 - Do NOT promise repair costs, pricing, timelines, coverage, or appointments — a Birchwood advisor confirms all of that on the callback. If asked, say the advisor will go over those details.
@@ -233,6 +235,101 @@ def merge_extracted_fields(
         cleaned = value.strip() if isinstance(value, str) else value
         if cleaned not in (None, ""):
             fields[key] = cleaned
+
+
+# Short replies that are NOT a name even though they are alphabetic — so we don't
+# capture "yes"/"no"/"hello" as the caller's name when the LLM missed it.
+_NON_NAME_WORDS = {
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "no",
+    "nope",
+    "nah",
+    "sure",
+    "okay",
+    "ok",
+    "hello",
+    "hi",
+    "hey",
+    "transfer",
+    "operator",
+    "agent",
+    "human",
+    "help",
+    "what",
+    "sorry",
+    "nothing",
+    "none",
+    "maybe",
+    "thanks",
+    "thank",
+    "please",
+}
+
+
+def _looks_like_name(text: str) -> bool:
+    """Conservative check: a short, digit-free, non-filler reply we can treat as a name."""
+    text = text.strip()
+    words = text.split()
+    if not (1 <= len(words) <= 4) or "?" in text:
+        return False
+    if any(ch.isdigit() for ch in text):
+        return False
+    if not any(ch.isalpha() for ch in text):
+        return False
+    # Reject if every word is a known non-name filler (e.g. "no thanks").
+    return not all(w.lower().strip(".,!'-") in _NON_NAME_WORDS for w in words)
+
+
+def _digit_count(text: str) -> int:
+    return len(re.sub(r"\D", "", text or ""))
+
+
+def _last_assistant_question(session: OrchestratorSession) -> str:
+    for turn in reversed(session.conversation):
+        if turn.role == "assistant" and turn.text:
+            return turn.text.lower()
+    return ""
+
+
+def capture_missing_identity_fields(
+    session: OrchestratorSession, user_text: str, output: BirchwoodTurnOutput
+) -> None:
+    """Deterministic safety net for the two hardest fields to extract: name & phone.
+
+    Spoken names and phone numbers are exactly where LLM extraction (and STT) slip,
+    and a name that never gets logged stalls the whole intake. When the assistant
+    just asked for one and the caller answered but the model returned it empty, we
+    capture the caller's OWN words instead of asking forever. Conservative guards
+    (filler stop-list for names, a 7-digit floor for phones) avoid mis-capturing a
+    refusal or an unrelated reply. The LLM remains the primary path; this only fires
+    when it left the field blank.
+    """
+    text = (user_text or "").strip()
+    if not text:
+        return
+    scripted = session.channel_metadata.setdefault("scripted_intake", {})
+    fields = scripted.setdefault("fields", {})
+    last_q = _last_assistant_question(session)
+
+    if (
+        "name" in last_q
+        and not str(fields.get("caller_name") or "").strip()
+        and _looks_like_name(text)
+    ):
+        fields["caller_name"] = text
+
+    asked_phone = any(
+        kw in last_q for kw in ("phone", "number", "callback", "call you", "reach you")
+    )
+    if (
+        asked_phone
+        and not str(fields.get("phone") or "").strip()
+        and _digit_count(text) >= 7
+    ):
+        fields["phone"] = text
 
 
 def is_transfer_request(text: str) -> bool:

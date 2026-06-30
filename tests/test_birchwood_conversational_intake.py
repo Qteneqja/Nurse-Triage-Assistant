@@ -27,8 +27,20 @@ from src.verticals.automotive_collision.constants import (
     AUTOMOTIVE_COLLISION_VERTICAL,
     BIRCHWOOD_COLLISION_WORKFLOW_ID,
 )
+from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
 from src.verticals.automotive_collision.conversational_intake import BirchwoodTurnOutput
 from src.verticals.automotive_collision.workflow import BirchwoodCollisionIntakeWorkflow
+
+
+def _session_after_question(question: str, caller_reply: str) -> OrchestratorSession:
+    s = OrchestratorSession(session_id="cap-test")
+    s.conversation.append(ConversationTurn(role="assistant", text=question))
+    s.conversation.append(ConversationTurn(role="caller", text=caller_reply))
+    return s
+
+
+def _session_fields(session: OrchestratorSession) -> dict:
+    return session.channel_metadata.get("scripted_intake", {}).get("fields", {})
 
 
 def _ctx() -> WorkflowContext:
@@ -89,6 +101,64 @@ def test_flag_on_returns_greeting_only_intake(monkeypatch):
     assert "automated assistant" in intake.intro_text  # disclosure preserved
     # The conversational greeting OPENS THE FLOOR so the caller knows to start.
     assert "tell me what happened" in intake.intro_text.lower()
+
+
+def test_looks_like_name_guards():
+    assert ci._looks_like_name("Jane Doe")
+    assert ci._looks_like_name("O'Brien")
+    assert not ci._looks_like_name("yes")  # filler, not a name
+    assert not ci._looks_like_name("no thanks")  # all filler words
+    assert not ci._looks_like_name("2018")  # has digits
+    assert not ci._looks_like_name("is it going to cost a lot?")  # question / too long
+
+
+def test_safety_net_captures_name_when_llm_misses_it():
+    s = _session_after_question("And can I get your full name?", "Jane Doe")
+    out = BirchwoodTurnOutput(response_to_caller="Sorry, your name?", caller_name=None)
+    ci.capture_missing_identity_fields(s, "Jane Doe", out)
+    assert _session_fields(s)["caller_name"] == "Jane Doe"
+
+
+def test_safety_net_ignores_filler_reply_as_name():
+    s = _session_after_question("What's your name?", "yes")
+    out = BirchwoodTurnOutput(response_to_caller="...", caller_name=None)
+    ci.capture_missing_identity_fields(s, "yes", out)
+    assert "caller_name" not in _session_fields(s)
+
+
+def test_safety_net_captures_phone_from_digits():
+    s = _session_after_question("Best callback number?", "431 555 0199")
+    out = BirchwoodTurnOutput(response_to_caller="...", phone=None)
+    ci.capture_missing_identity_fields(s, "431 555 0199", out)
+    assert _session_fields(s)["phone"] == "431 555 0199"
+
+
+def test_safety_net_ignores_non_phone_reply():
+    s = _session_after_question("Best callback number?", "I'm not sure right now")
+    out = BirchwoodTurnOutput(response_to_caller="...", phone=None)
+    ci.capture_missing_identity_fields(s, "I'm not sure right now", out)
+    assert "phone" not in _session_fields(s)
+
+
+def test_safety_net_only_fires_for_the_asked_field():
+    # Last question was about the vehicle, not the name -> don't capture a name.
+    s = _session_after_question("What year is the vehicle?", "Jane Doe")
+    out = BirchwoodTurnOutput(response_to_caller="...", caller_name=None)
+    ci.capture_missing_identity_fields(s, "Jane Doe", out)
+    assert "caller_name" not in _session_fields(s)
+
+
+def test_safety_net_recovers_name_in_full_turn_flow(monkeypatch):
+    monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
+    outputs = [
+        BirchwoodTurnOutput(response_to_caller="Sorry to hear that - your full name?"),
+        # The model asks again but leaves caller_name empty (the live failure).
+        BirchwoodTurnOutput(response_to_caller="And your name?", caller_name=None),
+    ]
+    wf = BirchwoodCollisionIntakeWorkflow(guarded_llm=_mock_guarded(outputs))
+    _, state = _run(wf, _ctx(), ["I had an accident", "Jane Doe"])
+    fields = state["channel_metadata"]["scripted_intake"]["fields"]
+    assert fields.get("caller_name") == "Jane Doe"  # captured despite the LLM miss
 
 
 def test_turn_output_coerces_numeric_and_boolean_fields():
