@@ -2090,14 +2090,13 @@ async def handle_thinking(
 
         task, session_obj = pending
 
-        # Task still running — play more typing sounds and loop back
+        # Task still running — play a hold sound and loop back. For Birchwood
+        # calls this is a short spoken filler (when pre-rendered); every other
+        # call keeps the keyboard-typing bed.
         if not task.done():
-            typing_url = "/api/v1/voice/audio/typing.wav"
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Play>{typing_url}</Play>
-    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
-</Response>"""
+            twiml = _thinking_loop_twiml(
+                session_obj if isinstance(session_obj, OrchestratorSession) else None
+            )
             return Response(content=twiml, media_type="application/xml")
 
         # ── Task complete — deliver the result ────────────────────────────
@@ -2297,6 +2296,42 @@ def _typing_redirect_twiml() -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Play>{typing_url}</Play>
+    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
+</Response>"""
+
+
+def _birchwood_filler_url(session: OrchestratorSession | None) -> str | None:
+    """A pre-rendered Birchwood verbal-filler URL, or None to use typing.wav.
+
+    Birchwood-gated and graceful: returns None for any non-Birchwood session and
+    whenever the fillers haven't been pre-rendered, so healthcare and
+    un-rendered deploys keep the keyboard-typing bed.
+    """
+    if session is None:
+        return None
+    from src.verticals.automotive_collision.voice_naturalness import (
+        is_birchwood_session,
+        select_variant,
+    )
+
+    if not is_birchwood_session(session):
+        return None
+    from src.utils.voice_fillers import available_filler_files
+
+    files = available_filler_files()
+    if not files:
+        return None
+    chosen = select_variant(session, "filler_file", files)
+    return f"/api/v1/voice/audio/birchwood-fillers/{chosen}"
+
+
+def _thinking_loop_twiml(session: OrchestratorSession | None = None) -> str:
+    """The /thinking 'still working' TwiML: a Birchwood verbal filler when
+    available, otherwise the unchanged typing-sound bed."""
+    play_url = _birchwood_filler_url(session) or "/api/v1/voice/audio/typing.wav"
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{play_url}</Play>
     <Redirect method="POST">/api/v1/voice/thinking</Redirect>
 </Response>"""
 

@@ -421,3 +421,51 @@ def test_expressive_ssml_escapes_text():
 def test_cache_key_differs_by_expressive_flag():
     base = ("t", "v", "r", "p", None, 250)
     assert azure_tts._cache_key(*base, False) != azure_tts._cache_key(*base, True)
+
+
+# ---------------------------------------------------------------------------
+# /thinking verbal fillers (Birchwood-gated, graceful typing.wav fallback)
+# ---------------------------------------------------------------------------
+
+
+def test_filler_audio_rejects_bad_names():
+    from src.utils import voice_fillers
+
+    assert voice_fillers.get_filler_audio("../../etc/passwd") is None
+    assert voice_fillers.get_filler_audio("filler_0.wav") is None
+    assert voice_fillers.get_filler_audio("evil.mp3") is None
+    # A well-formed name that isn't on disk (no pre-render yet) -> None.
+    assert voice_fillers.get_filler_audio("filler_0.mp3") is None
+
+
+def test_filler_url_none_when_not_pre_rendered():
+    # In this environment the fillers are not pre-rendered, so the loop falls
+    # back to typing.wav even for a Birchwood session.
+    assert rt._birchwood_filler_url(_birchwood_session()) is None
+    assert rt._birchwood_filler_url(_other_session()) is None
+    assert rt._birchwood_filler_url(None) is None
+
+
+def test_thinking_loop_falls_back_to_typing():
+    twiml = rt._thinking_loop_twiml(_birchwood_session())
+    assert "/api/v1/voice/audio/typing.wav" in twiml
+    assert "/api/v1/voice/thinking" in twiml
+    # Non-Birchwood / no session always uses typing.wav.
+    assert "/api/v1/voice/audio/typing.wav" in rt._thinking_loop_twiml(None)
+
+
+# ---------------------------------------------------------------------------
+# A/B harness
+# ---------------------------------------------------------------------------
+
+
+def test_ab_harness_pair_is_aligned_and_changed():
+    from scripts.ab_birchwood_voice import OLD_INTRO, SCENARIOS, build_scenario_pair
+
+    old, new = build_scenario_pair(SCENARIOS[0])
+    assert len(old) == len(new)  # line-for-line aligned for comparison
+    assert old[0] == OLD_INTRO
+    assert new[0] == BIRCHWOOD_COLLISION_INTRO
+    assert old != new  # the copy actually changed
+    # New copy slot-echoes the captured vehicle somewhere.
+    assert any("2019 Honda Civic" in line for line in new)
