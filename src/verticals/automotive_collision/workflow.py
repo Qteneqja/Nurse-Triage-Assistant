@@ -38,6 +38,7 @@ from src.verticals.automotive_collision.narrative_extraction import (
 )
 from src.verticals.automotive_collision.prompts import (
     BIRCHWOOD_COLLISION_CONVERSATIONAL_INTRO,
+    BIRCHWOOD_COLLISION_CONVERSATIONAL_OUTRO,
     BIRCHWOOD_COLLISION_INTRO,
     BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE,
     BIRCHWOOD_COLLISION_PROMPTS,
@@ -324,6 +325,9 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         scripted = session.channel_metadata.get("scripted_intake") or {}
         fields = scripted.get("fields") or {}
         missing = missing_required_fields(fields)
+        if not missing:
+            # Count turns spent in the "data complete" wrap-up / Q&A phase.
+            nv["complete_turns"] = int(nv.get("complete_turns", 0)) + 1
         # Field NAMES only (no PII values) so a stalled intake is visible in logs.
         logger.info(
             "[BIRCHWOOD] conv turn=%s captured=%s missing=%s",
@@ -331,7 +335,15 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
             sorted(k for k, v in fields.items() if str(v or "").strip()),
             missing,
         )
-        if output.ready_to_finalize and not missing:
+        # Finalize ONLY after the wrap-up: data complete, the model says the caller
+        # is done, AND at least one turn has elapsed since data first completed — so
+        # the advisor-callback + "any questions?" offer always happens before the
+        # call ends.
+        if (
+            output.ready_to_finalize
+            and not missing
+            and int(nv.get("complete_turns", 0)) >= 2
+        ):
             return self._finalize_conversational(context, session, reason="complete")
 
         # Keep the conversation open for the next caller turn (stays in DYNAMIC).
@@ -378,8 +390,15 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         reason_str = f"automotive_collision_conversational_{reason}"
         session.finalization_reason = reason_str
         disposition = final_result.final_disposition
+        # A normal completion ends with the short conversational OUTRO (the
+        # advisor-callback + disclaimer were already said in the wrap-up turn);
+        # transfers / turn-cap / errors keep the canned callback close.
+        if reason == "complete":
+            spoken = BIRCHWOOD_COLLISION_CONVERSATIONAL_OUTRO
+        else:
+            spoken = _spoken_final_message(disposition, final_result, session)
         return WorkflowTurnResult(
-            assistant_text=_spoken_final_message(disposition, final_result, session),
+            assistant_text=spoken,
             stage="FINAL",
             should_continue=False,
             should_finalize=True,

@@ -416,6 +416,38 @@ def test_conversation_accumulates_fields_then_finalizes_deterministically(monkey
     assert fields["claim_type"] == "Physical Damage"  # inferred from the damage
 
 
+def test_wrap_up_offers_questions_before_ending(monkeypatch):
+    monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
+    # Turn 1: every required field arrives AND the model declares it's ready — but
+    # since data just completed this turn, we must NOT end yet (so the
+    # advisor-callback + "any questions?" offer happens). Turn 2: caller is done.
+    complete = BirchwoodTurnOutput(
+        response_to_caller="You're all set - an advisor will call you back. Any questions?",
+        caller_name="Jane Doe",
+        phone="2045550100",
+        email="j@x.co",
+        vehicle_year="2019",
+        vehicle_make="Honda",
+        vehicle_model="Civic",
+        damage_type="rear bumper",
+        license_plate="ABC123",
+        preferred_location="Regent",
+        ready_to_finalize=True,
+    )
+    done = BirchwoodTurnOutput(response_to_caller="Great!", ready_to_finalize=True)
+    wf = BirchwoodCollisionIntakeWorkflow(guarded_llm=_mock_guarded([complete, done]))
+    results, _ = _run(wf, _ctx(), ["here's everything", "no, that's all"])
+
+    # First complete turn: data done + model "ready", but the call stays open so the
+    # caller is offered questions first.
+    assert results[0].should_finalize is False
+    assert results[0].should_continue is True
+    # Next turn: now it finalizes, speaking the short conversational outro.
+    assert results[-1].should_finalize is True
+    assert "Birchwood Collision" in results[-1].assistant_text
+    assert "advisor" in results[-1].assistant_text.lower()
+
+
 def test_ready_to_finalize_ignored_while_required_field_missing(monkeypatch):
     monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
     # LLM claims it's ready, but no required fields captured -> keep talking.
