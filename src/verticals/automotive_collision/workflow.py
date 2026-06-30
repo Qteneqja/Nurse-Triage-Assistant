@@ -880,6 +880,7 @@ def _intake_from_fields(fields: dict) -> AutomotiveCollisionIntake:
         ),
         drivable_raw=drivable_raw,
         damage_type=damage_type,
+        claim_type=_clean(fields.get("claim_type")),
         glass_only=_coalesce_bool(fields.get("glass_only"), damage_profile["glass"]),
         body_damage=_coalesce_bool(fields.get("body_damage"), damage_profile["body"]),
         incident_description=_clean(fields.get("incident_description")),
@@ -968,6 +969,7 @@ def _intake_record(
         },
         incident={
             "damage_type": intake.damage_type,
+            "claim_type": intake.claim_type,
             "is_drivable": intake.is_drivable,
             "description": intake.incident_description,
             "incident_datetime": intake.incident_datetime,
@@ -1010,6 +1012,7 @@ def _intake_record(
         license_plate=intake.license_plate,
         is_drivable=intake.is_drivable,
         damage_type=intake.damage_type,
+        claim_type=intake.claim_type,
         glass_only=bool(intake.glass_only),
         body_damage=bool(intake.body_damage),
         incident_description=intake.incident_description,

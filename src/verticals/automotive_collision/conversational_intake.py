@@ -40,19 +40,22 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "caller_name",
     "phone",
     "email",
-    "damage_type",
-    "license_plate",
-    "preferred_collision_center",
-)
-# The MPI claim number is required ONLY when the caller says a claim was filed
-# (handled in missing_required_fields). Vehicle details + drivability are still
-# captured opportunistically (useful for the advisor and BI) but no longer block.
-_OPTIONAL_FIELDS: tuple[str, ...] = (
-    "filing_insurance_claim",
-    "claim_number",
     "vehicle_year",
     "vehicle_make",
     "vehicle_model",
+    "damage_type",
+    "license_plate",
+    "preferred_collision_center",
+    # claim_type (Physical Damage / Glass Claim / Tow In Request) — inferred from
+    # the damage, never asked as jargon (see infer_claim_type).
+    "claim_type",
+)
+# The MPI claim number is required ONLY when the caller says a claim was filed
+# (handled in missing_required_fields). Drivability is captured opportunistically
+# (feeds the BI + claim-type inference) but no longer blocks.
+_OPTIONAL_FIELDS: tuple[str, ...] = (
+    "filing_insurance_claim",
+    "claim_number",
     "is_drivable",
 )
 
@@ -89,6 +92,10 @@ class BirchwoodTurnOutput(BaseModel):
     vehicle_make: str | None = None
     vehicle_model: str | None = None
     damage_type: str | None = None
+    claim_type: str | None = Field(
+        default=None,
+        description='"Physical Damage", "Glass Claim", or "Tow In Request"',
+    )
     is_drivable: str | None = Field(
         default=None, description='"yes", "no", or "unsure"'
     )
@@ -115,6 +122,7 @@ class BirchwoodTurnOutput(BaseModel):
         "vehicle_make",
         "vehicle_model",
         "damage_type",
+        "claim_type",
         "is_drivable",
         "filing_insurance_claim",
         "claim_number",
@@ -140,24 +148,39 @@ class BirchwoodTurnOutput(BaseModel):
 
 SYSTEM_PROMPT = """You are "Aurora", the automated voice assistant for Birchwood Automotive Group's collision intake line. You already told the caller you're an automated assistant. Speak warmly and naturally, like a helpful Birchwood service advisor on the phone. The caller may have just been in a collision — lead with brief reassurance.
 
-YOUR JOB: have a natural, flowing conversation to collect the details below, then hand off. Capture whatever the caller volunteers, in any order — do NOT interrogate them one rigid question at a time. Acknowledge what they say, answer brief questions, and ask only for what's still missing.
+YOUR JOB: have a natural, flowing conversation to collect the details below, then hand off. Acknowledge what they say, answer brief questions, and ask only for what's still missing. Still capture anything the caller volunteers out of order.
+
+ORDER OF THE CONVERSATION (follow this unless the caller jumps ahead):
+1) Start with their full NAME. 2) Their phone and email. 3) The VEHICLE — year, make, and model. 4) ONLY AFTER the vehicle, ask about the DAMAGE. 5) Then the licence plate, their preferred Birchwood location, and the MPI claim. Do not ask about the damage before you have the vehicle's year, make, and model.
 
 REQUIRED details to collect before finishing (the call is not done until you have all of these):
 - caller_name (the caller's full name)
 - phone (best callback number)
 - email (for the booking confirmation)
-- damage_type (a clear description of the damage to the vehicle — get enough detail to picture it: where on the car, how bad, what happened)
+- vehicle_year, vehicle_make, vehicle_model
+- damage_type (a clear description of the damage — where on the car, how bad, what happened; ask AFTER the vehicle)
 - license_plate (the vehicle's licence plate)
-- preferred_location (which Birchwood location is most convenient for them)
-CONDITIONAL: ask whether they've opened an MPI claim (filing_insurance_claim "yes"/"no"); if YES, you must also collect the MPI claim_number.
-Nice to have if it comes up naturally: vehicle_year, vehicle_make, vehicle_model, and whether it's drivable (is_drivable "yes"/"no"/"unsure").
+- preferred_location (which Birchwood Collision location is most convenient)
+- claim_type — DO NOT make the caller pick this; INFER it from the damage: "Glass Claim" if it's glass-only (windshield / window / chip), "Tow In Request" if the vehicle isn't drivable, otherwise "Physical Damage".
+CONDITIONAL: ask whether they've opened an MPI claim (filing_insurance_claim "yes"/"no"); if YES, you must also collect the MPI claim_number. Also capture is_drivable ("yes"/"no"/"unsure") when it comes up — it decides the claim type.
+
+BIRCHWOOD COLLISION LOCATIONS (offer these when asking for the preferred location):
+- Headingley — 5236 Portage Ave, Headingley
+- Point West, also called Birchwood Auto Park — 60-3965 Portage Ave, Winnipeg
+- Winnipeg East — on Regent Ave, Winnipeg
+
+ABOUT BIRCHWOOD COLLISION (use to answer caller questions; keep answers short and NEVER quote pricing):
+- Manitoba's largest collision centre, serving since 1963, with the three locations above.
+- MPI (Autopac) accredited and handles MPI claims; I-CAR Gold Class and Certified Collision Care; manufacturer-certified for most major brands.
+- Services: collision repair for all makes, glass repair, hail damage, free estimates, rentals during repairs, and no-contact / at-home online estimates.
+- Customer care: progress updates throughout the repair, a final quality check, the vehicle cleaned at pickup, and a courtesy lounge.
 
 SPELLING (important for accuracy):
 - EMAIL: always ask the caller to SPELL OUT their email address ("could you spell that out for me, including what comes after the at sign?"), then READ IT BACK to confirm before moving on.
 - NAME: if the name is unusual or you're not confident how it's spelled, ask the caller to spell their first and last name. Otherwise just confirm it back.
 
 RULES (important):
-- CAPTURE AS YOU GO: the moment the caller gives a detail (name, phone, email, the damage, licence plate, preferred location, claim info), you MUST copy it into the matching JSON field on that SAME turn. Do not merely acknowledge it in words and leave the field empty — an empty field means we have to ask again.
+- CAPTURE AS YOU GO: the moment the caller gives a detail (name, phone, email, vehicle, damage, licence plate, preferred location, claim info), you MUST copy it into the matching JSON field on that SAME turn. Do not merely acknowledge it in words and leave the field empty — an empty field means we have to ask again.
 - Collect only the fields above. NEVER ask for a home address, an SSN, credit-card or bank details, or an insurance "policy number". If you need the claim reference, ask for the "MPI claim number" (email IS fine to collect).
 - You are an automotive intake assistant, NOT a medical professional. Never claim to be a nurse, doctor, or clinician, and never say you can diagnose, prescribe, or treat anything.
 - Do NOT promise repair costs, pricing, timelines, coverage, or appointments — a Birchwood advisor confirms all of that on the callback. If asked, say the advisor will go over those details.
@@ -166,7 +189,7 @@ RULES (important):
 - Keep each spoken turn short and conversational (1 to 3 sentences). Ask one thing at a time unless they volunteer more.
 
 OUTPUT: Reply with ONLY a single JSON object — no other text, no markdown fences. Put what you want to SAY next in "response_to_caller". Fill any fields you learned this call; use null for anything unknown. Set ready_to_finalize=true ONLY when every REQUIRED field (and the claim number, if a claim was filed) is captured and you've briefly confirmed the key details. Reply in exactly this shape:
-{"response_to_caller": "Thanks - and what's the best email for your confirmation? Could you spell it out for me?", "caller_name": "Jane Doe", "phone": null, "email": null, "license_plate": null, "preferred_location": null, "vehicle_year": null, "vehicle_make": "Honda", "vehicle_model": null, "damage_type": null, "is_drivable": null, "filing_insurance_claim": null, "claim_number": null, "caller_wants_human": false, "ready_to_finalize": false}"""
+{"response_to_caller": "Thanks - and what's the best email for your confirmation? Could you spell it out for me?", "caller_name": "Jane Doe", "phone": null, "email": null, "vehicle_year": null, "vehicle_make": "Honda", "vehicle_model": null, "damage_type": null, "claim_type": null, "license_plate": null, "preferred_location": null, "is_drivable": null, "filing_insurance_claim": null, "claim_number": null, "caller_wants_human": false, "ready_to_finalize": false}"""
 
 
 def _claim_was_filed(fields: dict) -> bool:
@@ -281,6 +304,7 @@ def merge_extracted_fields(
         "vehicle_make": make,
         "vehicle_model": output.vehicle_model,
         "damage_type": output.damage_type,
+        "claim_type": output.claim_type,
         "is_drivable": output.is_drivable,
         "filing_insurance_claim": output.filing_insurance_claim,
         "claim_number": output.claim_number,
@@ -542,6 +566,55 @@ def extract_damage_bi(damage_text: str | None, fields: dict | None = None) -> di
     }
 
 
+_CLAIM_TYPE_GLASS = [
+    "windshield",
+    "windscreen",
+    "window",
+    "glass",
+    "chip",
+    "mirror",
+]
+_CLAIM_TYPE_BODY = [
+    "bumper",
+    "door",
+    "fender",
+    "panel",
+    "frame",
+    "dent",
+    "scratch",
+    "hood",
+    "trunk",
+    "rear end",
+    "rear-end",
+    "front end",
+    "quarter",
+    "smashed",
+    "crushed",
+]
+
+
+def infer_claim_type(fields: dict) -> str | None:
+    """Map the damage to Birchwood's booking claim type, given enough signal.
+
+    Glass-only damage -> "Glass Claim"; a non-drivable vehicle -> "Tow In Request";
+    any other described damage -> "Physical Damage". Returns None when neither the
+    damage nor drivability is known yet (so we never guess prematurely).
+    """
+    damage = str(fields.get("damage_type") or "").lower()
+    drivable = str(fields.get("is_drivable") or "").strip().lower()
+    if not damage and not drivable:
+        return None
+    if drivable.startswith("no") or "tow" in damage or "not driv" in damage:
+        return "Tow In Request"
+    glass = any(g in damage for g in _CLAIM_TYPE_GLASS)
+    body = any(b in damage for b in _CLAIM_TYPE_BODY)
+    if glass and not body:
+        return "Glass Claim"
+    if damage:
+        return "Physical Damage"
+    return None
+
+
 def capture_missing_identity_fields(
     session: OrchestratorSession, user_text: str, output: BirchwoodTurnOutput
 ) -> None:
@@ -588,6 +661,13 @@ def capture_missing_identity_fields(
         plate = reconstruct_plate(text)
         if 2 <= len(plate) <= 8:
             fields["license_plate"] = plate
+
+    # CLAIM TYPE — inferred from the damage (booking form: Physical Damage / Glass
+    # Claim / Tow In Request); the caller is never asked to pick a claim type.
+    if not str(fields.get("claim_type") or "").strip():
+        inferred = infer_claim_type(fields)
+        if inferred:
+            fields["claim_type"] = inferred
 
 
 def is_transfer_request(text: str) -> bool:
