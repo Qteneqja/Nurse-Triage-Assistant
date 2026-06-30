@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 import src.config as config
-from src.llm.client import LLMCallError
 from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
 from src.platform.workflows.schemas import (
     ScriptedIntakeDefinition,
@@ -51,6 +51,8 @@ from src.verticals.automotive_collision.schemas import (
     AutomotiveCollisionIntake,
     AutomotiveCollisionRecord,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
@@ -288,13 +290,21 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
 
         try:
             output = await run_turn(self._get_guarded(), session, user_text)
-        except LLMCallError:
-            return self._finalize_conversational(context, session, reason="llm_error")
+            merge_extracted_fields(session, output)
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=output.response_to_caller)
+            )
+        except Exception:
+            # ANY failure (LLM error, timeout, malformed output, bad input) must
+            # NOT drop the call. Recover in-call and only hand off after repeated
+            # failures — never an abrupt hangup.
+            logger.warning(
+                "[BIRCHWOOD] conversational turn failed — recovering in-call",
+                exc_info=True,
+            )
+            return self._recover_conversational_turn(context, session)
 
-        merge_extracted_fields(session, output)
-        session.conversation.append(
-            ConversationTurn(role="assistant", text=output.response_to_caller)
-        )
+        nv["errors"] = 0  # a clean turn resets the error budget
 
         if output.caller_wants_human:
             return self._finalize_conversational(
@@ -358,6 +368,41 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
                 "conversational_intake": True,
                 "finalization_reason": reason_str,
                 "automotive_collision_recommended_routing": disposition,
+            },
+        )
+
+    def _recover_conversational_turn(
+        self,
+        context: WorkflowContext,
+        session: OrchestratorSession,
+    ) -> WorkflowTurnResult:
+        """Graceful in-call recovery from a failed turn.
+
+        Re-asks once (keeping the call open) so a weird utterance or a transient
+        model hiccup never drops the caller. Only after ``MAX_ERRORS`` consecutive
+        failures does it hand off to a human callback — never an abrupt hangup.
+        """
+        from src.verticals.automotive_collision.conversational_intake import MAX_ERRORS
+
+        nv = session.channel_metadata.setdefault("conversational_intake", {})
+        nv["errors"] = int(nv.get("errors", 0)) + 1
+        if nv["errors"] >= MAX_ERRORS:
+            return self._finalize_conversational(context, session, reason="llm_error")
+
+        safe = "Sorry, I didn't quite catch that - could you say that again?"
+        session.conversation.append(ConversationTurn(role="assistant", text=safe))
+        session.channel_metadata["stage"] = "DYNAMIC"
+        return WorkflowTurnResult(
+            assistant_text=safe,
+            stage="DYNAMIC",
+            should_continue=True,
+            should_finalize=False,
+            escalation_required=False,
+            updated_state=session.model_dump(mode="json"),
+            audit_metadata={
+                "workflow_id": context.workflow_id,
+                "conversational_intake": True,
+                "recovered_errors": nv["errors"],
             },
         )
 

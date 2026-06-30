@@ -201,16 +201,39 @@ def test_injury_reflex_applies_to_a_conversational_turn(monkeypatch):
     assert INJURY_SAFETY_ADVISORY in guarded_result.assistant_text
 
 
-def test_llm_failure_fails_closed_to_callback(monkeypatch):
+def test_single_turn_failure_recovers_in_call(monkeypatch):
     monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
     guarded = MagicMock(spec=GuardedLLM)
     guarded.structured_call = AsyncMock(side_effect=LLMCallError("boom"))
     wf = BirchwoodCollisionIntakeWorkflow(guarded_llm=guarded)
-    results, state = _run(wf, _ctx(), ["hi there"])
-    final = results[0]
-    assert final.should_finalize is True  # failed closed, not stuck
-    # No required fields captured -> the deterministic rules ask for a callback.
-    assert final.recommended_disposition == "INCOMPLETE_CALLBACK_NEEDED"
+    results, _ = _run(wf, _ctx(), ["hi there"])
+    # A single failure must NOT end the call — it recovers and keeps going.
+    assert results[0].should_finalize is False
+    assert results[0].should_continue is True
+    assert "say that again" in results[0].assistant_text.lower()
+
+
+def test_unexpected_exception_also_recovers_not_crashes(monkeypatch):
+    monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
+    guarded = MagicMock(spec=GuardedLLM)
+    # A non-LLMCallError (API error / timeout / bad input) must also recover,
+    # never propagate to the transport and drop the call.
+    guarded.structured_call = AsyncMock(side_effect=ValueError("malformed"))
+    wf = BirchwoodCollisionIntakeWorkflow(guarded_llm=guarded)
+    results, _ = _run(wf, _ctx(), ["?!#@"])
+    assert results[0].should_finalize is False
+    assert results[0].should_continue is True
+
+
+def test_repeated_failures_hand_off_to_callback(monkeypatch):
+    monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
+    guarded = MagicMock(spec=GuardedLLM)
+    guarded.structured_call = AsyncMock(side_effect=LLMCallError("boom"))
+    wf = BirchwoodCollisionIntakeWorkflow(guarded_llm=guarded)
+    # MAX_ERRORS consecutive failures -> graceful hand off (never an abrupt hangup).
+    results, state = _run(wf, _ctx(), ["a"] * ci.MAX_ERRORS)
+    assert results[-1].should_finalize is True
+    assert results[-1].recommended_disposition == "INCOMPLETE_CALLBACK_NEEDED"
     assert state["finalization_reason"].endswith("llm_error")
 
 
