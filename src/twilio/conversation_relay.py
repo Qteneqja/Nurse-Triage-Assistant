@@ -224,6 +224,12 @@ class _AsyncTaskScheduler:
 # ---------------------------------------------------------------------------
 
 
+# Short, pre-approved acknowledgments for the instant-ack perceived-latency option
+# (CR_INSTANT_ACK). Deterministic and safe — no LLM — so they can be spoken the
+# moment the caller finishes, while the gated turn computes behind them.
+_INSTANT_ACKS = ("Okay.", "Alright.", "Got it.", "Sure thing.", "One moment.")
+
+
 def _estimate_settle_seconds(text: str) -> float:
     """Seconds to let ConversationRelay finish speaking ``text`` before we end.
 
@@ -485,6 +491,12 @@ class ConversationRelaySession:
 
         # DYNAMIC stage — the multi-agent orchestrator (UNCHANGED).
         if session.channel_metadata.get("stage") == rt.STAGE_DYNAMIC:
+            # Perceived-latency: an instant, pre-approved acknowledgment plays while
+            # the gated LLM turn computes behind it (the real reply is still gated).
+            if config.CR_INSTANT_ACK:
+                await self._send_response(
+                    self._next_instant_ack(session), session, interruptible=True
+                )
             result, session = await self._run_turn(session, speech)
             action = result["action"]
             spoken = result["message"]
@@ -682,6 +694,13 @@ class ConversationRelaySession:
                 }
             )
         )
+
+    def _next_instant_ack(self, session: OrchestratorSession) -> str:
+        """Pick a non-repeating short acknowledgment for the instant-ack option."""
+        meta = session.channel_metadata
+        i = int(meta.get("cr_ack_i", -1)) + 1
+        meta["cr_ack_i"] = i
+        return _INSTANT_ACKS[i % len(_INSTANT_ACKS)]
 
     async def _settle_final_speech(self, text: str) -> None:
         """Hold long enough for the final spoken message to play before ending.

@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import src.config as config
+from src.orchestrator.schemas import OrchestratorSession
 from src.platform.workflows.schemas import WorkflowTurnResult
 from src.twilio import conversation_relay as cr
 
@@ -225,6 +226,28 @@ def test_ws_finalize_settles_goodbye_before_ending(monkeypatch, cr_client):
 
     # The goodbye passed through the settle gate (before the call ended).
     assert any("nurse will call you back" in text for text in seen)
+
+
+def test_instant_ack_rotates_without_repeating():
+    sess = OrchestratorSession(session_id="ack")
+    cr_sess = cr.ConversationRelaySession.__new__(cr.ConversationRelaySession)
+    acks = [cr_sess._next_instant_ack(sess) for _ in range(len(cr._INSTANT_ACKS) + 1)]
+    assert acks[0] == cr._INSTANT_ACKS[0]
+    assert all(a != b for a, b in zip(acks, acks[1:]))  # never repeats back-to-back
+
+
+def test_ws_instant_ack_precedes_dynamic_response(monkeypatch, cr_client):
+    monkeypatch.setattr(config, "CR_INSTANT_ACK", True)
+    fake = _FakeEngine([("Where exactly is the pain?", False, False)])
+    monkeypatch.setattr(cr, "get_workflow_engine", lambda: fake)
+
+    with cr_client.websocket_connect("/api/v1/voice/relay") as ws:
+        # With instant-ack on, a short pre-approved ack is spoken BEFORE the gated
+        # turn lands; the real (gated) engine reply follows.
+        first = _drive_scripted_intake(ws, "CRWS_ACK_1")
+        assert first["type"] == "text" and first["token"] in cr._INSTANT_ACKS
+        resp = ws.receive_json()
+        assert resp["token"] == "Where exactly is the pain?"
 
 
 def test_ws_rejects_bad_token(monkeypatch):
