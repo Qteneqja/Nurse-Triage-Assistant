@@ -268,6 +268,7 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         """
         from src.verticals.automotive_collision.conversational_intake import (
             MAX_TURNS,
+            capture_missing_identity_fields,
             is_transfer_request,
             merge_extracted_fields,
             missing_required_fields,
@@ -293,6 +294,10 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         try:
             output = await run_turn(self._get_guarded(), session, user_text)
             merge_extracted_fields(session, output)
+            # Safety net: if the model just asked for the name/phone and the caller
+            # answered but the model returned it empty, capture the caller's words
+            # (uses the prior assistant question, so call BEFORE appending this one).
+            capture_missing_identity_fields(session, user_text, output)
             session.conversation.append(
                 ConversationTurn(role="assistant", text=output.response_to_caller)
             )
@@ -315,7 +320,15 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
 
         scripted = session.channel_metadata.get("scripted_intake") or {}
         fields = scripted.get("fields") or {}
-        if output.ready_to_finalize and not missing_required_fields(fields):
+        missing = missing_required_fields(fields)
+        # Field NAMES only (no PII values) so a stalled intake is visible in logs.
+        logger.info(
+            "[BIRCHWOOD] conv turn=%s captured=%s missing=%s",
+            nv["turns"],
+            sorted(k for k, v in fields.items() if str(v or "").strip()),
+            missing,
+        )
+        if output.ready_to_finalize and not missing:
             return self._finalize_conversational(context, session, reason="complete")
 
         # Keep the conversation open for the next caller turn (stays in DYNAMIC).
