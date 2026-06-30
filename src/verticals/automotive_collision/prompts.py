@@ -44,8 +44,8 @@ BIRCHWOOD_COLLISION_CONVERSATIONAL_INTRO = (
     "Thank you for calling Birchwood Collision. My name's Aurora — "
     "I'm an automated assistant, and I'm here to help get your vehicle booked "
     "in after a collision. This call may be recorded for training and quality "
-    "purposes. To get started, can I get your full name? And if you'd rather "
-    "speak with our team, just say transfer at any time."
+    "purposes. If at any point you'd rather speak with our team, just say "
+    "transfer. To get started, can I get your full name?"
 )
 
 BIRCHWOOD_COLLISION_PROMPTS = {
