@@ -412,6 +412,14 @@ CR_TRANSCRIPTION_PROVIDER: str = os.getenv(
     "CR_TRANSCRIPTION_PROVIDER", "Deepgram"
 ).strip()
 CR_SPEECH_MODEL: str = os.getenv("CR_SPEECH_MODEL", "nova-2").strip()
+# ConversationRelay ends the session the instant it receives the `end` message,
+# cutting off any TTS still playing — so a finalize/transfer/fail-closed goodbye
+# gets dropped mid-sentence and the call goes silent. Before ending we hold for
+# the estimated speech duration, bounded by this many seconds (0 disables the
+# wait; the test suite sets it to 0 via conftest so nothing sleeps).
+CR_FINAL_SPEECH_SETTLE_MAX_S: float = float(
+    os.getenv("CR_FINAL_SPEECH_SETTLE_MAX_S", "30")
+)
 
 # ---------------------------------------------------------------------------
 # Security

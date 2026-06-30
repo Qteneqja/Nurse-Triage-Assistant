@@ -224,6 +224,22 @@ class _AsyncTaskScheduler:
 # ---------------------------------------------------------------------------
 
 
+def _estimate_settle_seconds(text: str) -> float:
+    """Seconds to let ConversationRelay finish speaking ``text`` before we end.
+
+    CR ends the session the instant it receives ``end`` and cuts off any audio
+    still playing, so a finalize/transfer/fail-closed goodbye drops mid-sentence.
+    We hold for an estimate of the TTS duration first: ~13 characters/second of
+    spoken English (a deliberately conservative under-estimate of the rate, so we
+    never cut the message short), floored so even a short line plays and bounded
+    by ``CR_FINAL_SPEECH_SETTLE_MAX_S`` (0 disables it — e.g. in tests).
+    """
+    cap = config.CR_FINAL_SPEECH_SETTLE_MAX_S
+    if cap <= 0 or not text:
+        return 0.0
+    return min(max(len(text) / 13.0, 1.0), cap) + 0.4
+
+
 class ConversationRelaySession:
     """One ConversationRelay WebSocket connection ≈ one phone call."""
 
@@ -530,6 +546,7 @@ class ConversationRelaySession:
             updated.is_finalized = True
         repo.persist_session(updated)
         await self._send_response(turn_result.assistant_text, updated)
+        await self._settle_final_speech(turn_result.assistant_text)
         await self._end()
 
     async def _finalize(
@@ -578,6 +595,10 @@ class ConversationRelaySession:
             and rt._is_healthcare_session(session)
             and bool(config.NURSE_TRANSFER_NUMBER)
         )
+        # Let the goodbye finish playing before ending the session (CR cuts off
+        # in-flight audio the moment it sees `end`). For a dial handoff this also
+        # ensures the caller hears the message before the warm transfer connects.
+        await self._settle_final_speech(spoken)
         await self._end(handoff={"action": "dial" if should_dial else "hangup"})
 
     async def _fail_closed(
@@ -600,7 +621,9 @@ class ConversationRelaySession:
                 self.call_sid,
                 exc_info=True,
             )
-        await self._send_response(stability.fail_closed_error_message(session), session)
+        message = stability.fail_closed_error_message(session)
+        await self._send_response(message, session)
+        await self._settle_final_speech(message)
         await self._end()
 
     # -- output provider seam ----------------------------------------------
@@ -659,6 +682,16 @@ class ConversationRelaySession:
                 }
             )
         )
+
+    async def _settle_final_speech(self, text: str) -> None:
+        """Hold long enough for the final spoken message to play before ending.
+
+        Without this, ``_end`` ends the CR session and cuts off the goodbye —
+        the caller hears silence and the call drops. Disabled (0s) in tests.
+        """
+        seconds = _estimate_settle_seconds(text)
+        if seconds > 0:
+            await asyncio.sleep(seconds)
 
     async def _end(self, handoff: dict | None = None) -> None:
         msg: dict = {"type": "end"}
