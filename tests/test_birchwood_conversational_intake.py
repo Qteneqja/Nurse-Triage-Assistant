@@ -99,8 +99,9 @@ def test_flag_on_returns_greeting_only_intake(monkeypatch):
     assert intake.stages == []  # no scripted stages -> session starts in DYNAMIC
     assert "Aurora" in intake.intro_text
     assert "automated assistant" in intake.intro_text  # disclosure preserved
-    # The conversational greeting OPENS THE FLOOR so the caller knows to start.
-    assert "tell me what happened" in intake.intro_text.lower()
+    # The greeting now asks for the NAME first (damage comes later in the flow).
+    assert "full name" in intake.intro_text.lower()
+    assert "what happened" not in intake.intro_text.lower()
 
 
 def test_looks_like_name_guards():
@@ -187,10 +188,43 @@ def test_required_fields_match_the_new_goal():
         "caller_name",
         "phone",
         "email",
+        "vehicle_year",
+        "vehicle_make",
+        "vehicle_model",
         "damage_type",
         "license_plate",
         "preferred_collision_center",
+        "claim_type",
     )
+
+
+def test_infer_claim_type():
+    assert ci.infer_claim_type({"damage_type": "cracked windshield"}) == "Glass Claim"
+    assert (
+        ci.infer_claim_type({"damage_type": "rear bumper", "is_drivable": "no"})
+        == "Tow In Request"
+    )
+    assert (
+        ci.infer_claim_type({"damage_type": "front bumper cracked"})
+        == "Physical Damage"
+    )
+    assert ci.infer_claim_type({}) is None  # nothing to go on yet
+
+
+def test_claim_type_inferred_when_damage_captured():
+    s = _session_after_question("What's the damage?", "cracked windshield")
+    out = BirchwoodTurnOutput(
+        response_to_caller="...", damage_type="cracked windshield"
+    )
+    ci.merge_extracted_fields(s, out)
+    ci.capture_missing_identity_fields(s, "cracked windshield", out)
+    assert _session_fields(s)["claim_type"] == "Glass Claim"
+
+
+def test_prompt_carries_locations_and_knowledge():
+    assert "Headingley" in ci.SYSTEM_PROMPT
+    assert "Regent" in ci.SYSTEM_PROMPT
+    assert "I-CAR" in ci.SYSTEM_PROMPT
 
 
 def test_claim_number_required_only_when_a_claim_was_filed():
@@ -198,9 +232,13 @@ def test_claim_number_required_only_when_a_claim_was_filed():
         "caller_name": "Jane",
         "phone": "2045550100",
         "email": "j@x.co",
+        "vehicle_year": "2021",
+        "vehicle_make": "Honda",
+        "vehicle_model": "Civic",
         "damage_type": "rear bumper",
         "license_plate": "ABC123",
         "preferred_collision_center": "Regent",
+        "claim_type": "Physical Damage",
     }
     assert ci.missing_required_fields(base) == []  # no claim -> claim_number optional
     with_claim = {**base, "filing_insurance_claim": "yes"}
@@ -325,11 +363,18 @@ def test_conversation_accumulates_fields_then_finalizes_deterministically(monkey
                 response_to_caller="And the best email?", phone="204 555 0123"
             ),
             BirchwoodTurnOutput(
-                response_to_caller="What's the damage?", email="jane@example.com"
+                response_to_caller="What's the vehicle - year, make, model?",
+                email="jane@example.com",
+            ),
+            BirchwoodTurnOutput(
+                response_to_caller="What's the damage?",
+                vehicle_year="2019",
+                vehicle_make="Honda",
+                vehicle_model="Civic",
             ),
             BirchwoodTurnOutput(
                 response_to_caller="What's the licence plate?",
-                damage_type="rear bumper",
+                damage_type="rear bumper",  # claim_type inferred -> Physical Damage
             ),
             BirchwoodTurnOutput(
                 response_to_caller="Which Birchwood location works best?",
@@ -351,6 +396,7 @@ def test_conversation_accumulates_fields_then_finalizes_deterministically(monkey
             "Jane Doe",
             "204 555 0123",
             "jane at example dot com",
+            "2019 Honda Civic",
             "rear bumper",
             "ABC123",
             "the Regent one",
@@ -364,8 +410,10 @@ def test_conversation_accumulates_fields_then_finalizes_deterministically(monkey
     fields = _fields(state)
     assert fields["caller_name"] == "Jane Doe"
     assert fields["email"] == "jane@example.com"
+    assert fields["vehicle_make"] == "Honda"
     assert fields["license_plate"] == "ABC123"
     assert fields["preferred_collision_center"] == "Birchwood Regent"
+    assert fields["claim_type"] == "Physical Damage"  # inferred from the damage
 
 
 def test_ready_to_finalize_ignored_while_required_field_missing(monkeypatch):

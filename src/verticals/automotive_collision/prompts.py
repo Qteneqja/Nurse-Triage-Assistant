@@ -37,15 +37,15 @@ BIRCHWOOD_COLLISION_INTRO = (
 )
 
 # Conversational tier greeting (BIRCHWOOD_CONVERSATIONAL_INTAKE). Same persona,
-# disclosure, and recording clause, but it OPENS THE FLOOR ("tell me what
-# happened") so the caller knows to start talking — there are no scripted
-# questions to follow it, so a trailing "press zero" would just leave silence.
+# disclosure, and recording clause, but it leads straight into the FIRST question
+# (the caller's name) rather than "tell me what happened" — the damage comes later
+# in the flow, after the vehicle details.
 BIRCHWOOD_COLLISION_CONVERSATIONAL_INTRO = (
-    "Thank you for calling Birchwood Automotive Group. My name's Aurora — "
+    "Thank you for calling Birchwood Collision. My name's Aurora — "
     "I'm an automated assistant, and I'm here to help get your vehicle booked "
     "in after a collision. This call may be recorded for training and quality "
-    "purposes. Whenever you're ready, go ahead and tell me what happened — and "
-    "if you'd rather speak with our team, just say transfer at any time."
+    "purposes. To get started, can I get your full name? And if you'd rather "
+    "speak with our team, just say transfer at any time."
 )
 
 BIRCHWOOD_COLLISION_PROMPTS = {

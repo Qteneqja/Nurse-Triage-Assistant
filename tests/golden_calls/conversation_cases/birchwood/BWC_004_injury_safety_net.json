@@ -5,16 +5,17 @@
     {"caller": "We got in an accident and my passenger hurt her neck", "llm": {"response_to_caller": "I'm so sorry to hear that. Let's get you taken care of - can I start with your full name?"}},
     {"caller": "It's Sam Okafor, she's okay, just shaken", "llm": {"response_to_caller": "Thank you, Sam. Best number to reach you?", "caller_name": "Sam Okafor"}},
     {"caller": "four three one five five five oh one seven seven", "llm": {"response_to_caller": "And the best email - could you spell it out?", "phone": "431-555-0177"}},
-    {"caller": "s a m at proton dot me", "llm": {"response_to_caller": "Got it - sam@proton.me. What's the damage, and is it drivable?", "email": "sam@proton.me"}},
+    {"caller": "s a m at proton dot me", "llm": {"response_to_caller": "Got it - sam@proton.me. What's the vehicle - year, make and model?", "email": "sam@proton.me"}},
+    {"caller": "2019 Hyundai Elantra", "llm": {"response_to_caller": "A 2019 Hyundai Elantra. What's the damage, and is it drivable?", "vehicle_year": "2019", "vehicle_make": "Hyundai", "vehicle_model": "Elantra"}},
     {"caller": "Side panel's dented, it still drives", "llm": {"response_to_caller": "Okay. What's the licence plate?", "damage_type": "side panel dented", "is_drivable": "yes"}},
     {"caller": "M N P 2 4 6", "llm": {"response_to_caller": "And which Birchwood location works best for you?", "license_plate": "MNP246"}},
-    {"caller": "Regent", "llm": {"response_to_caller": "Have you opened an MPI claim yet?", "preferred_location": "Birchwood Regent"}},
+    {"caller": "Regent", "llm": {"response_to_caller": "Have you opened an MPI claim yet?", "preferred_location": "Birchwood Winnipeg East (Regent)"}},
     {"caller": "no not yet", "llm": {"response_to_caller": "No worries, the advisor will help with that. Let me confirm and book you in.", "filing_insurance_claim": "no"}},
     {"caller": "yep", "llm": {"response_to_caller": "All set.", "ready_to_finalize": true}}
   ],
   "expected_disposition": "COMPLETED_INTAKE",
   "expected_finalized": true,
   "expected_advisory_spoken": true,
-  "expected_fields_contain": {"caller_name": "Sam Okafor", "email": "sam@proton.me", "license_plate": "MNP246", "preferred_collision_center": "Birchwood Regent", "is_drivable": "yes"},
-  "expected_llm_calls": 9
+  "expected_fields_contain": {"caller_name": "Sam Okafor", "email": "sam@proton.me", "vehicle_make": "Hyundai", "license_plate": "MNP246", "preferred_collision_center": "Birchwood Winnipeg East (Regent)", "claim_type": "Physical Damage", "is_drivable": "yes"},
+  "expected_llm_calls": 10
 }

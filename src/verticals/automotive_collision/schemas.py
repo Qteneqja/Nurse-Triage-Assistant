@@ -41,6 +41,8 @@ class AutomotiveCollisionIntake(BaseModel):
     is_drivable: bool | None = None
     drivable_raw: str | None = None
     damage_type: str | None = None
+    # Booking claim type: "Physical Damage" | "Glass Claim" | "Tow In Request".
+    claim_type: str | None = None
     glass_only: bool | None = None
     body_damage: bool | None = None
     incident_description: str | None = None
@@ -121,6 +123,7 @@ class AutomotiveCollisionRecord(BaseModel):
     license_plate: str | None = None
     is_drivable: bool | None = None
     damage_type: str | None = None
+    claim_type: str | None = None
     glass_only: bool = False
     body_damage: bool = False
     incident_description: str | None = None
