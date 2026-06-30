@@ -248,6 +248,10 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         value: Any,
     ) -> dict[str, Any]:
         field = stage.field_name
+        if field == "vehicle_make":
+            # Canonicalise the make (alias/close match) so a misheard or
+            # nicknamed brand still routes/records correctly.
+            return {"vehicle_make": _normalize_make(value)}
         if field == "injuries_state":
             return {"injuries_state": _normalize_injuries_answer(value)}
         if field == "filing_insurance_claim":
@@ -422,6 +426,96 @@ BIRCHWOOD_EXTRACTION_ENTITIES: list[str] = [
 ]
 
 
+# Speech-recognition hints (Twilio <Gather hints>) bias STT toward expected
+# vocabulary — critical for short, easily-dropped words ("Ford") and for accent
+# robustness on the bounded-vocab stages. Names/models stay open (no hints).
+COMMON_VEHICLE_MAKES: list[str] = [
+    "Toyota",
+    "Honda",
+    "Ford",
+    "Chevrolet",
+    "GMC",
+    "Dodge",
+    "Ram",
+    "Jeep",
+    "Nissan",
+    "Hyundai",
+    "Kia",
+    "Mazda",
+    "Subaru",
+    "Volkswagen",
+    "BMW",
+    "Mercedes-Benz",
+    "Audi",
+    "Lexus",
+    "Acura",
+    "Infiniti",
+    "Volvo",
+    "Buick",
+    "Cadillac",
+    "Chrysler",
+    "Mitsubishi",
+    "Tesla",
+    "Land Rover",
+    "Jaguar",
+    "Porsche",
+    "Genesis",
+    "Lincoln",
+    "Mini",
+]
+VEHICLE_MAKE_HINTS = ", ".join(COMMON_VEHICLE_MAKES)
+DRIVABLE_HINTS = (
+    "yes, no, drivable, not drivable, safe to drive, needs a tow, tow truck, towed"
+)
+INSURANCE_HINTS = (
+    "yes, no, MPI, Autopac, claim, claim number, private pay, paying privately, "
+    "out of pocket"
+)
+
+# Common spoken nicknames / mishearings -> canonical make.
+_MAKE_ALIASES: dict[str, str] = {
+    "chevy": "Chevrolet",
+    "chev": "Chevrolet",
+    "vw": "Volkswagen",
+    "volkswagon": "Volkswagen",
+    "mercedes": "Mercedes-Benz",
+    "mercedes benz": "Mercedes-Benz",
+    "benz": "Mercedes-Benz",
+    "merc": "Mercedes-Benz",
+    "beemer": "BMW",
+    "bimmer": "BMW",
+    "range rover": "Land Rover",
+    "landrover": "Land Rover",
+}
+
+
+def _normalize_make(value: Any) -> str | None:
+    """Map a spoken make to a canonical brand (alias + close match), else keep it.
+
+    Conservative: an exact/alias/high-confidence match canonicalises the casing
+    and spelling; anything unrecognised is returned as spoken (never dropped).
+    """
+    raw = _clean(value)
+    if not raw:
+        return raw
+    key = raw.strip().lower()
+    if key in _MAKE_ALIASES:
+        return _MAKE_ALIASES[key]
+    for make in COMMON_VEHICLE_MAKES:
+        if key == make.lower():
+            return make
+    import difflib
+
+    close = difflib.get_close_matches(
+        key, [m.lower() for m in COMMON_VEHICLE_MAKES], n=1, cutoff=0.86
+    )
+    if close:
+        for make in COMMON_VEHICLE_MAKES:
+            if make.lower() == close[0]:
+                return make
+    return raw
+
+
 def _scripted_stage_definitions() -> list[ScriptedStageDefinition]:
     """Birchwood stage list — shared by the workflow and its WorkflowSpec.
 
@@ -435,12 +529,16 @@ def _scripted_stage_definitions() -> list[ScriptedStageDefinition]:
         _stage("CALLER_NAME", "caller_name", "text", sensitivity="pii"),
         _stage("PHONE", "phone", "phone", sensitivity="pii"),
         _stage("VEHICLE_YEAR", "vehicle_year", "integer"),
-        _stage("VEHICLE_MAKE", "vehicle_make", "text"),
+        _stage("VEHICLE_MAKE", "vehicle_make", "text", hints=VEHICLE_MAKE_HINTS),
         _stage("VEHICLE_MODEL", "vehicle_model", "text"),
         _stage("DAMAGE_TYPE", "damage_type", "free_text"),
-        _stage("DRIVABILITY_CHECK", "is_drivable", "text"),
+        _stage("DRIVABILITY_CHECK", "is_drivable", "text", hints=DRIVABLE_HINTS),
         _stage(
-            "FILING_INSURANCE_CLAIM", "filing_insurance_claim", "text", required=False
+            "FILING_INSURANCE_CLAIM",
+            "filing_insurance_claim",
+            "text",
+            required=False,
+            hints=INSURANCE_HINTS,
         ),
         _stage("CLAIM_NUMBER", "claim_number", "text", required=False),
     ]

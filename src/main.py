@@ -124,6 +124,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning(f"[STARTUP] TTS warm-up failed (non-fatal): {exc}")
 
+    # Pre-render the Birchwood verbal fillers if absent (the rendered MP3s are
+    # environment-specific and not in the image). Non-fatal — without an Azure
+    # key the /thinking loop just keeps using typing.wav.
+    try:
+        from src.utils.voice_fillers import warm_up_fillers
+
+        await warm_up_fillers()
+    except Exception as exc:
+        logger.warning(f"[STARTUP] Filler pre-render failed (non-fatal): {exc}")
+
     # Initialize storage backend (factory enforces Postgres in production)
     get_storage_backend()
     logger.info(f"[STARTUP] Storage backend: {STORAGE_BACKEND}")
