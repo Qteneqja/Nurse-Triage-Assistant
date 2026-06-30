@@ -577,7 +577,20 @@ def _record_scripted_prompt_metadata(
 
 def _scripted_stage_acknowledgement(
     stage: ScriptedStageDefinition,
+    session: OrchestratorSession | None = None,
 ) -> str | None:
+    # Aurora naturalness pass (Birchwood only): a short, varied backchannel
+    # ("Perfect." / "Got it." / "Okay." ...) keyed to the answered stage's
+    # profile, never repeating twice in a row. Non-Birchwood behavior is
+    # unchanged — the legacy narrative acknowledgement is preserved below.
+    if session is not None:
+        from src.verticals.automotive_collision.voice_naturalness import (
+            backchannel,
+            is_birchwood_session,
+        )
+
+        if is_birchwood_session(session):
+            return backchannel(session, stage)
     if stage.speech_profile == "narrative":
         return "Got it. I noted that."
     return None
@@ -1366,6 +1379,27 @@ async def _handle_scripted_stage_response(
     stage: ScriptedStageDefinition,
     speech_text: str,
 ):
+    # Aurora naturalness pass (Birchwood only, deterministic): redirect an
+    # off-topic utterance back to the current stage the way a human advisor
+    # would (brief ack -> warm bridge -> re-ask). This YIELDS to safety/transfer
+    # — evaluate_redirect returns None for an injury mention or a transfer
+    # request, and both of those are already handled BEFORE this function in
+    # both transports. On exceeding the per-stage cap it skips the stage WITHOUT
+    # recording, so the required field stays missing and the deterministic rules
+    # return INCOMPLETE_CALLBACK_NEEDED (a human callback). Returns None for
+    # every non-Birchwood session, so healthcare/insurance are untouched. The
+    # rules engine, safety branches, and the orchestrator are unchanged.
+    from src.verticals.automotive_collision.voice_naturalness import (
+        evaluate_redirect,
+    )
+
+    redirect = evaluate_redirect(session, stage, speech_text)
+    if redirect is not None:
+        if redirect.advance:
+            next_stage = _advance_scripted_intake(session, intake, stage)
+            return next_stage, None
+        return stage, redirect.reprompt
+
     success, parsed_value, reprompt = _parse_scripted_answer(
         session,
         stage,
@@ -1918,7 +1952,7 @@ async def handle_gather(
                     next_stage,
                     preamble=stability.join_preamble(
                         injury_advisory,
-                        _scripted_stage_acknowledgement(scripted_stage),
+                        _scripted_stage_acknowledgement(scripted_stage, session),
                     ),
                 )
                 return _respond(twiml)

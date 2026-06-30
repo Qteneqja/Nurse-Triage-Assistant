@@ -446,7 +446,8 @@ class ConversationRelaySession:
             if next_stage is not None:
                 repo.persist_session(session)
                 preamble = stability.join_preamble(
-                    injury_advisory, rt._scripted_stage_acknowledgement(scripted_stage)
+                    injury_advisory,
+                    rt._scripted_stage_acknowledgement(scripted_stage, session),
                 )
                 await self._send_stage_prompt(session, next_stage, preamble=preamble)
                 return
