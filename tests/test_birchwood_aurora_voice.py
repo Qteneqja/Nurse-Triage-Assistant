@@ -339,7 +339,10 @@ def test_handler_records_on_topic_answer_and_advances():
 
 def test_close_variants_all_keep_no_promise_disclaimer():
     for variant in vn.CLOSE_VARIANTS:
+        # No-promise disclaimer (forbidden-promise guard) + the warm "what
+        # happens next" structure the closing test pins — both in every variant.
         assert "doesn't confirm coverage, pricing, or an appointment" in variant
+        assert "Here's what happens next" in variant
 
 
 def test_select_close_birchwood_vs_other():

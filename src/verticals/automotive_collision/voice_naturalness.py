@@ -147,18 +147,23 @@ _CLOSE_DISCLAIMER = (
     "Just so you know, this doesn't confirm coverage, pricing, or an "
     "appointment yet - your advisor will take care of those details with you."
 )
+# Every variant keeps two scaffolds: "Here's what happens next:" (warm, sets
+# expectations) and the no-promise disclaimer (a forbidden-promise guard). Both
+# are asserted in tests; only the surrounding phrasing varies.
 CLOSE_VARIANTS: list[str] = [
     "Perfect - you're all set, and we'll get you booked in. Here's what "
     "happens next: one of our service advisors will give you a call back to "
     "confirm timing and the Birchwood location that works best for you. "
     + _CLOSE_DISCLAIMER
     + " Thanks so much for calling Birchwood, and take care.",
-    "Wonderful - that's everything I need. One of our service advisors will "
-    "call you back to confirm timing and the best Birchwood location for you. "
+    "Wonderful - that's everything I need. Here's what happens next: a "
+    "Birchwood service advisor will call you back to confirm timing and the "
+    "best location for you. "
     + _CLOSE_DISCLAIMER
     + " Thanks so much for calling Birchwood, and take care.",
-    "Great - you're booked in. A Birchwood service advisor will call you back "
-    "to confirm timing and the location that works best for you. "
+    "Great - you're booked in. Here's what happens next: one of our service "
+    "advisors will call you back to sort out timing and the location that "
+    "works best for you. "
     + _CLOSE_DISCLAIMER
     + " Thank you for calling Birchwood, and take care.",
 ]
