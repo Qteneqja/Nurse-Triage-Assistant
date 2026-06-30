@@ -390,13 +390,17 @@ CONVERSATION_RELAY_WSS_URL: str = os.getenv("CONVERSATION_RELAY_WSS_URL", "").st
 CONVERSATION_RELAY_WS_TOKEN: str = os.getenv("CONVERSATION_RELAY_WS_TOKEN", "").strip()
 
 # ConversationRelay native STT/TTS config — used for the <ConversationRelay>
-# TwiML attributes and for "cr_native" output. Defaults mirror Twilio's.
+# TwiML attributes and for "cr_native" output.
+#   CR_TTS_VOICE defaults to the Birchwood "Aurora" ElevenLabs voice, so when
+#   VOICE_OUTPUT_MODE=cr_native the agent speaks our conversation in that voice
+#   (ElevenLabs renders our text only — the orchestrator still runs the call).
+#   CR_SPEECH_MODEL defaults to Deepgram's telephony-strong nova-2.
 CR_TTS_PROVIDER: str = os.getenv("CR_TTS_PROVIDER", "ElevenLabs").strip()
-CR_TTS_VOICE: str = os.getenv("CR_TTS_VOICE", "").strip()
+CR_TTS_VOICE: str = os.getenv("CR_TTS_VOICE", "zGjIP4SZlMnY9m93k97r").strip()
 CR_TRANSCRIPTION_PROVIDER: str = os.getenv(
     "CR_TRANSCRIPTION_PROVIDER", "Deepgram"
 ).strip()
-CR_SPEECH_MODEL: str = os.getenv("CR_SPEECH_MODEL", "").strip()
+CR_SPEECH_MODEL: str = os.getenv("CR_SPEECH_MODEL", "nova-2").strip()
 
 # ---------------------------------------------------------------------------
 # Security
