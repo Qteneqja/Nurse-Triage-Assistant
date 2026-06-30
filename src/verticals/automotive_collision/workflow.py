@@ -37,6 +37,7 @@ from src.verticals.automotive_collision.narrative_extraction import (
     extract_from_narrative,
 )
 from src.verticals.automotive_collision.prompts import (
+    BIRCHWOOD_COLLISION_CONVERSATIONAL_INTRO,
     BIRCHWOOD_COLLISION_INTRO,
     BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE,
     BIRCHWOOD_COLLISION_PROMPTS,
@@ -235,11 +236,12 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         never interrogated one-by-one.
         """
         if config.BIRCHWOOD_CONVERSATIONAL_INTAKE:
-            # Premium conversational tier: greet, then drop straight into the
-            # dynamic gated-LLM loop (no scripted stages -> session starts in
-            # STAGE_DYNAMIC, so every caller turn hits handle_turn).
+            # Premium conversational tier: greet (opening the floor), then drop
+            # straight into the dynamic gated-LLM loop (no scripted stages ->
+            # session starts in STAGE_DYNAMIC, so every caller turn hits
+            # handle_turn).
             return ScriptedIntakeDefinition(
-                intro_text=BIRCHWOOD_COLLISION_INTRO,
+                intro_text=BIRCHWOOD_COLLISION_CONVERSATIONAL_INTRO,
                 stages=[],
             )
         return ScriptedIntakeDefinition(

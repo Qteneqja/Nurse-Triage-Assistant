@@ -85,7 +85,28 @@ def test_flag_on_returns_greeting_only_intake(monkeypatch):
     monkeypatch.setattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", True)
     intake = BirchwoodCollisionIntakeWorkflow().get_scripted_intake_definition()
     assert intake.stages == []  # no scripted stages -> session starts in DYNAMIC
-    assert "Aurora" in intake.intro_text  # greeting still plays
+    assert "Aurora" in intake.intro_text
+    assert "automated assistant" in intake.intro_text  # disclosure preserved
+    # The conversational greeting OPENS THE FLOOR so the caller knows to start.
+    assert "tell me what happened" in intake.intro_text.lower()
+
+
+def test_turn_output_coerces_numeric_and_boolean_fields():
+    # LLMs routinely return year/phone/claim as JSON numbers and yes/no as
+    # booleans; the schema must coerce them rather than reject the turn.
+    out = BirchwoodTurnOutput(
+        response_to_caller="okay",
+        vehicle_year=2019,
+        phone=2045550123,
+        claim_number=774122,
+        is_drivable=True,
+        filing_insurance_claim=False,
+    )
+    assert out.vehicle_year == "2019"
+    assert out.phone == "2045550123"
+    assert out.claim_number == "774122"
+    assert out.is_drivable == "yes"
+    assert out.filing_insurance_claim == "no"
 
 
 # ---------------------------------------------------------------------------

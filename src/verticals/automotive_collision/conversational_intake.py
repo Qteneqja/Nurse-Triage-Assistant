@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.orchestrator.schemas import OrchestratorSession
 from src.safety.gate import GateContext
@@ -82,6 +82,35 @@ class BirchwoodTurnOutput(BaseModel):
         default=False,
         description="true ONLY when every required field is captured and confirmed",
     )
+
+    @field_validator(
+        "caller_name",
+        "phone",
+        "vehicle_year",
+        "vehicle_make",
+        "vehicle_model",
+        "damage_type",
+        "is_drivable",
+        "filing_insurance_claim",
+        "claim_number",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_to_str(cls, value):
+        """Coerce LLM-returned values to strings.
+
+        LLMs routinely return a year/phone/claim number as a JSON *number* and a
+        yes/no field as a JSON *boolean*. Without this, Pydantic would reject the
+        turn (validation error) and the caller would hear the recovery prompt —
+        the "couldn't register my callback number" failure. Booleans map to
+        yes/no (correct for the drivable / insurance fields); everything else
+        becomes its string form.
+        """
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return "yes" if value else "no"
+        return str(value)
 
 
 SYSTEM_PROMPT = """You are "Aurora", the automated voice assistant for Birchwood Automotive Group's collision intake line. You already told the caller you're an automated assistant. Speak warmly and naturally, like a helpful Birchwood service advisor on the phone. The caller may have just been in a collision — lead with brief reassurance.
