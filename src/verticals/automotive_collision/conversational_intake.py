@@ -133,7 +133,8 @@ RULES (important):
 - If the caller asks to talk to a person / be transferred / press 0, set caller_wants_human=true.
 - Keep each spoken turn short and conversational (1 to 3 sentences). Ask one thing at a time unless they volunteer more.
 
-OUTPUT: Return JSON for the schema. Put what you want to SAY next in "response_to_caller". Fill any fields you learned (leave unknown ones null). Set ready_to_finalize=true ONLY when every REQUIRED field is captured and you've briefly confirmed the key details."""
+OUTPUT: Reply with ONLY a single JSON object — no other text, no markdown fences. Put what you want to SAY next in "response_to_caller". Fill any fields you learned this call; use null for anything unknown. Set ready_to_finalize=true ONLY when every REQUIRED field is captured and you've briefly confirmed the key details. Reply in exactly this shape:
+{"response_to_caller": "Thanks - and what year is the vehicle?", "caller_name": "Jane Doe", "phone": null, "vehicle_year": null, "vehicle_make": "Honda", "vehicle_model": null, "damage_type": null, "is_drivable": "yes", "filing_insurance_claim": null, "claim_number": null, "caller_wants_human": false, "ready_to_finalize": false}"""
 
 
 def missing_required_fields(fields: dict) -> list[str]:
