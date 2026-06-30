@@ -47,6 +47,11 @@ _OPTIONAL_FIELDS: tuple[str, ...] = ("filing_insurance_claim", "claim_number")
 # Hard cap so a stuck/looping call always hands off to a human callback.
 MAX_TURNS = 14
 
+# Consecutive turn failures tolerated before handing off. Below this we recover
+# in-call ("sorry, could you say that again?") instead of ending the call — so a
+# weird utterance or a transient model hiccup never drops the caller mid-call.
+MAX_ERRORS = 3
+
 
 class BirchwoodTurnOutput(BaseModel):
     """One conversational turn: what to say next + anything learned this turn."""
