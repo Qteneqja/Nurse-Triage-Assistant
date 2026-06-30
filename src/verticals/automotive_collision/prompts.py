@@ -101,6 +101,16 @@ BIRCHWOOD_COLLISION_PROMPTS = {
     ),
 }
 
+# Conversational tier OUTRO — spoken at the very end, after the caller confirms
+# they have no more questions. The advisor-callback and the no-promise disclaimer
+# are already said by the model during the wrap-up turn, so this is just a short,
+# warm goodbye before the call ends.
+BIRCHWOOD_COLLISION_CONVERSATIONAL_OUTRO = (
+    "Thanks so much for calling Birchwood Collision. You're all set — your "
+    "advisor will be in touch shortly. Take care, and we'll talk soon."
+)
+
+
 # Spoken right after the caller confirms the readback.
 BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE = (
     "Perfect - you're all set, and we'll get you booked in. Here's what "
