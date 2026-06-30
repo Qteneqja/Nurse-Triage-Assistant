@@ -529,6 +529,12 @@ async def _tts_audio_url(
     session: OrchestratorSession | None = None,
 ) -> str | None:
     settings = _get_tts_settings_for_session(session)
+    # Aurora naturalness: expressive SSML (varied inline breaks) for the
+    # Birchwood voice profile only, behind a reversible config flag. Every other
+    # profile (healthcare included) renders exactly as before.
+    expressive = settings.get("profile") == "birchwood_collision" and bool(
+        getattr(config, "BIRCHWOOD_TTS_EXPRESSIVE", True)
+    )
     return await text_to_speech_url(
         text,
         str(settings["voice"]),
@@ -541,6 +547,7 @@ async def _tts_audio_url(
             if settings["fallback_voice"] is not None
             else None
         ),
+        expressive=expressive,
     )
 
 

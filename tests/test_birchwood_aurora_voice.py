@@ -23,6 +23,7 @@ import asyncio
 from src.orchestrator.schemas import OrchestratorSession
 from src.platform.workflows.schemas import ScriptedStageDefinition
 from src.twilio import routes as rt
+from src.utils import azure_tts
 from src.verticals.automotive_collision import voice_naturalness as vn
 from src.verticals.automotive_collision.constants import (
     BIRCHWOOD_COLLISION_WORKFLOW_ID,
@@ -126,7 +127,9 @@ def test_compose_includes_phrasing_variant():
     session = _birchwood_session()
     stage = _stage("vehicle_year", "integer")
     prompt = vn.compose_stage_prompt(session, stage, {})
-    assert prompt in vn.INTAKE_PHRASING_POOLS["vehicle_year"]
+    # The first prompt of a fresh call may carry the once-per-call hesitation
+    # opener as a prefix; the phrasing variant is the suffix.
+    assert any(prompt.endswith(v) for v in vn.INTAKE_PHRASING_POOLS["vehicle_year"])
 
 
 def test_compose_slot_echoes_captured_vehicle():
@@ -169,7 +172,7 @@ def test_build_dynamic_prompt_uses_pool_for_real_stage():
     year_stage = next(s for s in intake.stages if s.field_name == "vehicle_year")
     session = _birchwood_session()
     prompt = workflow.build_dynamic_prompt(session, year_stage)
-    assert prompt in vn.INTAKE_PHRASING_POOLS["vehicle_year"]
+    assert any(prompt.endswith(v) for v in vn.INTAKE_PHRASING_POOLS["vehicle_year"])
 
 
 # ---------------------------------------------------------------------------
@@ -342,3 +345,79 @@ def test_close_variants_all_keep_no_promise_disclaimer():
 def test_select_close_birchwood_vs_other():
     assert vn.select_close(_birchwood_session()) in vn.CLOSE_VARIANTS
     assert vn.select_close(_other_session()) == ""
+
+
+# ---------------------------------------------------------------------------
+# Fillers + once-per-call disfluency
+# ---------------------------------------------------------------------------
+
+
+def test_pick_filler_returns_pool_member_no_repeat():
+    session = _birchwood_session()
+    prev = None
+    for _ in range(12):
+        choice = vn.pick_filler(session)
+        assert choice in vn.FILLER_POOL
+        assert choice != prev
+        prev = choice
+
+
+def test_disfluency_applied_at_most_once_per_call():
+    session = _birchwood_session()
+    _, intake = _workflow_intake()
+    stages = {s.field_name: s for s in intake.stages}
+
+    name_prompt = vn.compose_stage_prompt(session, stages["caller_name"], {})
+    assert any(name_prompt.startswith(o) for o in vn.DISFLUENCY_OPENERS)
+
+    # A later stage in the same call gets NO second hesitation.
+    phone_prompt = vn.compose_stage_prompt(session, stages["phone"], {})
+    assert not any(phone_prompt.startswith(o) for o in vn.DISFLUENCY_OPENERS)
+    assert session.channel_metadata["voice_naturalness"]["disfluency_used"] is True
+
+
+# ---------------------------------------------------------------------------
+# Expressive SSML micro-realism (Birchwood profile only; healthcare unchanged)
+# ---------------------------------------------------------------------------
+
+
+def _ssml(text: str, expressive: bool) -> str:
+    return azure_tts._build_ssml(
+        text,
+        "en-US-Bree:DragonHDLatestNeural",
+        rate="+3%",
+        pitch="+0%",
+        style=None,
+        break_ms=250,
+        expressive=expressive,
+    )
+
+
+def test_expressive_ssml_uses_varied_inline_breaks():
+    ssml = _ssml("What year is the vehicle? And the make of the car?", True)
+    assert "<break time=" in ssml
+    # The expressive path drops the single uniform sentence-boundary silence.
+    assert "Sentenceboundary" not in ssml
+    # Deterministic from the text -> cache-stable.
+    assert ssml == _ssml("What year is the vehicle? And the make of the car?", True)
+
+
+def test_expressive_cadence_varies_between_prompts():
+    assert _ssml("What year is the vehicle?", True) != _ssml("And the model?", True)
+
+
+def test_non_expressive_ssml_is_unchanged_behavior():
+    ssml = _ssml("Hello there. How are you?", False)
+    assert "Sentenceboundary" in ssml
+    assert "<break time=" not in ssml
+
+
+def test_expressive_ssml_escapes_text():
+    ssml = _ssml("Tom & Jerry <hi>, what year?", True)
+    assert "&amp;" in ssml
+    assert "&lt;hi&gt;" in ssml
+
+
+def test_cache_key_differs_by_expressive_flag():
+    base = ("t", "v", "r", "p", None, 250)
+    assert azure_tts._cache_key(*base, False) != azure_tts._cache_key(*base, True)

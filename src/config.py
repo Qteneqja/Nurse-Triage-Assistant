@@ -333,6 +333,11 @@ BIRCHWOOD_AZURE_TTS_STYLE: str = os.getenv(
 BIRCHWOOD_AZURE_TTS_BREAK_MS: int = int(
     os.getenv("BIRCHWOOD_AZURE_TTS_BREAK_MS", "250")
 )
+# Aurora naturalness pass: expressive SSML (varied inline <break>s instead of a
+# single uniform pause) for the Birchwood voice only. Reversible via env — set
+# false to fall back to the uniform-pause rendering. Healthcare is unaffected
+# either way (expressive is gated on the Birchwood TTS profile).
+BIRCHWOOD_TTS_EXPRESSIVE: bool = _env_flag("BIRCHWOOD_TTS_EXPRESSIVE", "true")
 
 # ---------------------------------------------------------------------------
 # Twilio

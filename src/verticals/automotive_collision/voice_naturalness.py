@@ -178,6 +178,12 @@ BACKCHANNEL_POOLS: dict[str, list[str]] = {
 # so the echo must not stack a second acknowledgement).
 _ECHO_FORMS: list[str] = ["A {value}. ", "So, a {value}. ", "That's a {value}. "]
 
+# A single light hesitation budget per CALL (a "filled pause"/self-correction).
+# Applied to the first composed prompt only — clean and professional, never per
+# turn. Bias is deliberately toward variety + slot-echo (which never sound
+# fake); this is one subtle touch, not a tic.
+DISFLUENCY_OPENERS: list[str] = ["Okay — ", "Alright — ", "Let's see — "]
+
 # Verbal fillers for the /thinking poll loop (mask the STT-finalization gap and
 # the readback build). Pre-rendered as audio by scripts/prerender_birchwood_fillers.py.
 FILLER_POOL: list[str] = [
@@ -353,8 +359,18 @@ def compose_stage_prompt(
     variant = select_variant(session, f"prompt:{stage.field_name}", pool)
     echo = slot_echo_preamble(session, fields, stage.field_name)
     text = f"{echo}{variant}" if echo else variant
+    text = _maybe_lead_disfluency(session, text)
     cache[stage.stage_id] = text
     return text
+
+
+def _maybe_lead_disfluency(session: OrchestratorSession, text: str) -> str:
+    """Prefix one light hesitation, at most once per call."""
+    nv = _nv(session)
+    if nv.get("disfluency_used"):
+        return text
+    nv["disfluency_used"] = True
+    return f"{select_variant(session, 'disfluency', DISFLUENCY_OPENERS)}{text}"
 
 
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from typing import Optional
 from xml.sax import saxutils
@@ -76,10 +77,48 @@ def _cache_key(
     pitch: str,
     style: str | None,
     break_ms: int,
+    expressive: bool = False,
 ) -> str:
     """Generate a deterministic cache key from the rendered speech profile."""
-    cache_input = f"{voice}:{rate}:{pitch}:{style or ''}:{break_ms}:{text}"
+    cache_input = (
+        f"{voice}:{rate}:{pitch}:{style or ''}:{break_ms}:{int(expressive)}:{text}"
+    )
     return hashlib.sha256(cache_input.encode()).hexdigest()[:16]
+
+
+_SENTENCE_PUNCT = frozenset({".", "?", "!"})
+_CLAUSE_PUNCT = frozenset({",", ";", ":", "—"})  # comma/semicolon/colon/em-dash
+
+
+def _jittered_break_ms(seed_text: str, index: int, low: int, high: int) -> int:
+    """A deterministic pause length in [low, high] from the text (cache-stable)."""
+    if high <= low:
+        return low
+    digest = hashlib.sha256(f"{seed_text}|{index}".encode()).hexdigest()[:8]
+    return low + (int(digest, 16) % (high - low + 1))
+
+
+def _expressive_inner_ssml(text: str, base_pause_ms: int) -> str:
+    """Escape ``text`` and insert deterministic, jittered <break>s at clause and
+    sentence boundaries so cadence varies line-to-line instead of a uniform
+    pause — noticeably more human, still clean. Deterministic from the text, so
+    different prompts (year vs make vs model) read with different timing while
+    the audio cache stays stable. Hyphens are left intact (no word splitting)."""
+    parts = re.split(r"([.?!,;:—])", text)
+    chunks: list[str] = []
+    for index, segment in enumerate(parts):
+        chunks.append(saxutils.escape(segment))
+        if segment in _SENTENCE_PUNCT:
+            # Sentence boundaries get the longer, more varied pause (the
+            # occasional longer one reads as a natural breath).
+            ms = _jittered_break_ms(
+                text, index, max(140, base_pause_ms - 60), base_pause_ms + 110
+            )
+            chunks.append(f"<break time='{ms}ms'/>")
+        elif segment in _CLAUSE_PUNCT:
+            ms = _jittered_break_ms(text, index, 80, 170)
+            chunks.append(f"<break time='{ms}ms'/>")
+    return "".join(chunks)
 
 
 def _build_ssml(
@@ -90,21 +129,30 @@ def _build_ssml(
     pitch: str,
     style: str | None,
     break_ms: int,
+    expressive: bool = False,
 ) -> str:
-    escaped_text = saxutils.escape(text)
     sentence_pause = max(100, int(break_ms))
     comma_pause = max(75, sentence_pause // 2)
-    prosody = (
-        f"<prosody rate='{rate}' pitch='{pitch}' volume='+5%'>{escaped_text}</prosody>"
-    )
+    if expressive:
+        # Birchwood "Aurora" profile: varied inline breaks instead of a single
+        # uniform silence. (expressive defaults False, so every other caller —
+        # healthcare included — renders byte-identically to before.)
+        inner = _expressive_inner_ssml(text, sentence_pause)
+        silence = ""
+    else:
+        inner = saxutils.escape(text)
+        silence = (
+            f"<mstts:silence type='Sentenceboundary' value='{sentence_pause}ms'/>\n"
+            f"        <mstts:silence type='Comma-Semicolon' value='{comma_pause}ms'/>"
+        )
+    prosody = f"<prosody rate='{rate}' pitch='{pitch}' volume='+5%'>{inner}</prosody>"
     if style:
         prosody = f"<mstts:express-as style='{style}'>{prosody}</mstts:express-as>"
 
     return f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis'
     xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='en-US'>
     <voice name='{voice}'>
-        <mstts:silence type='Sentenceboundary' value='{sentence_pause}ms'/>
-        <mstts:silence type='Comma-Semicolon' value='{comma_pause}ms'/>
+        {silence}
         {prosody}
     </voice>
 </speak>"""
@@ -121,6 +169,7 @@ async def synthesize_speech(
     style: str | None = None,
     break_ms: int = 250,
     fallback_voice: str | None = None,
+    expressive: bool = False,
 ) -> Optional[bytes]:
     """Synthesize speech using Azure Speech REST API (async).
 
@@ -171,6 +220,7 @@ async def synthesize_speech(
                 pitch=pitch,
                 style=attempt_style,
                 break_ms=break_ms,
+                expressive=expressive,
             )
             response = await client.post(url, content=ssml, headers=headers)
             elapsed = time.time() - start
@@ -258,6 +308,7 @@ async def text_to_speech_url(
     style: str | None = None,
     break_ms: int = 250,
     fallback_voice: str | None = None,
+    expressive: bool = False,
 ) -> Optional[str]:
     """Convert text to speech and return a publicly accessible audio URL (async).
 
@@ -268,7 +319,7 @@ async def text_to_speech_url(
     if not AZURE_SPEECH_KEY:
         return None
 
-    cache_k = _cache_key(text, voice, rate, pitch, style, break_ms)
+    cache_k = _cache_key(text, voice, rate, pitch, style, break_ms, expressive)
 
     if cache_k in _audio_cache:
         url, expiry_ts = _audio_cache[cache_k]
@@ -292,6 +343,7 @@ async def text_to_speech_url(
                 style=style,
                 break_ms=break_ms,
                 fallback_voice=fallback_voice,
+                expressive=expressive,
             ),
             timeout=10.0,
         )
