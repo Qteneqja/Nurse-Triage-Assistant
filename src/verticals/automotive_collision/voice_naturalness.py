@@ -63,10 +63,10 @@ INTAKE_PHRASING_POOLS: dict[str, list[str]] = {
         "Let's start with the vehicle — what year is it?",
     ],
     "vehicle_make": [
-        "And the make — like Toyota or Ford?",
-        "What's the make — Toyota, Honda, that sort of thing?",
-        "Who makes it — a Ford, a Honda, something like that?",
         "And the make of the vehicle?",
+        "What's the make — Toyota, Honda, that kind of thing?",
+        "Who makes it?",
+        "And the make — a Ford, a Honda, a Toyota?",
     ],
     "vehicle_model": [
         "And the model?",
@@ -180,8 +180,9 @@ BACKCHANNEL_POOLS: dict[str, list[str]] = {
 }
 
 # Slot-echo connectors (ack-free — the backchannel supplies any "okay"/"got it",
-# so the echo must not stack a second acknowledgement).
-_ECHO_FORMS: list[str] = ["A {value}. ", "So, a {value}. ", "That's a {value}. "]
+# so the echo must not stack a second acknowledgement, and we avoid a leading
+# "So," which reads as a tic when it fires every stage).
+_ECHO_FORMS: list[str] = ["A {value}. ", "That's a {value}. ", "It's a {value}. "]
 
 # A single light hesitation budget per CALL (a "filled pause"/self-correction).
 # Applied to the first composed prompt only — clean and professional, never per
@@ -319,10 +320,11 @@ def slot_echo_preamble(
     field_name: str,
 ) -> str:
     """Return a short echo of prior answers for ``field_name`` (or '')."""
+    # Echo only where it sounds natural — after the make (year+make) and once the
+    # full vehicle is known (at damage). A year-only echo before the make ("A
+    # 2019. Who makes it?") read as a tic, so it's intentionally dropped.
     value = ""
-    if field_name == "vehicle_make":
-        value = _vehicle_phrase(fields, parts=("vehicle_year",))
-    elif field_name == "vehicle_model":
+    if field_name == "vehicle_model":
         value = _vehicle_phrase(fields, parts=("vehicle_year", "vehicle_make"))
     elif field_name == "damage_type":
         value = _vehicle_phrase(
