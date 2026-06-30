@@ -210,9 +210,14 @@ _PHI_PROBING_PATTERNS = [
         r"\b(social\s+security|ssn|insurance|policy)\s*(number|id|#)\b",
         r"\b(credit\s+card|bank\s+account|routing\s+number)\b",
         r"\byour\s+address\b",
-        r"\byour\s+(email|e-mail)\b",
     ]
 ]
+
+# Email is normal business contact info for a non-clinical vertical (e.g. a
+# Birchwood booking confirmation) but PHI in a clinical context. The email-probing
+# question is therefore blocked ONLY when the vertical is NOT storing PHI
+# (store_phi=False — healthcare). SSN/card/bank/address stay blocked everywhere.
+_EMAIL_PROBING_PATTERN = re.compile(r"\byour\s+(email|e-mail)\b", re.IGNORECASE)
 
 # ---------------------------------------------------------------------------
 # Role / credential claim blocker (STOP-SHIP — Part 1)
@@ -326,7 +331,11 @@ def gate_outbound_text(
 
     # ── 4. PHI-probing block (caller-facing text only) ────────────────────
     if kind in ("question", "phase1_reply"):
-        for pat in _PHI_PROBING_PATTERNS:
+        probing_patterns = list(_PHI_PROBING_PATTERNS)
+        if not ctx.store_phi:
+            # Clinical context: also block asking for an email (PHI).
+            probing_patterns.append(_EMAIL_PROBING_PATTERN)
+        for pat in probing_patterns:
             if pat.search(gated):
                 logger.warning(f"[GATE] PHI-probing question blocked in {kind}")
                 gated = pat.sub("[question removed for privacy]", gated)

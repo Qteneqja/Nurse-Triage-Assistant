@@ -177,10 +177,13 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         context: WorkflowContext,
         session: OrchestratorSession,
         dynamic_text: str = "",
+        required_fields: list[str] | None = None,
     ) -> WorkflowFinalResult:
         self._apply_context(session, context)
         intake = _intake_from_session(session)
-        assessment = classify_collision_intake(intake, dynamic_text=dynamic_text)
+        assessment = classify_collision_intake(
+            intake, dynamic_text=dynamic_text, required_fields=required_fields
+        )
         record = _intake_record(context, session, intake, assessment)
         session.channel_metadata["automotive_collision"] = record.model_dump(
             mode="json"
@@ -355,8 +358,18 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         *,
         reason: str,
     ) -> WorkflowTurnResult:
-        """Finalize via the SAME deterministic path the scripted flow uses."""
-        final_result = self.build_final_result_from_session(context, session)
+        """Finalize via the SAME deterministic path the scripted flow uses.
+
+        The conversational tier judges completeness against its OWN required-field
+        goal (name/phone/email/damage/plate/location), not the scripted set.
+        """
+        from src.verticals.automotive_collision.conversational_intake import (
+            REQUIRED_FIELDS as _CONV_REQUIRED,
+        )
+
+        final_result = self.build_final_result_from_session(
+            context, session, required_fields=list(_CONV_REQUIRED)
+        )
         session.channel_metadata["workflow_final_result"] = final_result.model_dump(
             mode="json"
         )
@@ -899,6 +912,28 @@ def _intake_from_fields(fields: dict) -> AutomotiveCollisionIntake:
     )
 
 
+def _damage_bi(intake: AutomotiveCollisionIntake) -> dict:
+    """BI data points extracted deterministically from the damage description."""
+    from src.verticals.automotive_collision.conversational_intake import (
+        extract_damage_bi,
+    )
+
+    if intake.is_drivable is True:
+        drivable = "yes"
+    elif intake.is_drivable is False:
+        drivable = "no"
+    else:
+        drivable = ""
+    return extract_damage_bi(
+        intake.damage_type,
+        {
+            "is_drivable": drivable,
+            "incident_description": intake.incident_description,
+            "damage_type": intake.damage_type,
+        },
+    )
+
+
 def _intake_record(
     context: WorkflowContext,
     session: OrchestratorSession,
@@ -943,6 +978,8 @@ def _intake_record(
             "photos_available": intake.photos_available,
             "glass_only": bool(intake.glass_only),
             "body_damage": bool(intake.body_damage),
+            # Deterministic BI data points derived from the damage description.
+            "bi": _damage_bi(intake),
         },
         insurance={
             "filing_claim": intake.filing_insurance_claim,

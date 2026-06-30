@@ -132,11 +132,15 @@ class GuardedLLM:
         max_tokens: int = 500,
         temperature: float = 0.3,
         correlation_id: str | None = None,
+        json_mode: bool = True,
     ) -> T:
         """Call LLM, validate against Pydantic schema, gate outbound text fields.
 
         Uses StructuredLLMClient.call() for schema validation and repair,
         then gates all outbound text fields through gate_outbound_text().
+
+        ``json_mode=False`` makes the underlying call use a plain completion first
+        (the latency-friendly path that sidesteps DeepSeek's JSON-mode empties).
 
         Raises LLMCallError if schema validation fails (caller must handle).
         """
@@ -148,6 +152,7 @@ class GuardedLLM:
             max_tokens=max_tokens,
             temperature=temperature,
             correlation_id=cid,
+            json_mode=json_mode,
         )
 
         # Gate all outbound text fields

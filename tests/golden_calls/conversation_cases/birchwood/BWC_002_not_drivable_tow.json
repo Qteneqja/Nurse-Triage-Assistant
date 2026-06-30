@@ -1,18 +1,20 @@
 {
   "case_id": "BWC_002_not_drivable_tow",
-  "description": "Vehicle not drivable (needs a tow), private pay - needs_tow + private_pay flags, completes.",
+  "description": "Vehicle not drivable (needs a tow), private pay - needs_tow + private_pay flags, completes the full data-point goal.",
   "turns": [
     {"caller": "I got rear-ended pretty hard", "llm": {"response_to_caller": "I'm sorry to hear that. Let's get you sorted - your full name, please?"}},
     {"caller": "Priya Anand", "llm": {"response_to_caller": "Thanks, Priya. Best callback number?", "caller_name": "Priya Anand"}},
-    {"caller": "four three one, five five five, oh one nine nine", "llm": {"response_to_caller": "And the vehicle - year, make, model?", "phone": "431-555-0199"}},
-    {"caller": "2018 Honda CR-V", "llm": {"response_to_caller": "A 2018 Honda CR-V. What's the damage, and is it drivable?", "vehicle_year": "2018", "vehicle_make": "Honda", "vehicle_model": "CR-V"}},
-    {"caller": "Rear end's smashed in, no it can't be driven, it'll need a tow", "llm": {"response_to_caller": "Understood - we'll arrange a tow. Have you opened an MPI claim yet?", "damage_type": "rear end smashed", "is_drivable": "no"}},
+    {"caller": "four three one, five five five, oh one nine nine", "llm": {"response_to_caller": "And the best email - could you spell it out for me?", "phone": "431-555-0199"}},
+    {"caller": "p r i y a at outlook dot com", "llm": {"response_to_caller": "That's priya@outlook.com, thank you. What's the damage, and is it drivable?", "email": "priya@outlook.com"}},
+    {"caller": "Rear end's smashed in, no it can't be driven, it'll need a tow", "llm": {"response_to_caller": "Understood - we'll arrange a tow. What's the licence plate?", "damage_type": "rear end smashed", "is_drivable": "no"}},
+    {"caller": "J K L 7 8 9", "llm": {"response_to_caller": "And which Birchwood location would be most convenient?", "license_plate": "JKL789"}},
+    {"caller": "McGillivray works", "llm": {"response_to_caller": "Have you opened an MPI claim yet?", "preferred_location": "Birchwood McGillivray"}},
     {"caller": "Not yet, I'll probably just pay out of pocket", "llm": {"response_to_caller": "No problem, the advisor can help either way. Let me confirm and book you in.", "filing_insurance_claim": "no"}},
     {"caller": "sounds good", "llm": {"response_to_caller": "Great, you're all set.", "ready_to_finalize": true}}
   ],
   "expected_disposition": "COMPLETED_INTAKE",
   "expected_finalized": true,
-  "expected_fields_contain": {"caller_name": "Priya Anand", "vehicle_make": "Honda", "is_drivable": "no"},
+  "expected_fields_contain": {"caller_name": "Priya Anand", "email": "priya@outlook.com", "license_plate": "JKL789", "preferred_collision_center": "Birchwood McGillivray", "is_drivable": "no"},
   "expected_flags_contain": ["needs_tow", "private_pay"],
-  "expected_llm_calls": 7
+  "expected_llm_calls": 9
 }

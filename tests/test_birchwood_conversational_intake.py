@@ -182,6 +182,111 @@ def test_safety_net_recovers_name_in_full_turn_flow(monkeypatch):
     assert fields.get("caller_name") == "Jane Doe"  # captured despite the LLM miss
 
 
+def test_required_fields_match_the_new_goal():
+    assert ci.REQUIRED_FIELDS == (
+        "caller_name",
+        "phone",
+        "email",
+        "damage_type",
+        "license_plate",
+        "preferred_collision_center",
+    )
+
+
+def test_claim_number_required_only_when_a_claim_was_filed():
+    base = {
+        "caller_name": "Jane",
+        "phone": "2045550100",
+        "email": "j@x.co",
+        "damage_type": "rear bumper",
+        "license_plate": "ABC123",
+        "preferred_collision_center": "Regent",
+    }
+    assert ci.missing_required_fields(base) == []  # no claim -> claim_number optional
+    with_claim = {**base, "filing_insurance_claim": "yes"}
+    assert "claim_number" in ci.missing_required_fields(with_claim)
+    assert ci.missing_required_fields({**with_claim, "claim_number": "7788"}) == []
+
+
+def test_reconstruct_spelled_word():
+    assert ci.reconstruct_spelled_word("Q L I R I M") == "Qlirim"
+    assert ci.reconstruct_spelled_word("Q L I R I M Tene") == "Qlirim Tene"
+    assert ci.reconstruct_spelled_word("Jane Doe") == ""  # not spelled out
+
+
+def test_reconstruct_email_keeps_single_letters_literal():
+    assert ci.reconstruct_email("q l i r i m at gmail dot com") == "qlirim@gmail.com"
+    assert ci.reconstruct_email("qlirim at gmail dot com") == "qlirim@gmail.com"
+    assert ci.reconstruct_email("john at example dot co dot uk") == "john@example.co.uk"
+    # "o" must stay a letter, never become a zero:
+    assert ci.reconstruct_email("j o e at aol dot com") == "joe@aol.com"
+    assert ci.reconstruct_email("just my name") == ""  # not an email
+
+
+def test_capture_email_from_spelled_reply():
+    spoken = "q l i r i m at gmail dot com"
+    s = _session_after_question("Could you spell out your email for me?", spoken)
+    out = BirchwoodTurnOutput(response_to_caller="...", email=None)
+    ci.capture_missing_identity_fields(s, spoken, out)
+    assert _session_fields(s)["email"] == "qlirim@gmail.com"
+
+
+def test_capture_licence_plate():
+    s = _session_after_question("And the licence plate?", "B C D 1 2 3")
+    out = BirchwoodTurnOutput(response_to_caller="...", license_plate=None)
+    ci.capture_missing_identity_fields(s, "B C D 1 2 3", out)
+    assert _session_fields(s)["license_plate"] == "BCD123"
+
+
+def test_capture_spelled_name():
+    s = _session_after_question("Could you spell your name for me?", "Q L I R I M")
+    out = BirchwoodTurnOutput(response_to_caller="...", caller_name=None)
+    ci.capture_missing_identity_fields(s, "Q L I R I M", out)
+    assert _session_fields(s)["caller_name"] == "Qlirim"
+
+
+def test_merge_writes_new_fields():
+    s = OrchestratorSession(session_id="merge")
+    out = BirchwoodTurnOutput(
+        response_to_caller="ok",
+        email="a@b.co",
+        license_plate="ABC123",
+        preferred_location="Birchwood Regent",
+    )
+    ci.merge_extracted_fields(s, out)
+    fields = _session_fields(s)
+    assert fields["email"] == "a@b.co"
+    assert fields["license_plate"] == "ABC123"
+    assert fields["preferred_collision_center"] == "Birchwood Regent"
+
+
+def test_extract_damage_bi_severe_rear_end():
+    bi = ci.extract_damage_bi(
+        "Rear end got smashed in, airbags went off, can't drive it",
+        {"is_drivable": "no"},
+    )
+    assert bi["severity"] == "severe"
+    assert "rear" in bi["impact_areas"]
+    assert bi["collision_type"] == "rear_end"
+    assert bi["airbags_deployed"] is True
+    assert bi["drivable"] == "no"
+
+
+def test_extract_damage_bi_minor_glass():
+    bi = ci.extract_damage_bi("just a small chip in the windshield")
+    assert bi["severity"] == "minor"
+    assert bi["glass_involved"] is True
+
+
+def test_run_turn_uses_non_json_mode_for_latency():
+    guarded = MagicMock(spec=GuardedLLM)
+    guarded.structured_call = AsyncMock(
+        return_value=BirchwoodTurnOutput(response_to_caller="hi")
+    )
+    asyncio.run(ci.run_turn(guarded, OrchestratorSession(session_id="x"), "hello"))
+    assert guarded.structured_call.call_args.kwargs["json_mode"] is False
+
+
 def test_turn_output_coerces_numeric_and_boolean_fields():
     # LLMs routinely return year/phone/claim as JSON numbers and yes/no as
     # booleans; the schema must coerce them rather than reject the turn.
@@ -217,18 +322,22 @@ def test_conversation_accumulates_fields_then_finalizes_deterministically(monkey
                 caller_name="Jane Doe",
             ),
             BirchwoodTurnOutput(
-                response_to_caller="Year, make and model?", phone="204 555 0123"
+                response_to_caller="And the best email?", phone="204 555 0123"
             ),
             BirchwoodTurnOutput(
-                response_to_caller="What's the damage, and can you drive it in?",
-                vehicle_year="2019",
-                vehicle_make="chevy",  # normalized on merge
-                vehicle_model="Civic",
+                response_to_caller="What's the damage?", email="jane@example.com"
+            ),
+            BirchwoodTurnOutput(
+                response_to_caller="What's the licence plate?",
+                damage_type="rear bumper",
+            ),
+            BirchwoodTurnOutput(
+                response_to_caller="Which Birchwood location works best?",
+                license_plate="ABC123",
             ),
             BirchwoodTurnOutput(
                 response_to_caller="Let me get you booked in.",
-                damage_type="rear bumper",
-                is_drivable="yes",
+                preferred_location="Birchwood Regent",
             ),
             BirchwoodTurnOutput(response_to_caller="All set!", ready_to_finalize=True),
         ]
@@ -241,23 +350,22 @@ def test_conversation_accumulates_fields_then_finalizes_deterministically(monkey
             "rear-ended",
             "Jane Doe",
             "204 555 0123",
-            "2019 chevy civic",
-            "bumper, drives",
+            "jane at example dot com",
+            "rear bumper",
+            "ABC123",
+            "the Regent one",
             "yep",
         ],
     )
 
-    # First five turns kept the conversation open; the sixth finalized.
-    assert [r.should_continue for r in results] == [True, True, True, True, True, False]
-    final = results[-1]
-    assert final.should_finalize is True
-    assert final.recommended_disposition == "COMPLETED_INTAKE"  # deterministic
+    # The conversation stays open until every required field is captured, then finalizes.
+    assert results[-1].should_finalize is True
+    assert results[-1].recommended_disposition == "COMPLETED_INTAKE"  # deterministic
     fields = _fields(state)
     assert fields["caller_name"] == "Jane Doe"
-    assert (
-        fields["vehicle_make"] == "Chevrolet"
-    )  # make canonicalised exactly like scripted
-    assert fields["is_drivable"] == "yes"
+    assert fields["email"] == "jane@example.com"
+    assert fields["license_plate"] == "ABC123"
+    assert fields["preferred_collision_center"] == "Birchwood Regent"
 
 
 def test_ready_to_finalize_ignored_while_required_field_missing(monkeypatch):
