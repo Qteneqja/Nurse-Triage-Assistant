@@ -1,11 +1,13 @@
-"""Cut-over routing for the minimal collision workflow.
+"""Routing for the Birchwood collision number.
 
-The Birchwood phone number now routes to the minimal pure-intake workflow
-(birchwood_collision_intake_min_v1) by DEFAULT. It is reversible via the
-BIRCHWOOD_COLLISION_WORKFLOW_ID env var (set it to the live pilot id to route
-back), falls back safely to the live pilot if the configured id is unregistered,
-and a DB phone_numbers route (when present) still takes precedence over this
-config route. The real number lives in the deployed env; tests use a placeholder.
+The Birchwood phone number routes to the live pilot workflow
+(birchwood_collision_intake_v1 — now a minimal pure-intake script, and the flow
+the Aurora voice-naturalness pass targets) by DEFAULT. It is reversible via the
+BIRCHWOOD_COLLISION_WORKFLOW_ID env var (set it to the minimal-only package id to
+route there), falls back safely to the live pilot if the configured id is
+unregistered, and a DB phone_numbers route (when present) still takes precedence
+over this config route. The real number lives in the deployed env; tests use a
+placeholder.
 """
 
 from __future__ import annotations
@@ -48,16 +50,17 @@ def _resolve(
         return WorkflowRouteResolver(repository=None).resolve(_PLACEHOLDER_NUMBER)
 
 
-def test_birchwood_number_defaults_to_minimal_workflow():
+def test_birchwood_number_defaults_to_live_pilot_workflow():
+    # Default now routes to the live pilot (v1) that the Aurora voice pass targets.
     route = _resolve()
-    assert route.workflow_id == _MIN_ID
-    assert route.vertical_key == "automotive_collision_min"
-
-
-def test_revert_to_live_pilot_via_env():
-    route = _resolve(workflow_id_override=_LIVE_ID)
     assert route.workflow_id == _LIVE_ID
     assert route.vertical_key == "automotive_collision"
+
+
+def test_route_to_minimal_only_package_via_env():
+    route = _resolve(workflow_id_override=_MIN_ID)
+    assert route.workflow_id == _MIN_ID
+    assert route.vertical_key == "automotive_collision_min"
 
 
 def test_unknown_configured_workflow_falls_back_to_live():
