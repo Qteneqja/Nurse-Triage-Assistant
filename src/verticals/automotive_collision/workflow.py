@@ -280,7 +280,9 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
 
         # Caller asked for a person, or we've looped too long -> hand off.
         if is_transfer_request(user_text):
-            return self._finalize_conversational(context, session, reason="transfer_request")
+            return self._finalize_conversational(
+                context, session, reason="transfer_request"
+            )
         if nv["turns"] > MAX_TURNS:
             return self._finalize_conversational(context, session, reason="turn_cap")
 
@@ -295,7 +297,9 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         )
 
         if output.caller_wants_human:
-            return self._finalize_conversational(context, session, reason="transfer_request")
+            return self._finalize_conversational(
+                context, session, reason="transfer_request"
+            )
 
         scripted = session.channel_metadata.get("scripted_intake") or {}
         fields = scripted.get("fields") or {}
