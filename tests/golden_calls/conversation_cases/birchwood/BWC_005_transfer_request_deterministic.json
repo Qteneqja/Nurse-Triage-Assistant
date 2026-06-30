@@ -1,0 +1,10 @@
+{
+  "case_id": "BWC_005_transfer_request_deterministic",
+  "description": "Caller immediately asks for a person - the deterministic transfer pre-check hands off WITHOUT ever calling the LLM (zero LLM cost).",
+  "turns": [
+    {"caller": "Can I just talk to a real person please?"}
+  ],
+  "expected_disposition": "INCOMPLETE_CALLBACK_NEEDED",
+  "expected_finalized": true,
+  "expected_llm_calls": 0
+}

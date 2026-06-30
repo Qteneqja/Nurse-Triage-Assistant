@@ -1,0 +1,14 @@
+{
+  "case_id": "BWC_003_volunteered_out_of_order",
+  "description": "Caller volunteers most details at once and out of order; the agent captures several fields per turn and finishes in far fewer turns than the scripted flow.",
+  "turns": [
+    {"caller": "Hi yeah my name's Dana Cole, I've got a 2020 Ford Escape, somebody backed into my driver door in a parking lot, it still drives okay", "llm": {"response_to_caller": "Thanks, Dana - sorry that happened. So that's a 2020 Ford Escape with driver-door damage, still drivable. What's the best number to reach you?", "caller_name": "Dana Cole", "vehicle_year": "2020", "vehicle_make": "Ford", "vehicle_model": "Escape", "damage_type": "driver door, someone backed into it", "is_drivable": "yes"}},
+    {"caller": "two oh four five five five oh one two three, and yeah I opened an MPI claim, it's five five nine zero zero one", "llm": {"response_to_caller": "Perfect. Let me confirm and book you in: a 2020 Ford Escape, driver door, drivable, MPI claim 559001, calling you at 204-555-0123. Right?", "phone": "204-555-0123", "filing_insurance_claim": "yes", "claim_number": "559001"}},
+    {"caller": "that's right", "llm": {"response_to_caller": "Great, you're all set.", "ready_to_finalize": true}}
+  ],
+  "expected_disposition": "COMPLETED_INTAKE",
+  "expected_finalized": true,
+  "expected_fields_contain": {"caller_name": "Dana Cole", "vehicle_make": "Ford", "vehicle_model": "Escape", "is_drivable": "yes", "claim_number": "559001"},
+  "expected_flags_contain": ["mpi_claim_in_hand"],
+  "expected_llm_calls": 3
+}

@@ -278,6 +278,17 @@ BIRCHWOOD_COLLISION_WORKFLOW_ID: str = os.getenv(
     "birchwood_collision_intake_v1",
 )
 
+# Birchwood conversational intake (premium tier). When true, the Birchwood
+# collision workflow runs a GATED-LLM conversation (fluid, handles out-of-order
+# answers and questions) instead of the deterministic scripted Q&A. Every LLM
+# utterance still passes the safety gate, the injury reflex still applies, and
+# the disposition stays DETERMINISTIC (classify_collision_intake) — the LLM only
+# converses and extracts. Default false = the cheaper scripted flow (so a client
+# can downgrade to save LLM cost). Reversible via env, no code change.
+BIRCHWOOD_CONVERSATIONAL_INTAKE: bool = _env_flag(
+    "BIRCHWOOD_CONVERSATIONAL_INTAKE", "false"
+)
+
 # TODO(stakeholder-confirmation): Confirm exact Birchwood collision center
 # location names/addresses and the glass department transfer process before
 # production use. Demo values intentionally remain placeholders.

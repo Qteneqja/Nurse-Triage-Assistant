@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import src.config as config
-from src.orchestrator.schemas import OrchestratorSession
+from src.llm.client import LLMCallError
+from src.orchestrator.schemas import ConversationTurn, OrchestratorSession
 from src.platform.workflows.schemas import (
     ScriptedIntakeDefinition,
     ScriptedStageDefinition,
@@ -63,10 +64,23 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
     either way.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, guarded_llm=None) -> None:
         from src.verticals.automotive_collision.spec import build_birchwood_spec
 
         super().__init__(build_birchwood_spec())
+        # Gated-LLM handle for the conversational-intake tier. Lazy (only built
+        # when actually used) and injectable for tests.
+        self._guarded_override = guarded_llm
+        self._guarded_cached = None
+
+    def _get_guarded(self):
+        if self._guarded_override is not None:
+            return self._guarded_override
+        if self._guarded_cached is None:
+            from src.llm.guarded_client import get_guarded_llm
+
+            self._guarded_cached = get_guarded_llm()
+        return self._guarded_cached
 
     def get_definition(self) -> WorkflowDefinition:
         return WorkflowDefinition(
@@ -103,6 +117,8 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         context: WorkflowContext,
         input: WorkflowInput,
     ) -> WorkflowTurnResult:
+        if config.BIRCHWOOD_CONVERSATIONAL_INTAKE:
+            return await self._handle_conversational_turn(context, input)
         session = self._load_session(context, input.session_state)
         final_result = self.build_final_result_from_session(
             context,
@@ -216,9 +232,133 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         location/timing) are captured opportunistically from the story and
         never interrogated one-by-one.
         """
+        if config.BIRCHWOOD_CONVERSATIONAL_INTAKE:
+            # Premium conversational tier: greet, then drop straight into the
+            # dynamic gated-LLM loop (no scripted stages -> session starts in
+            # STAGE_DYNAMIC, so every caller turn hits handle_turn).
+            return ScriptedIntakeDefinition(
+                intro_text=BIRCHWOOD_COLLISION_INTRO,
+                stages=[],
+            )
         return ScriptedIntakeDefinition(
             intro_text=BIRCHWOOD_COLLISION_INTRO,
             stages=_scripted_stage_definitions(),
+        )
+
+    # ------------------------------------------------------------------
+    # Conversational intake tier (gated LLM — premium; flagged)
+    # ------------------------------------------------------------------
+
+    async def _handle_conversational_turn(
+        self,
+        context: WorkflowContext,
+        input: WorkflowInput,
+    ) -> WorkflowTurnResult:
+        """One gated-LLM conversation turn (BIRCHWOOD_CONVERSATIONAL_INTAKE).
+
+        Loops (``should_continue``) until every required field is captured, then
+        runs the SAME deterministic finalize as the scripted flow. The platform
+        injury overlay applies to every turn at the engine level; the disposition
+        stays deterministic; the spoken text is gated by ``structured_call``.
+        Any LLM failure fails closed to a human callback.
+        """
+        from src.verticals.automotive_collision.conversational_intake import (
+            MAX_TURNS,
+            is_transfer_request,
+            merge_extracted_fields,
+            missing_required_fields,
+            run_turn,
+        )
+
+        session = self._load_session(context, input.session_state)
+        user_text = (input.user_text or "").strip()
+        if user_text:
+            session.conversation.append(ConversationTurn(role="caller", text=user_text))
+
+        nv = session.channel_metadata.setdefault("conversational_intake", {})
+        nv["turns"] = int(nv.get("turns", 0)) + 1
+
+        # Caller asked for a person, or we've looped too long -> hand off.
+        if is_transfer_request(user_text):
+            return self._finalize_conversational(
+                context, session, reason="transfer_request"
+            )
+        if nv["turns"] > MAX_TURNS:
+            return self._finalize_conversational(context, session, reason="turn_cap")
+
+        try:
+            output = await run_turn(self._get_guarded(), session, user_text)
+        except LLMCallError:
+            return self._finalize_conversational(context, session, reason="llm_error")
+
+        merge_extracted_fields(session, output)
+        session.conversation.append(
+            ConversationTurn(role="assistant", text=output.response_to_caller)
+        )
+
+        if output.caller_wants_human:
+            return self._finalize_conversational(
+                context, session, reason="transfer_request"
+            )
+
+        scripted = session.channel_metadata.get("scripted_intake") or {}
+        fields = scripted.get("fields") or {}
+        if output.ready_to_finalize and not missing_required_fields(fields):
+            return self._finalize_conversational(context, session, reason="complete")
+
+        # Keep the conversation open for the next caller turn (stays in DYNAMIC).
+        session.channel_metadata["stage"] = "DYNAMIC"
+        return WorkflowTurnResult(
+            assistant_text=output.response_to_caller,
+            stage="DYNAMIC",
+            should_continue=True,
+            should_finalize=False,
+            escalation_required=False,
+            updated_state=session.model_dump(mode="json"),
+            audit_metadata={
+                "workflow_id": context.workflow_id,
+                "deterministic": False,
+                "conversational_intake": True,
+                "turns": nv["turns"],
+            },
+        )
+
+    def _finalize_conversational(
+        self,
+        context: WorkflowContext,
+        session: OrchestratorSession,
+        *,
+        reason: str,
+    ) -> WorkflowTurnResult:
+        """Finalize via the SAME deterministic path the scripted flow uses."""
+        final_result = self.build_final_result_from_session(context, session)
+        session.channel_metadata["workflow_final_result"] = final_result.model_dump(
+            mode="json"
+        )
+        session.channel_metadata["stage"] = "FINAL"
+        session.is_finalized = True
+        reason_str = f"automotive_collision_conversational_{reason}"
+        session.finalization_reason = reason_str
+        disposition = final_result.final_disposition
+        return WorkflowTurnResult(
+            assistant_text=_spoken_final_message(disposition, final_result, session),
+            stage="FINAL",
+            should_continue=False,
+            should_finalize=True,
+            escalation_required=disposition
+            in {"TRANSFER_COLLISION_CENTER", "TRANSFER_GLASS_DEPARTMENT"},
+            recommended_disposition=disposition,
+            confidence_score=final_result.confidence_score,
+            rules_triggered=list(final_result.rules_triggered),
+            safety_events=list(final_result.safety_events),
+            updated_state=session.model_dump(mode="json"),
+            audit_metadata={
+                "workflow_id": context.workflow_id,
+                "deterministic": True,
+                "conversational_intake": True,
+                "finalization_reason": reason_str,
+                "automotive_collision_recommended_routing": disposition,
+            },
         )
 
     # ------------------------------------------------------------------
