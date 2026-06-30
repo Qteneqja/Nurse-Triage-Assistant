@@ -125,11 +125,11 @@ def test_every_pooled_field_has_multiple_variants():
 
 def test_compose_includes_phrasing_variant():
     session = _birchwood_session()
+    # Consume the once-per-call hesitation budget so this isolates the variant.
+    session.channel_metadata["voice_naturalness"] = {"disfluency_used": True}
     stage = _stage("vehicle_year", "integer")
     prompt = vn.compose_stage_prompt(session, stage, {})
-    # The first prompt of a fresh call may carry the once-per-call hesitation
-    # opener as a prefix; the phrasing variant is the suffix.
-    assert any(prompt.endswith(v) for v in vn.INTAKE_PHRASING_POOLS["vehicle_year"])
+    assert prompt in vn.INTAKE_PHRASING_POOLS["vehicle_year"]
 
 
 def test_compose_slot_echoes_captured_vehicle():
@@ -171,8 +171,9 @@ def test_build_dynamic_prompt_uses_pool_for_real_stage():
     workflow, intake = _workflow_intake()
     year_stage = next(s for s in intake.stages if s.field_name == "vehicle_year")
     session = _birchwood_session()
+    session.channel_metadata["voice_naturalness"] = {"disfluency_used": True}
     prompt = workflow.build_dynamic_prompt(session, year_stage)
-    assert any(prompt.endswith(v) for v in vn.INTAKE_PHRASING_POOLS["vehicle_year"])
+    assert prompt in vn.INTAKE_PHRASING_POOLS["vehicle_year"]
 
 
 # ---------------------------------------------------------------------------
@@ -472,3 +473,147 @@ def test_ab_harness_pair_is_aligned_and_changed():
     assert old != new  # the copy actually changed
     # New copy slot-echoes the captured vehicle somewhere.
     assert any("2019 Honda Civic" in line for line in new)
+
+
+# ---------------------------------------------------------------------------
+# Off-topic detector: legitimate answers with trigger substrings stay on-topic
+# (regression guard for the bare-keyword false positives)
+# ---------------------------------------------------------------------------
+
+
+def test_off_topic_keeps_legitimate_answers_with_trigger_substrings():
+    name = _stage("caller_name", "text")
+    dmg = _stage("damage_type", "free_text")
+    drv = _stage("is_drivable", "text")
+    # Surnames / damage phrasings / ambiguous drivable answers must NOT redirect.
+    assert vn.is_off_topic(name, "Price") is False
+    assert vn.is_off_topic(name, "Quentin Price") is False
+    assert (
+        vn.is_off_topic(dmg, "the whole front is smashed, going to cost a lot") is False
+    )
+    assert vn.is_off_topic(dmg, "the estimate is bad, rear quarter panel") is False
+    assert vn.is_off_topic(drv, "somewhat") is False  # 'what' inside 'somewhat'
+
+
+def test_off_topic_still_fires_on_real_questions():
+    yr = _stage("vehicle_year", "integer")
+    dmg = _stage("damage_type", "free_text")
+    assert vn.is_off_topic(yr, "how much is this going to cost?") is True
+    assert vn.is_off_topic(yr, "are you a robot?") is True
+    assert vn.is_off_topic(dmg, "how long will the repair take?") is True
+
+
+def test_redirect_ignores_legitimate_trigger_substrings():
+    session = _birchwood_session()
+    assert (
+        vn.evaluate_redirect(session, _stage("caller_name", "text"), "Quentin Price")
+        is None
+    )
+    assert (
+        vn.evaluate_redirect(
+            session,
+            _stage("damage_type", "free_text"),
+            "front bumper, going to cost a lot",
+        )
+        is None
+    )
+    assert (
+        vn.evaluate_redirect(session, _stage("is_drivable", "text"), "somewhat") is None
+    )
+
+
+def test_handler_cap_exhaust_skips_required_field():
+    _, intake = _workflow_intake()
+    session = _birchwood_session()
+    rt._initialize_scripted_intake(session, intake)
+    yr = next(s for s in intake.stages if s.field_name == "vehicle_year")
+    session.channel_metadata["stage"] = yr.stage_id
+    next_stage = reprompt = None
+    for utt in ["how much will this cost?", "are you a robot?", "what happens next?"]:
+        next_stage, reprompt = asyncio.run(
+            rt._handle_scripted_stage_response(session, intake, yr, utt)
+        )
+    # Cap exceeded on the 3rd: advanced without recording -> field stays missing
+    # so the deterministic rules return a callback (no rules change).
+    assert reprompt is None
+    fields = session.channel_metadata["scripted_intake"]["fields"]
+    assert "vehicle_year" not in fields
+
+
+# ---------------------------------------------------------------------------
+# Injury question is delivered verbatim on the compose path (SAFETY EXCEPTION)
+# ---------------------------------------------------------------------------
+
+
+def test_injuries_state_compose_is_verbatim_and_never_prefixed():
+    session = _birchwood_session()
+    inj = _stage("injuries_state", "text")
+    # Even as the FIRST composed prompt of the call, the injury question must be
+    # an exact variant — no slot-echo, no hesitation opener, never softened.
+    out = vn.compose_stage_prompt(session, inj, {})
+    assert out in vn.INJURIES_STATE_VARIANTS
+    assert not any(out.startswith(o) for o in vn.DISFLUENCY_OPENERS)
+
+
+def test_disfluency_lowercases_following_word():
+    session = _birchwood_session()
+    _, intake = _workflow_intake()
+    name_stage = next(s for s in intake.stages if s.field_name == "caller_name")
+    out = vn.compose_stage_prompt(session, name_stage, {})
+    opener = next(o for o in vn.DISFLUENCY_OPENERS if out.startswith(o))
+    after = out[len(opener) :]
+    assert after[:1].islower()  # no mid-sentence capital after the opener
+
+
+# ---------------------------------------------------------------------------
+# Expressive SSML: breaks genuinely vary; Birchwood-only TTS gate
+# ---------------------------------------------------------------------------
+
+
+def test_expressive_breaks_actually_vary_off_uniform():
+    import re
+
+    ssml = _ssml("What year is the vehicle? And the make of the car?", True)
+    breaks = [int(m) for m in re.findall(r"<break time='(\d+)ms'/>", ssml)]
+    assert len(breaks) >= 2
+    assert len(set(breaks)) >= 2  # not a uniform pause
+    assert any(b != 250 for b in breaks)  # jittered off the 250ms base
+
+
+def test_tts_profile_gates_expressive_to_birchwood_only():
+    # The expressive decision in _tts_audio_url keys off this profile, so a
+    # healthcare/other session resolves to the non-expressive (unchanged) path.
+    assert (
+        rt._get_tts_settings_for_session(_birchwood_session())["profile"]
+        == "birchwood_collision"
+    )
+    assert rt._get_tts_settings_for_session(_other_session())["profile"] == "default"
+
+
+# ---------------------------------------------------------------------------
+# Filler positive path (URL emitted when pre-rendered)
+# ---------------------------------------------------------------------------
+
+
+def test_filler_url_emitted_when_pre_rendered(monkeypatch):
+    monkeypatch.setattr(
+        "src.utils.voice_fillers.available_filler_files",
+        lambda *a, **k: ["filler_0.mp3", "filler_1.mp3"],
+    )
+    url = rt._birchwood_filler_url(_birchwood_session())
+    assert url is not None
+    assert url.startswith("/api/v1/voice/audio/birchwood-fillers/filler_")
+    # Still Birchwood-gated even when fillers exist.
+    assert rt._birchwood_filler_url(_other_session()) is None
+    assert "/api/v1/voice/audio/birchwood-fillers/filler_" in rt._thinking_loop_twiml(
+        _birchwood_session()
+    )
+
+
+def test_get_filler_audio_returns_bytes_for_present_file(tmp_path, monkeypatch):
+    from src.utils import voice_fillers
+
+    monkeypatch.setattr(voice_fillers, "_FILLER_DIR", tmp_path)
+    (tmp_path / "filler_2.mp3").write_bytes(b"ID3-audio-bytes")
+    assert voice_fillers.get_filler_audio("filler_2.mp3") == b"ID3-audio-bytes"
+    assert voice_fillers.get_filler_audio("filler_9.mp3") is None  # absent

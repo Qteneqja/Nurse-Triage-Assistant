@@ -219,32 +219,32 @@ REDIRECT_BRIDGE_POOL: list[str] = [
 # INCOMPLETE_CALLBACK_NEEDED — a human callback, no rules/engine change).
 REDIRECT_CAP = 2
 
-# Conservative off-topic signals. A caller answering a collision question almost
-# never trips these, so false positives that wrongly skip a stage are rare.
+# Off-topic signals require a QUESTION FRAME, never a bare keyword. A caller
+# surnamed "Price"/"Quote", or one describing damage as "going to cost a lot" or
+# "the estimate is bad", must stay ON-topic — only a genuine meta-question/tangent
+# counts. (The earlier bare-word patterns dropped legitimate required fields.)
 _META_QUESTION_PATTERNS: list[str] = [
-    r"how much",
-    r"how long",
-    r"what (?:will|does) (?:it|this) cost",
-    r"\bcost\b",
-    r"\bprice\b",
-    r"\bquote\b",
-    r"\bestimate\b",
-    r"are you (?:a )?(?:real|a robot|a human|an? ai|recording)",
-    r"is this (?:a )?(?:recording|real person|robot)",
-    r"am i (?:talking|speaking) to (?:a )?(?:robot|machine|person|human)",
+    r"how much (?:will|does|is|to|for|would|are|do|can)",
+    r"how much is (?:this|it|that)",
+    r"how long (?:will|does|is|to|until|before|are|do|can)",
+    r"what(?:'s| is| will| would| does).{0,25}(?:cost|price|charge|quote|estimate)",
+    r"are you (?:a )?(?:real|robot|human|an? ai|recording|person|machine)",
+    r"is this (?:a )?(?:recording|real person|robot|machine|live)",
+    r"am i (?:talking|speaking) to (?:a )?(?:robot|machine|person|human|real)",
     r"what happens (?:next|after)",
-    r"can i ask (?:you )?(?:a|something)",
-    r"i have a question",
-    r"do you (?:do|offer|cover|handle)",
+    r"can i ask (?:you )?(?:a |something|one)",
+    r"i have a (?:quick )?question",
+    r"do you (?:do|offer|cover|handle|take|accept)\b",
 ]
-_QUESTION_HINTS: list[str] = [
-    "how",
-    "what",
-    "why",
+# Word-boundary question words (so "what" no longer matches inside "somewhat").
+_QUESTION_WORD_RE = re.compile(r"\b(?:how|what|why|when|where|which)\b")
+_QUESTION_PHRASES: list[str] = [
     "do you",
     "can you",
     "will you",
+    "could you",
     "is there",
+    "are you",
 ]
 
 
@@ -364,18 +364,35 @@ def compose_stage_prompt(
     variant = select_variant(session, f"prompt:{stage.field_name}", pool)
     echo = slot_echo_preamble(session, fields, stage.field_name)
     text = f"{echo}{variant}" if echo else variant
-    text = _maybe_lead_disfluency(session, text)
+    # SAFETY: never prefix a hesitation/embellishment to the injury question —
+    # it must be delivered verbatim, minimal, and never softened.
+    if stage.field_name != "injuries_state":
+        text = _maybe_lead_disfluency(session, text)
     cache[stage.stage_id] = text
     return text
 
 
 def _maybe_lead_disfluency(session: OrchestratorSession, text: str) -> str:
-    """Prefix one light hesitation, at most once per call."""
+    """Prefix one light hesitation, at most once per call.
+
+    The openers end with an em-dash, so the original prompt's first word becomes
+    mid-utterance — lower-case it (unless it's "I" or an all-caps token like
+    "MPI") so the transcript reads naturally.
+    """
     nv = _nv(session)
     if nv.get("disfluency_used"):
         return text
     nv["disfluency_used"] = True
-    return f"{select_variant(session, 'disfluency', DISFLUENCY_OPENERS)}{text}"
+    opener = select_variant(session, "disfluency", DISFLUENCY_OPENERS)
+    first_word = text.split(maxsplit=1)[0] if text else ""
+    if (
+        first_word
+        and first_word != "I"
+        and first_word[0].isupper()
+        and not first_word.isupper()
+    ):
+        text = text[0].lower() + text[1:]
+    return f"{opener}{text}"
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +437,9 @@ def _looks_like_question(text: str) -> bool:
     lowered = text.lower().strip()
     if lowered.endswith("?"):
         return True
-    return any(hint in lowered for hint in _QUESTION_HINTS)
+    if _QUESTION_WORD_RE.search(lowered):
+        return True
+    return any(phrase in lowered for phrase in _QUESTION_PHRASES)
 
 
 def _matches_meta_question(text: str) -> bool:
@@ -449,16 +468,25 @@ def _parses_as_stage_answer(stage: ScriptedStageDefinition, text: str) -> bool:
 
 
 def is_off_topic(stage: ScriptedStageDefinition, utterance: str) -> bool:
-    """Conservative off-topic detector (no safety calls — caller gates those)."""
+    """Conservative off-topic detector (no safety calls — caller gates those).
+
+    A legitimate answer that merely CONTAINS a keyword (a surname like "Price",
+    damage described as "going to cost a lot") stays on-topic — only a genuine
+    meta-question frame counts. This bias protects required free-text fields:
+    we would rather record an odd-but-real answer than drop it to a callback.
+    """
     text = (utterance or "").strip()
     if not text:
         return False
+    if _parses_as_stage_answer(stage, text):
+        # Plausibly answers the stage. The only way a "parsing" answer is still
+        # off-topic is a clear meta-question tangent (this is also the sole path
+        # for a free-text stage, where _parses_as_stage_answer is always True).
+        return _matches_meta_question(text)
+    # Does not parse as the typed stage's expected value:
     if _matches_meta_question(text):
         return True
-    # Typed stages: an unparseable answer that reads like a question is off-topic.
-    if not _parses_as_stage_answer(stage, text) and _looks_like_question(text):
-        return True
-    return False
+    return _looks_like_question(text)
 
 
 def evaluate_redirect(
