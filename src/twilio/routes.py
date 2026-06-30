@@ -2031,7 +2031,7 @@ async def handle_gather(
                     CallSid,
                 )
                 return Response(
-                    content=_typing_redirect_twiml(),
+                    content=_typing_redirect_twiml(session),
                     media_type="application/xml",
                 )
 
@@ -2039,8 +2039,9 @@ async def handle_gather(
             _pending_turns[CallSid] = (task, session)
             logger.info(f"[TWILIO] Started background orchestrator for {CallSid}")
 
-            # Return typing sounds → poll via /thinking
-            return _respond(_typing_redirect_twiml())
+            # Return the hold sound (Birchwood verbal filler when available) →
+            # poll via /thinking
+            return _respond(_typing_redirect_twiml(session))
 
         # Should not reach here
         logger.error(f"[TWILIO] Unexpected state for session {session_id}")
@@ -2290,14 +2291,11 @@ def _maybe_schedule_enrichment(
         )
 
 
-def _typing_redirect_twiml() -> str:
-    """TwiML that plays typing sounds and polls /thinking."""
-    typing_url = "/api/v1/voice/audio/typing.wav"
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Play>{typing_url}</Play>
-    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
-</Response>"""
+def _typing_redirect_twiml(session: OrchestratorSession | None = None) -> str:
+    """TwiML hold loop that polls /thinking. For Birchwood (when the verbal
+    fillers are pre-rendered) it plays a spoken filler; otherwise the
+    keyboard-typing bed. Same logic as the /thinking loop's hold sound."""
+    return _thinking_loop_twiml(session)
 
 
 def _birchwood_filler_url(session: OrchestratorSession | None) -> str | None:

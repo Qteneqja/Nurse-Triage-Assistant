@@ -617,3 +617,68 @@ def test_get_filler_audio_returns_bytes_for_present_file(tmp_path, monkeypatch):
     (tmp_path / "filler_2.mp3").write_bytes(b"ID3-audio-bytes")
     assert voice_fillers.get_filler_audio("filler_2.mp3") == b"ID3-audio-bytes"
     assert voice_fillers.get_filler_audio("filler_9.mp3") is None  # absent
+
+
+def test_warm_up_fillers_is_noop_without_azure_key(monkeypatch):
+    import src.config as config
+    from src.utils import voice_fillers
+
+    monkeypatch.setattr(config, "AZURE_SPEECH_KEY", "", raising=False)
+    # Must not raise and must not render anything when there's no key.
+    asyncio.run(voice_fillers.warm_up_fillers())
+    assert voice_fillers.available_filler_files(refresh=True) == []
+
+
+# ---------------------------------------------------------------------------
+# STT robustness: vehicle-make hints + normalization (the live "Ford" miss)
+# ---------------------------------------------------------------------------
+
+
+def test_make_normalization_aliases_exact_and_unknown():
+    from src.verticals.automotive_collision.workflow import _normalize_make
+
+    assert _normalize_make("ford") == "Ford"  # canonical casing
+    assert _normalize_make("Ford") == "Ford"
+    assert _normalize_make("chevy") == "Chevrolet"
+    assert _normalize_make("vw") == "Volkswagen"
+    assert _normalize_make("benz") == "Mercedes-Benz"
+    # An unrecognised make is kept exactly as spoken — never dropped.
+    assert _normalize_make("Spaceship Motors") == "Spaceship Motors"
+    assert _normalize_make("") is None
+
+
+def test_bounded_vocab_stages_carry_recognition_hints():
+    _, intake = _workflow_intake()
+    by_field = {s.field_name: s for s in intake.stages}
+    assert by_field["vehicle_make"].hints
+    assert "Ford" in by_field["vehicle_make"].hints
+    assert "Toyota" in by_field["vehicle_make"].hints
+    assert "tow" in by_field["is_drivable"].hints.lower()
+    assert "mpi" in by_field["filing_insurance_claim"].hints.lower()
+
+
+def test_on_field_recorded_canonicalises_make():
+    workflow, _ = _workflow_intake()
+    session = _birchwood_session()
+    assert workflow.on_field_recorded(
+        session, _stage("vehicle_make", "text"), "chevy"
+    ) == {"vehicle_make": "Chevrolet"}
+
+
+# ---------------------------------------------------------------------------
+# Filler-density tuning: no year-only echo before the make, no "So," tic
+# ---------------------------------------------------------------------------
+
+
+def test_no_year_only_slot_echo_before_make():
+    session = _birchwood_session({"vehicle_year": 2019})
+    session.channel_metadata["voice_naturalness"] = {"disfluency_used": True}
+    out = vn.compose_stage_prompt(
+        session, _stage("vehicle_make", "text"), {"vehicle_year": 2019}
+    )
+    assert "2019" not in out  # the awkward "A 2019. Who makes it?" echo is gone
+    assert out in vn.INTAKE_PHRASING_POOLS["vehicle_make"]
+
+
+def test_echo_forms_have_no_so_tic():
+    assert all(not form.lower().lstrip().startswith("so,") for form in vn._ECHO_FORMS)
