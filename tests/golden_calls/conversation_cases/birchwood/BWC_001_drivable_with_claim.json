@@ -1,18 +1,20 @@
 {
   "case_id": "BWC_001_drivable_with_claim",
-  "description": "Drivable vehicle, caller has an MPI claim number — clean completion.",
+  "description": "Drivable vehicle, caller has an MPI claim number — clean completion of the full data-point goal (name, phone, email, damage, plate, location, claim).",
   "turns": [
-    {"caller": "Hi, I was just in a fender bender", "llm": {"response_to_caller": "Oh no, I'm sorry to hear that. Let's get your vehicle taken care of. Can I start with your full name?"}},
+    {"caller": "Hi, I was just in a fender bender", "llm": {"response_to_caller": "Oh no, I'm sorry to hear that. Can I start with your full name?"}},
     {"caller": "Marcus Lee", "llm": {"response_to_caller": "Thanks, Marcus. What's the best number to reach you at?", "caller_name": "Marcus Lee"}},
-    {"caller": "two oh four, five five five, oh one four eight", "llm": {"response_to_caller": "Got it. What's the vehicle - year, make and model?", "phone": "204-555-0148"}},
-    {"caller": "It's a 2021 Toyota Corolla", "llm": {"response_to_caller": "A 2021 Toyota Corolla. What's the damage, and can you still drive it?", "vehicle_year": "2021", "vehicle_make": "Toyota", "vehicle_model": "Corolla"}},
-    {"caller": "Front bumper's cracked but it drives fine", "llm": {"response_to_caller": "Okay. Have you opened an MPI claim for this yet?", "damage_type": "front bumper cracked", "is_drivable": "yes"}},
-    {"caller": "Yeah, the claim number is seven seven four one two two", "llm": {"response_to_caller": "Perfect - let me confirm: a 2021 Toyota Corolla, front bumper, drivable, MPI claim 774122, and an advisor will call you at 204-555-0148. All correct?", "filing_insurance_claim": "yes", "claim_number": "774122"}},
+    {"caller": "two oh four, five five five, oh one four eight", "llm": {"response_to_caller": "Got it. And the best email for your confirmation - could you spell it out?", "phone": "204-555-0148"}},
+    {"caller": "m a r c u s at gmail dot com", "llm": {"response_to_caller": "Let me read that back - marcus@gmail.com. What's the damage, and can you still drive it?", "email": "marcus@gmail.com"}},
+    {"caller": "Front bumper's cracked but it drives fine", "llm": {"response_to_caller": "Okay. What's the licence plate?", "damage_type": "front bumper cracked", "is_drivable": "yes"}},
+    {"caller": "B C D 1 2 3", "llm": {"response_to_caller": "And which Birchwood location is most convenient for you?", "license_plate": "BCD123"}},
+    {"caller": "The Regent one", "llm": {"response_to_caller": "Have you opened an MPI claim for this yet?", "preferred_location": "Birchwood Regent"}},
+    {"caller": "Yeah, the claim number is seven seven four one two two", "llm": {"response_to_caller": "Perfect - let me confirm and book you in.", "filing_insurance_claim": "yes", "claim_number": "774122"}},
     {"caller": "Yep, that's all right", "llm": {"response_to_caller": "Wonderful, you're all set.", "ready_to_finalize": true}}
   ],
   "expected_disposition": "COMPLETED_INTAKE",
   "expected_finalized": true,
-  "expected_fields_contain": {"caller_name": "Marcus Lee", "vehicle_make": "Toyota", "vehicle_model": "Corolla", "is_drivable": "yes", "claim_number": "774122"},
+  "expected_fields_contain": {"caller_name": "Marcus Lee", "email": "marcus@gmail.com", "license_plate": "BCD123", "preferred_collision_center": "Birchwood Regent", "claim_number": "774122"},
   "expected_flags_contain": ["mpi_claim_in_hand"],
-  "expected_llm_calls": 7
+  "expected_llm_calls": 9
 }

@@ -105,8 +105,9 @@ class DeterministicEvalLLM:
         max_tokens: int = 500,
         temperature: float = 0.3,
         correlation_id: str | None = None,
+        json_mode: bool = True,
     ) -> BaseModel:
-        del max_tokens, temperature, correlation_id
+        del max_tokens, temperature, correlation_id, json_mode
 
         if output_schema is Phase1TurnOutput:
             if self.case.force_malformed_llm_output:

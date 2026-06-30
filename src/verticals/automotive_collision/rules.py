@@ -24,6 +24,7 @@ INJURY_SAFETY_RULE_ID = "automotive_collision:injury_safety_branch"
 def classify_collision_intake(
     intake: AutomotiveCollisionIntake,
     dynamic_text: str = "",
+    required_fields: list[str] | None = None,
 ) -> AutomotiveCollisionAssessment:
     """Minimal pure-intake completeness check — NO triage or decisions.
 
@@ -39,11 +40,10 @@ def classify_collision_intake(
     intake never asks about injuries.
     """
     data = intake.model_dump()
-    missing = [
-        field
-        for field in BIRCHWOOD_COLLISION_REQUIRED_FIELDS
-        if _is_missing(data.get(field))
-    ]
+    # The conversational tier passes its own required-field goal; the scripted/spec
+    # tier uses the default set. Either way this only decides COMPLETED vs callback.
+    fields_required = required_fields or BIRCHWOOD_COLLISION_REQUIRED_FIELDS
+    missing = [field for field in fields_required if _is_missing(data.get(field))]
 
     flags: list[str] = []
     if intake.is_drivable is False:

@@ -126,6 +126,7 @@ class StructuredLLMClient:
         max_tokens: int = 500,
         temperature: float = 0.3,
         correlation_id: str | None = None,
+        json_mode: bool = True,
     ) -> T:
         """Call DeepSeek and return a validated Pydantic object.
 
@@ -151,26 +152,26 @@ class StructuredLLMClient:
         """
         cid = correlation_id or "no-cid"
 
-        # Step 1: raw call with JSON mode enabled for structured output.
+        # Step 1: raw call. DeepSeek intermittently returns an EMPTY / whitespace-only
+        # completion in JSON mode (it goes away and comes back under load), and that
+        # empty also costs a full round-trip plus retries — the main latency hit. So
+        # the conversational caller passes json_mode=False to go straight to a plain
+        # completion (the prompt demands JSON-only and _try_parse extracts it),
+        # avoiding the JSON-mode empties entirely. We try the chosen mode twice, then
+        # fall back to the other mode before giving up.
+        attempt_modes = [json_mode, json_mode, not json_mode]
         try:
-            raw = await self._raw_call(
-                messages, max_tokens, temperature, json_mode=True
-            )
-            # DeepSeek intermittently returns an EMPTY / whitespace-only completion
-            # in JSON mode (it goes away and comes back under load). One empty turn
-            # would otherwise drop the caller, so retry once more in JSON mode, then
-            # once WITHOUT JSON mode — _try_parse still extracts the JSON object from
-            # the text — before giving up.
-            if not raw:
-                logger.warning(f"[LLM:{cid}] Empty response; retrying (json mode)")
+            raw = ""
+            for i, mode in enumerate(attempt_modes):
                 raw = await self._raw_call(
-                    messages, max_tokens, temperature, json_mode=True
+                    messages, max_tokens, temperature, json_mode=mode
                 )
-            if not raw:
-                logger.warning(f"[LLM:{cid}] Still empty; retrying without json mode")
-                raw = await self._raw_call(
-                    messages, max_tokens, temperature, json_mode=False
-                )
+                if raw:
+                    break
+                if i == 0:
+                    logger.warning(f"[LLM:{cid}] Empty response; retrying")
+                elif i == 1:
+                    logger.warning(f"[LLM:{cid}] Still empty; trying alternate mode")
         except Exception as e:
             logger.error(f"[LLM:{cid}] Raw call failed after retries: {e}")
             capture_llm_failure(
