@@ -14,16 +14,26 @@ on the road", drivability is asked as "drive it in to us, or does it
 need a tow", insurance is reinforced as "we'll take care of the car
 either way", and the close opens with "we'll get you booked in".
 
+Aurora pass (pr-birchwood-aurora-naturalness): the assistant now introduces
+itself by name ("Aurora") and discloses up front that it is an automated
+assistant. Per-stage phrasing variation, slot-echo, backchannels, and off-topic
+redirection live in ``voice_naturalness.py`` (deterministic, transport-neutral);
+this module keeps the canonical static copy used as the fallback.
+
 Wording only: extraction fields, safety branches, and the engine are
 unchanged.
 """
 
+# Aurora naturalness pass: introduce by name AND disclose the automated
+# assistant up front. The brand line and the recording-consent clause are
+# preserved verbatim; the automated-assistant disclosure is deliberate and
+# must not be removed or softened.
 BIRCHWOOD_COLLISION_INTRO = (
-    "Thank you for calling Birchwood Automotive Group. This call may be "
-    "recorded for training and quality purposes. I'm here to get your "
-    "vehicle booked in and taken care of after your accident - we'll get "
-    "you back on the road. And if you'd rather speak with one of our team "
-    "right away, just say transfer or press 0."
+    "Thank you for calling Birchwood Automotive Group. My name's Aurora — "
+    "I'm an automated assistant, and I'm here to get your vehicle booked in "
+    "and back on the road as quickly as possible. This call may be recorded "
+    "for training and quality purposes. And if you'd rather speak with one of "
+    "our team right away, just say transfer or press zero."
 )
 
 BIRCHWOOD_COLLISION_PROMPTS = {

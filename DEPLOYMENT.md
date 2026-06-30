@@ -34,7 +34,7 @@
 | `LOG_FORMAT` | `json` | Log format (`json` or `text`) |
 | `CORS_ALLOWED_ORIGINS` | _(empty)_ | Comma-separated CORS origins |
 | `RUN_MIGRATIONS_ON_STARTUP` | `true` (prod) | Auto-run Alembic migrations at startup |
-| `BIRCHWOOD_COLLISION_WORKFLOW_ID` | `birchwood_collision_intake_min_v1` | Which collision workflow the Birchwood number uses. Default = minimal pure-intake; set to `birchwood_collision_intake_v1` to route back to the richer live pilot. A DB `phone_numbers` route, if present, takes precedence over this config route. |
+| `BIRCHWOOD_COLLISION_WORKFLOW_ID` | `birchwood_collision_intake_v1` | Which collision workflow the Birchwood number uses. Default = the live pilot flow (minimal pure-intake) the Aurora voice pass targets; set to `birchwood_collision_intake_min_v1` for the separate minimal-only package. A DB `phone_numbers` route, if present, takes precedence over this config route. |
 
 ### Voice pipeline (telephony transport)
 

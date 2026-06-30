@@ -415,9 +415,11 @@ def _birchwood_collision_phone_number_route(
         BIRCHWOOD_COLLISION_WORKFLOW_VERSION as LIVE_WORKFLOW_VERSION,
     )
 
-    # Which collision workflow this number uses. Default = the minimal
-    # pure-intake workflow; set BIRCHWOOD_COLLISION_WORKFLOW_ID to the live
-    # pilot id to route back to the richer flow. Reversible via env.
+    # Which collision workflow this number uses. The default comes from
+    # config.BIRCHWOOD_COLLISION_WORKFLOW_ID (now birchwood_collision_intake_v1,
+    # the live pilot id == LIVE_WORKFLOW_ID); set it to
+    # birchwood_collision_intake_min_v1 for the minimal-only package. The
+    # `or LIVE_WORKFLOW_ID` guard only applies if the env var is explicitly empty.
     target_id = (
         getattr(config, "BIRCHWOOD_COLLISION_WORKFLOW_ID", "") or LIVE_WORKFLOW_ID
     )

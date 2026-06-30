@@ -529,6 +529,12 @@ async def _tts_audio_url(
     session: OrchestratorSession | None = None,
 ) -> str | None:
     settings = _get_tts_settings_for_session(session)
+    # Aurora naturalness: expressive SSML (varied inline breaks) for the
+    # Birchwood voice profile only, behind a reversible config flag. Every other
+    # profile (healthcare included) renders exactly as before.
+    expressive = settings.get("profile") == "birchwood_collision" and bool(
+        getattr(config, "BIRCHWOOD_TTS_EXPRESSIVE", True)
+    )
     return await text_to_speech_url(
         text,
         str(settings["voice"]),
@@ -541,6 +547,7 @@ async def _tts_audio_url(
             if settings["fallback_voice"] is not None
             else None
         ),
+        expressive=expressive,
     )
 
 
@@ -577,7 +584,20 @@ def _record_scripted_prompt_metadata(
 
 def _scripted_stage_acknowledgement(
     stage: ScriptedStageDefinition,
+    session: OrchestratorSession | None = None,
 ) -> str | None:
+    # Aurora naturalness pass (Birchwood only): a short, varied backchannel
+    # ("Perfect." / "Got it." / "Okay." ...) keyed to the answered stage's
+    # profile, never repeating twice in a row. Non-Birchwood behavior is
+    # unchanged — the legacy narrative acknowledgement is preserved below.
+    if session is not None:
+        from src.verticals.automotive_collision.voice_naturalness import (
+            backchannel,
+            is_birchwood_session,
+        )
+
+        if is_birchwood_session(session):
+            return backchannel(session, stage)
     if stage.speech_profile == "narrative":
         return "Got it. I noted that."
     return None
@@ -1366,6 +1386,27 @@ async def _handle_scripted_stage_response(
     stage: ScriptedStageDefinition,
     speech_text: str,
 ):
+    # Aurora naturalness pass (Birchwood only, deterministic): redirect an
+    # off-topic utterance back to the current stage the way a human advisor
+    # would (brief ack -> warm bridge -> re-ask). This YIELDS to safety/transfer
+    # — evaluate_redirect returns None for an injury mention or a transfer
+    # request, and both of those are already handled BEFORE this function in
+    # both transports. On exceeding the per-stage cap it skips the stage WITHOUT
+    # recording, so the required field stays missing and the deterministic rules
+    # return INCOMPLETE_CALLBACK_NEEDED (a human callback). Returns None for
+    # every non-Birchwood session, so healthcare/insurance are untouched. The
+    # rules engine, safety branches, and the orchestrator are unchanged.
+    from src.verticals.automotive_collision.voice_naturalness import (
+        evaluate_redirect,
+    )
+
+    redirect = evaluate_redirect(session, stage, speech_text)
+    if redirect is not None:
+        if redirect.advance:
+            next_stage = _advance_scripted_intake(session, intake, stage)
+            return next_stage, None
+        return stage, redirect.reprompt
+
     success, parsed_value, reprompt = _parse_scripted_answer(
         session,
         stage,
@@ -1918,7 +1959,7 @@ async def handle_gather(
                     next_stage,
                     preamble=stability.join_preamble(
                         injury_advisory,
-                        _scripted_stage_acknowledgement(scripted_stage),
+                        _scripted_stage_acknowledgement(scripted_stage, session),
                     ),
                 )
                 return _respond(twiml)
@@ -2049,14 +2090,13 @@ async def handle_thinking(
 
         task, session_obj = pending
 
-        # Task still running — play more typing sounds and loop back
+        # Task still running — play a hold sound and loop back. For Birchwood
+        # calls this is a short spoken filler (when pre-rendered); every other
+        # call keeps the keyboard-typing bed.
         if not task.done():
-            typing_url = "/api/v1/voice/audio/typing.wav"
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Play>{typing_url}</Play>
-    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
-</Response>"""
+            twiml = _thinking_loop_twiml(
+                session_obj if isinstance(session_obj, OrchestratorSession) else None
+            )
             return Response(content=twiml, media_type="application/xml")
 
         # ── Task complete — deliver the result ────────────────────────────
@@ -2256,6 +2296,42 @@ def _typing_redirect_twiml() -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Play>{typing_url}</Play>
+    <Redirect method="POST">/api/v1/voice/thinking</Redirect>
+</Response>"""
+
+
+def _birchwood_filler_url(session: OrchestratorSession | None) -> str | None:
+    """A pre-rendered Birchwood verbal-filler URL, or None to use typing.wav.
+
+    Birchwood-gated and graceful: returns None for any non-Birchwood session and
+    whenever the fillers haven't been pre-rendered, so healthcare and
+    un-rendered deploys keep the keyboard-typing bed.
+    """
+    if session is None:
+        return None
+    from src.verticals.automotive_collision.voice_naturalness import (
+        is_birchwood_session,
+        select_variant,
+    )
+
+    if not is_birchwood_session(session):
+        return None
+    from src.utils.voice_fillers import available_filler_files
+
+    files = available_filler_files()
+    if not files:
+        return None
+    chosen = select_variant(session, "filler_file", files)
+    return f"/api/v1/voice/audio/birchwood-fillers/{chosen}"
+
+
+def _thinking_loop_twiml(session: OrchestratorSession | None = None) -> str:
+    """The /thinking 'still working' TwiML: a Birchwood verbal filler when
+    available, otherwise the unchanged typing-sound bed."""
+    play_url = _birchwood_filler_url(session) or "/api/v1/voice/audio/typing.wav"
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{play_url}</Play>
     <Redirect method="POST">/api/v1/voice/thinking</Redirect>
 </Response>"""
 

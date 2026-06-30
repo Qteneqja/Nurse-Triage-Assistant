@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 _SENSITIVE_NO_STORE_PREFIXES = ("/api/", "/admin", "/dashboard")
 _CACHE_CONTROL_EXEMPT_PATHS = (
     "/api/v1/voice/audio/typing.wav",
+    "/api/v1/voice/audio/birchwood-fillers/",
     "/dashboard/static/",
 )
 

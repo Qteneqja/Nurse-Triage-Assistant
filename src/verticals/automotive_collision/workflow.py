@@ -118,7 +118,7 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
 
         disposition = final_result.final_disposition
         return WorkflowTurnResult(
-            assistant_text=_spoken_final_message(disposition, final_result),
+            assistant_text=_spoken_final_message(disposition, final_result, session),
             stage="FINAL",
             should_continue=False,
             should_finalize=True,
@@ -277,7 +277,16 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         stage: ScriptedStageDefinition,
     ) -> str | None:
         if stage.field_name != "confirmation_ack":
-            return None
+            # Aurora naturalness: deterministic per-call phrasing variant +
+            # slot-echo for the scripted stages. Returns None when the field has
+            # no pool, so the caller falls back to the static prompt.
+            from src.verticals.automotive_collision.voice_naturalness import (
+                compose_stage_prompt,
+            )
+
+            scripted = session.channel_metadata.get("scripted_intake") or {}
+            fields = scripted.get("fields") or {}
+            return compose_stage_prompt(session, stage, fields)
         intake = _intake_from_session(session)
         parts: list[str] = []
         vehicle = " ".join(
@@ -445,7 +454,12 @@ def _stage(
     required: bool = True,
     sensitivity: str | None = None,
     hints: str | None = None,
-    dynamic_prompt: bool = False,
+    # Aurora naturalness pass: every scripted stage routes through
+    # build_dynamic_prompt so it can receive a per-call phrasing variant +
+    # slot-echo. build_dynamic_prompt returns None when there is no pool for the
+    # field, so the static prompt below is the fallback — behavior is identical
+    # for any field without a pool.
+    dynamic_prompt: bool = True,
 ) -> ScriptedStageDefinition:
     speech_profile, timeout_seconds, speech_timeout = _speech_settings_for_stage(
         field_name=field_name,
@@ -813,6 +827,7 @@ def _summary(record: AutomotiveCollisionRecord) -> str:
 def _spoken_final_message(
     disposition: str,
     final_result: WorkflowFinalResult,
+    session: OrchestratorSession | None = None,
 ) -> str:
     record = final_result.structured_output.get("intake_record", {})
     flags = set(record.get("flags") or [])
@@ -867,7 +882,13 @@ def _spoken_final_message(
             "Thanks - I've noted that correction for your advisor to "
             "double-check. " + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
         )
-    return BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
+    # Aurora naturalness: vary the standard completed-intake close (every
+    # variant preserves the no-promise disclaimer). Falls back to the canonical
+    # close for non-Birchwood sessions or when no session is supplied.
+    from src.verticals.automotive_collision.voice_naturalness import select_close
+
+    varied = select_close(session) if session is not None else ""
+    return varied or BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
 
 
 def _conversation_transcript(session: OrchestratorSession) -> str:

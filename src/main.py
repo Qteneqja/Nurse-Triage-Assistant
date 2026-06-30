@@ -256,6 +256,25 @@ async def serve_typing_sound():
     )
 
 
+@app.get("/api/v1/voice/audio/birchwood-fillers/{filename}")
+async def serve_birchwood_filler(filename: str):
+    """Serve a pre-rendered Birchwood verbal filler (no auth — Twilio <Play>).
+
+    404s when the requested filler is absent (e.g. before the operator pre-render
+    step), so the /thinking loop's typing.wav fallback stays correct.
+    """
+    from src.utils.voice_fillers import get_filler_audio
+
+    audio = get_filler_audio(filename)
+    if audio is None:
+        return Response(status_code=404)
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/ready")
 async def readiness_check():
     """Readiness probe — checks DB connectivity when postgres enabled.

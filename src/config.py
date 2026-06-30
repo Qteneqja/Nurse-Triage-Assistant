@@ -266,14 +266,16 @@ BIRCHWOOD_COLLISION_PHONE_NUMBER: str = os.getenv(
     "+15555550140",
 )
 
-# Which collision workflow the Birchwood number uses. Default = the minimal
-# pure-intake workflow (birchwood_collision_intake_min_v1). Set to
-# "birchwood_collision_intake_v1" to route back to the richer live pilot.
-# Reversible via env, no code change. (A DB phone_numbers route, if present,
-# still takes precedence over this config route — see router.resolve.)
+# Which collision workflow the Birchwood number uses. Default =
+# birchwood_collision_intake_v1 — the live pilot flow (now a minimal pure-intake
+# script) that the "Aurora" voice-naturalness pass targets. Set to
+# "birchwood_collision_intake_min_v1" to route to the separate minimal-only
+# package instead. Reversible via env, no code change. (A DB phone_numbers
+# route, if present, still takes precedence over this config route — see
+# router.resolve.)
 BIRCHWOOD_COLLISION_WORKFLOW_ID: str = os.getenv(
     "BIRCHWOOD_COLLISION_WORKFLOW_ID",
-    "birchwood_collision_intake_min_v1",
+    "birchwood_collision_intake_v1",
 )
 
 # TODO(stakeholder-confirmation): Confirm exact Birchwood collision center
@@ -333,6 +335,11 @@ BIRCHWOOD_AZURE_TTS_STYLE: str = os.getenv(
 BIRCHWOOD_AZURE_TTS_BREAK_MS: int = int(
     os.getenv("BIRCHWOOD_AZURE_TTS_BREAK_MS", "250")
 )
+# Aurora naturalness pass: expressive SSML (varied inline <break>s instead of a
+# single uniform pause) for the Birchwood voice only. Reversible via env — set
+# false to fall back to the uniform-pause rendering. Healthcare is unaffected
+# either way (expressive is gated on the Birchwood TTS profile).
+BIRCHWOOD_TTS_EXPRESSIVE: bool = _env_flag("BIRCHWOOD_TTS_EXPRESSIVE", "true")
 
 # ---------------------------------------------------------------------------
 # Twilio
