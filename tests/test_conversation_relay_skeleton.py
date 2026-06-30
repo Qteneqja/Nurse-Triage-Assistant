@@ -185,6 +185,48 @@ def test_ws_finalize_defers_and_ends_with_dial_intent(monkeypatch, cr_client):
         assert json.loads(end["handoffData"])["action"] == "dial"
 
 
+def test_estimate_settle_seconds(monkeypatch):
+    monkeypatch.setattr(config, "CR_FINAL_SPEECH_SETTLE_MAX_S", 30.0)
+    assert cr._estimate_settle_seconds("") == 0.0  # nothing to play
+    # A short line is floored so it still plays, not zeroed.
+    assert 1.0 < cr._estimate_settle_seconds("Bye now.") <= 2.0
+    # A very long line is bounded by the cap (+ a small buffer).
+    assert 30.0 <= cr._estimate_settle_seconds("x" * 5000) <= 30.4
+    # Cap of 0 disables the wait entirely (the test-suite default).
+    monkeypatch.setattr(config, "CR_FINAL_SPEECH_SETTLE_MAX_S", 0.0)
+    assert cr._estimate_settle_seconds("anything at all") == 0.0
+
+
+def test_ws_finalize_settles_goodbye_before_ending(monkeypatch, cr_client):
+    """The closing message must run through the speech-settle gate before `end`,
+    so ConversationRelay can't cut the goodbye off and drop the call into silence.
+    """
+    monkeypatch.setattr(config, "NURSE_TRANSFER_NUMBER", "+18005551234")
+    seen: list[str] = []
+    # Record what gets settled (returning 0.0 so the test never actually sleeps).
+    monkeypatch.setattr(
+        cr, "_estimate_settle_seconds", lambda text: seen.append(text) or 0.0
+    )
+    fake = _FakeEngine([("Thank you, a nurse will call you back.", True, False)])
+    monkeypatch.setattr(cr, "get_workflow_engine", lambda: fake)
+
+    async def _fake_report(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(
+        "src.twilio.routes._generate_orchestrator_report_background", _fake_report
+    )
+
+    with cr_client.websocket_connect("/api/v1/voice/relay") as ws:
+        spoken = _drive_scripted_intake(ws, "CRWS_SETTLE_1")
+        assert spoken["token"] == "Thank you, a nurse will call you back."
+        end = ws.receive_json()
+        assert end["type"] == "end"
+
+    # The goodbye passed through the settle gate (before the call ended).
+    assert any("nurse will call you back" in text for text in seen)
+
+
 def test_ws_rejects_bad_token(monkeypatch):
     monkeypatch.setattr(config, "CONVERSATION_RELAY_WS_TOKEN", "required-token")
     from src.main import app

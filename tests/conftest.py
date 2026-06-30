@@ -409,6 +409,12 @@ def setup_test_env():
     os.environ["ENVIRONMENT"] = "test"
     os.environ["PROTOCOL_VERSION"] = "v1"
 
+    # Never let the ConversationRelay finalize "let the goodbye play" wait sleep
+    # during tests — the suite would crawl. Real environments default to ~30s.
+    import src.config as config
+
+    config.CR_FINAL_SPEECH_SETTLE_MAX_S = 0.0
+
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
