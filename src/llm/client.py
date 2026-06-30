@@ -151,11 +151,26 @@ class StructuredLLMClient:
         """
         cid = correlation_id or "no-cid"
 
-        # Step 1: raw call with JSON mode enabled for structured output
+        # Step 1: raw call with JSON mode enabled for structured output.
         try:
             raw = await self._raw_call(
                 messages, max_tokens, temperature, json_mode=True
             )
+            # DeepSeek intermittently returns an EMPTY / whitespace-only completion
+            # in JSON mode (it goes away and comes back under load). One empty turn
+            # would otherwise drop the caller, so retry once more in JSON mode, then
+            # once WITHOUT JSON mode — _try_parse still extracts the JSON object from
+            # the text — before giving up.
+            if not raw:
+                logger.warning(f"[LLM:{cid}] Empty response; retrying (json mode)")
+                raw = await self._raw_call(
+                    messages, max_tokens, temperature, json_mode=True
+                )
+            if not raw:
+                logger.warning(f"[LLM:{cid}] Still empty; retrying without json mode")
+                raw = await self._raw_call(
+                    messages, max_tokens, temperature, json_mode=False
+                )
         except Exception as e:
             logger.error(f"[LLM:{cid}] Raw call failed after retries: {e}")
             capture_llm_failure(
@@ -167,7 +182,7 @@ class StructuredLLMClient:
             raise LLMCallError(f"LLM call failed: {e}") from e
 
         if not raw:
-            logger.warning(f"[LLM:{cid}] Empty response from DeepSeek")
+            logger.warning(f"[LLM:{cid}] Empty response from DeepSeek after retries")
             raise LLMCallError("Empty response from LLM")
 
         # Step 2+3: parse and validate
