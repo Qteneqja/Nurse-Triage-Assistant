@@ -140,6 +140,27 @@ def test_safety_net_ignores_non_phone_reply():
     assert "phone" not in _session_fields(s)
 
 
+def test_safety_net_captures_spoken_phone_number():
+    # Phone numbers are routinely transcribed as words, not digits.
+    spoken = "four three one five five five oh one nine nine"
+    s = _session_after_question("And the best callback number to reach you?", spoken)
+    out = BirchwoodTurnOutput(response_to_caller="...", phone=None)
+    ci.capture_missing_identity_fields(s, spoken, out)
+    assert _session_fields(s)["phone"] == "4315550199"
+
+
+def test_safety_net_does_not_log_claim_number_as_phone():
+    # The MPI claim-number question also contains "number" — must NOT be captured.
+    s = _session_after_question(
+        "Do you have your MPI claim number?", "one two three four five six seven eight"
+    )
+    out = BirchwoodTurnOutput(response_to_caller="...", phone=None)
+    ci.capture_missing_identity_fields(
+        s, "one two three four five six seven eight", out
+    )
+    assert "phone" not in _session_fields(s)
+
+
 def test_safety_net_only_fires_for_the_asked_field():
     # Last question was about the vehicle, not the name -> don't capture a name.
     s = _session_after_question("What year is the vehicle?", "Jane Doe")

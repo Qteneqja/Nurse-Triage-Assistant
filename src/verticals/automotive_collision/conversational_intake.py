@@ -287,6 +287,47 @@ def _digit_count(text: str) -> int:
     return len(re.sub(r"\D", "", text or ""))
 
 
+# Spoken digits — phone numbers are very often transcribed as words ("four three
+# one ... oh one") rather than digits, so a raw \d count misses them entirely.
+_NUM_WORDS = {
+    "zero": "0",
+    "oh": "0",
+    "o": "0",
+    "nought": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+}
+
+
+def _spoken_phone_digits(text: str) -> str:
+    """Digit string from a reply, reading both literal digits and number-words."""
+    out: list[str] = []
+    for tok in re.findall(r"[a-z]+|\d", (text or "").lower()):
+        if tok.isdigit():
+            out.append(tok)
+        elif tok in _NUM_WORDS:
+            out.append(_NUM_WORDS[tok])
+    return "".join(out)
+
+
+def _asked_for_phone(last_q: str) -> bool:
+    """Was the assistant's last question asking for the callback phone number?
+
+    Excludes the MPI *claim* / *policy* number question, which also says "number"
+    — we never want to log a claim number as the caller's phone.
+    """
+    if any(k in last_q for k in ("phone", "callback", "call you back", "reach you")):
+        return True
+    return "number" in last_q and "claim" not in last_q and "policy" not in last_q
+
+
 def _last_assistant_question(session: OrchestratorSession) -> str:
     for turn in reversed(session.conversation):
         if turn.role == "assistant" and turn.text:
@@ -321,15 +362,12 @@ def capture_missing_identity_fields(
     ):
         fields["caller_name"] = text
 
-    asked_phone = any(
-        kw in last_q for kw in ("phone", "number", "callback", "call you", "reach you")
-    )
-    if (
-        asked_phone
-        and not str(fields.get("phone") or "").strip()
-        and _digit_count(text) >= 7
-    ):
-        fields["phone"] = text
+    if _asked_for_phone(last_q) and not str(fields.get("phone") or "").strip():
+        digits = _spoken_phone_digits(text)
+        if len(digits) >= 7:
+            # Keep the caller's original when it's already digit-formatted;
+            # otherwise store the digits we reconstructed from their spoken words.
+            fields["phone"] = text if _digit_count(text) >= 7 else digits
 
 
 def is_transfer_request(text: str) -> bool:
