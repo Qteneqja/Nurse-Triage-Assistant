@@ -1,0 +1,11 @@
+{
+  "case_id": "BWC_006_llm_detects_human_request",
+  "description": "Mid-conversation the caller asks to be called back by a person; the LLM flags caller_wants_human and we hand off to a callback with whatever we have.",
+  "turns": [
+    {"caller": "I was in an accident this morning", "llm": {"response_to_caller": "I'm sorry to hear that. Let's get you taken care of - your full name?"}},
+    {"caller": "Actually you know what, can someone just call me back, this is complicated", "llm": {"response_to_caller": "Of course - I'll have a Birchwood advisor call you right back.", "caller_wants_human": true}}
+  ],
+  "expected_disposition": "INCOMPLETE_CALLBACK_NEEDED",
+  "expected_finalized": true,
+  "expected_llm_calls": 2
+}
