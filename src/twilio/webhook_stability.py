@@ -33,9 +33,18 @@ logger = logging.getLogger(__name__)
 _STATE_KEY = "webhook_stability"
 
 # A repeated POST with identical input inside this window is treated as a
-# Twilio redelivery, not a caller repeating themselves (the assistant speaks
-# between caller turns, so legitimate repeats arrive much later).
-DUPLICATE_WINDOW_SECONDS = 15
+# Twilio redelivery, not a caller repeating themselves. Kept TIGHT on purpose:
+# a legitimate identical answer to the NEXT question ("Yes." to two adjacent
+# yes/no stages) needs at least the next prompt's audio + the caller's answer
+# + STT finalization (~5s+), while a true network redelivery arrives within a
+# couple of seconds. At 15s the replay was swallowing real answers.
+DUPLICATE_WINDOW_SECONDS = 5
+
+# Replay only applies to answers long enough that an identical legitimate
+# re-answer is implausible. Short tokens ("Yes.", "No.") fall through to
+# normal processing — worst case for a genuine redelivery is one benign
+# reprompt, versus the replay path eating a real answer.
+DUPLICATE_MIN_SPEECH_CHARS = 12
 
 # Consecutive empty Gather results before the call is closed fail-safe.
 MAX_CONSECUTIVE_SILENCE = 3
@@ -122,7 +131,7 @@ def duplicate_gather_replay(
     previous prompt — state is never mutated twice.
     """
     speech = (speech_result or "").strip()
-    if not speech:
+    if not speech or len(speech) < DUPLICATE_MIN_SPEECH_CHARS:
         return None
     last = _state(session).get("last_gather") or {}
     if last.get("fingerprint") != fingerprint or not last.get("twiml"):
@@ -152,6 +161,13 @@ def remember_gather_twiml(session: OrchestratorSession, twiml: str) -> None:
     last = _state(session).setdefault("last_gather", {})
     last["twiml"] = twiml
     last.setdefault("at", _now_iso())
+
+
+def last_gather_twiml(session: OrchestratorSession) -> str | None:
+    """The most recently remembered /gather response TwiML, if any."""
+    last = _state(session).get("last_gather") or {}
+    twiml = last.get("twiml")
+    return str(twiml) if twiml else None
 
 
 def remember_incoming_twiml(session: OrchestratorSession, twiml: str) -> None:
@@ -344,6 +360,18 @@ def injury_advisory_already_given(session: OrchestratorSession) -> bool:
 
 def mark_injury_advisory_given(session: OrchestratorSession) -> None:
     _state(session)["injury_advisory_given"] = True
+
+
+def unmark_injury_advisory(session: OrchestratorSession) -> None:
+    """Re-arm the advisory when it was computed but never actually spoken.
+
+    ``injury_advisory_if_needed`` marks the advisory given at COMPUTE time; if
+    the turn then takes a path where the composed prompt is never played (the
+    scripted intake just completed and falls through to the dynamic finalize),
+    the mark would silently swallow the advisory everywhere downstream.
+    Un-marking lets the workflow safety overlay / delivery path speak it.
+    """
+    _state(session).pop("injury_advisory_given", None)
 
 
 def join_preamble(*parts: str | None) -> str | None:

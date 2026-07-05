@@ -37,6 +37,12 @@ _SAS_REFRESH_THRESHOLD_SECONDS = 3600
 # Reusable async client (created lazily)
 _async_client: Optional[httpx.AsyncClient] = None
 
+# Reusable blob service client + one-time container check (created lazily in
+# the upload thread). Rebuilding the client and re-checking container
+# existence added ~0.2-0.5s to every cache-miss synthesis on the caller path.
+_blob_service = None
+_blob_container_ready = False
+
 
 async def warm_up() -> None:
     """Pre-warm the TTS pipeline so the first real call is fast.
@@ -267,15 +273,20 @@ def _upload_to_blob(audio_bytes: bytes, blob_name: str) -> Optional[str]:
     )
     from datetime import datetime, timedelta, timezone
 
-    blob_service = BlobServiceClient.from_connection_string(
-        AZURE_STORAGE_CONNECTION_STRING
-    )
+    global _blob_service, _blob_container_ready
+    if _blob_service is None:
+        _blob_service = BlobServiceClient.from_connection_string(
+            AZURE_STORAGE_CONNECTION_STRING
+        )
+    blob_service = _blob_service
     container_name = "tts-audio"
     container_client = blob_service.get_container_client(container_name)
 
-    if not container_client.exists():
-        container_client.create_container()
-        logger.info(f"[AzureTTS] Created blob container '{container_name}'")
+    if not _blob_container_ready:
+        if not container_client.exists():
+            container_client.create_container()
+            logger.info(f"[AzureTTS] Created blob container '{container_name}'")
+        _blob_container_ready = True
 
     container_client.upload_blob(
         name=blob_name,
@@ -297,6 +308,36 @@ def _upload_to_blob(audio_bytes: bytes, blob_name: str) -> Optional[str]:
     url = f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
     expiry_ts = time.time() + (_SAS_LIFETIME_HOURS * 3600)
     return url, expiry_ts
+
+
+def get_cached_tts_url(
+    text: str,
+    voice: str,
+    *,
+    rate: str = "-3%",
+    pitch: str = "+2%",
+    style: str | None = None,
+    break_ms: int = 250,
+    expressive: bool = False,
+) -> Optional[str]:
+    """Return the cached SAS URL for this exact speech profile, or None.
+
+    Pure cache probe — never synthesizes. Lets the voice layer decide whether
+    a reply can be spoken instantly (cache hit) or needs a hold filler while
+    text_to_speech_url() does the synth + upload.
+    """
+    from src.config import AZURE_SPEECH_KEY
+
+    if not AZURE_SPEECH_KEY:
+        return None
+    cache_k = _cache_key(text, voice, rate, pitch, style, break_ms, expressive)
+    entry = _audio_cache.get(cache_k)
+    if not entry:
+        return None
+    url, expiry_ts = entry
+    if time.time() < (expiry_ts - _SAS_REFRESH_THRESHOLD_SECONDS):
+        return url
+    return None
 
 
 async def text_to_speech_url(

@@ -534,6 +534,131 @@ def evaluate_redirect(
     return RedirectDecision(reprompt=f"{ack} {bridge} {reask}", advance=False)
 
 
+# ---------------------------------------------------------------------------
+# De-stutter helpers — deterministic removal of back-to-back near-duplicate
+# speech ("completes its sentence then says virtually the same thing again in
+# slightly different words"). REMOVAL-ONLY: these never introduce new content,
+# so applying them to already-gated text cannot add anything the gate didn't
+# approve. Sentences carrying safety content (911/injury/transfer wording) are
+# never dropped — when in doubt, both sentences are kept.
+# ---------------------------------------------------------------------------
+
+# A sentence mentioning any of these is safety-relevant and is never collapsed.
+_SAFETY_SENTENCE_RE = re.compile(
+    r"9\s*[-\s]?1\s*[-\s]?1|\bnine[-\s]one[-\s]one\b|emergen|injur|hurt\b|"
+    r"ambulance|hospital|medical|transfer",
+    re.IGNORECASE,
+)
+
+# Leading backchannel tokens stripped before comparing sentences, so
+# "Okay, I've noted that." vs "Got it - I've noted that." compare on substance.
+_BACKCHANNEL_PREFIX_RE = re.compile(
+    r"^(?:okay|ok|alright|all right|got it|perfect|great|sure|thanks|thank you|"
+    r"no worries|of course)\b[\s,.!—-]*",
+    re.IGNORECASE,
+)
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+# Similarity at or above these thresholds (after normalization) counts as
+# "the same thing said twice". The char ratio catches lightly reworded
+# repeats; the content-token overlap catches word-REORDERED paraphrases
+# ("I've noted the bumper damage" / "the damage to the bumper is noted"),
+# which char-level matching misses.
+_PARAPHRASE_RATIO = 0.82
+_PARAPHRASE_TOKEN_OVERLAP = 0.8
+
+# Function words ignored when comparing sentence CONTENT. Deliberately small
+# and generic — content words (nouns/verbs like "noted", "bumper", "phone")
+# always survive, so two sentences only match when they say the same thing.
+_DESTUTTER_STOPWORDS = frozenset(
+    "i ive im ve am have has had the a an to for of and or so that this it its "
+    "is are was were be been being you your yours we our ours me my with just "
+    "now then there here on in at as do does did can could will would "
+    "let lets s t d ll re".split()
+)
+
+
+def _normalize_sentence(sentence: str) -> str:
+    text = _BACKCHANNEL_PREFIX_RE.sub("", sentence.strip())
+    text = re.sub(r"[^a-z0-9\s]", " ", text.lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _content_tokens(normalized: str) -> frozenset[str]:
+    return frozenset(
+        tok for tok in normalized.split() if tok not in _DESTUTTER_STOPWORDS
+    )
+
+
+def _is_paraphrase_pair(prev_norm: str, cur_norm: str) -> bool:
+    from difflib import SequenceMatcher
+
+    if not prev_norm and not cur_norm:
+        # Two pure backchannels back to back ("Okay. Got it.") — a stutter.
+        return True
+    if not prev_norm or not cur_norm:
+        return False
+    if SequenceMatcher(None, prev_norm, cur_norm).ratio() >= _PARAPHRASE_RATIO:
+        return True
+    prev_tokens = _content_tokens(prev_norm)
+    cur_tokens = _content_tokens(cur_norm)
+    if len(prev_tokens) < 2 or len(cur_tokens) < 2:
+        return False
+    overlap = len(prev_tokens & cur_tokens) / len(prev_tokens | cur_tokens)
+    return overlap >= _PARAPHRASE_TOKEN_OVERLAP
+
+
+def collapse_adjacent_paraphrases(text: str) -> str:
+    """Drop a sentence that near-duplicates the one right before it.
+
+    Keeps the LATER sentence (the more tailored one, in practice). Safety-
+    relevant sentences are never dropped. Deterministic, removal-only — safe
+    to apply to gated LLM output.
+    """
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return text
+    sentences = _SENTENCE_SPLIT_RE.split(cleaned)
+    if len(sentences) < 2:
+        return cleaned
+
+    kept: list[str] = [sentences[0]]
+    for current in sentences[1:]:
+        previous = kept[-1]
+        if _SAFETY_SENTENCE_RE.search(previous) or _SAFETY_SENTENCE_RE.search(current):
+            kept.append(current)
+            continue
+        if _is_paraphrase_pair(
+            _normalize_sentence(previous), _normalize_sentence(current)
+        ):
+            # Same thought twice — keep the later, more specific version.
+            kept[-1] = current
+            continue
+        kept.append(current)
+    return " ".join(kept)
+
+
+_LEADING_STUTTER_RE = re.compile(
+    r"^(?P<word>[A-Za-z][A-Za-z']{1,11})[.,!]\s+(?P<second>(?P=word))\b",
+    re.IGNORECASE,
+)
+
+
+def dedupe_leading_stutter(text: str) -> str:
+    """Collapse an accidental doubled opener: 'Okay. Okay — ...' -> 'Okay — ...'.
+
+    Happens when an ack backchannel and the once-per-call disfluency opener are
+    drawn from different pools and collide on the same word.
+    """
+    if not text:
+        return text
+    match = _LEADING_STUTTER_RE.match(text)
+    if not match:
+        return text
+    return (match.group("second") + text[match.end() :]).lstrip()
+
+
 def _is_transfer_phrase(text: str) -> bool:
     normalized = text.strip().lower()
     if normalized == "transfer" or normalized.startswith("transfer "):

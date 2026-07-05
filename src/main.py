@@ -266,6 +266,20 @@ async def serve_typing_sound():
     )
 
 
+@app.get("/api/v1/voice/audio/typing-short.wav")
+async def serve_short_typing_sound():
+    """Short (~1.6s) typing bed for the hold loop's later cycles (no auth —
+    fetched by Twilio <Play>). Shorter cycles deliver a finished reply sooner
+    because <Redirect> back to /thinking only fires when the <Play> ends."""
+    from src.utils.typing_sound import get_short_typing_sound_wav
+
+    return Response(
+        content=get_short_typing_sound_wav(),
+        media_type="audio/wav",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/api/v1/voice/audio/birchwood-fillers/{filename}")
 async def serve_birchwood_filler(filename: str):
     """Serve a pre-rendered Birchwood verbal filler (no auth — Twilio <Play>).

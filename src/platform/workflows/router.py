@@ -131,6 +131,15 @@ class WorkflowEngine:
 
 PLATFORM_INJURY_RULE_ID = "platform:injury_safety_branch"
 
+# An explicit tell-the-caller-to-call-911 directive in any spelling the LLM
+# actually produces ("911", "9-1-1", "9 1 1", "nine one one"). Used ONLY to
+# avoid speaking the canned advisory in the same utterance twice — the record
+# flags and rule events above are set unconditionally.
+_EMERGENCY_DIRECTIVE_RE = re.compile(
+    r"9\s*[-\s]?\s*1\s*[-\s]?\s*1|\bnine[-\s]one[-\s]one\b",
+    re.IGNORECASE,
+)
+
 
 def _caller_text_for_safety_scan(
     workflow_input_text: str,
@@ -187,15 +196,23 @@ def _enforce_turn_safety_overlay(
         ]
     # Speak the advisory at most once per call: the voice channel marks
     # webhook_stability.injury_advisory_given when it has already been said.
+    # The record flags / rule events above are set UNCONDITIONALLY — this
+    # block only decides whether the canned sentence is SPOKEN. If this turn's
+    # reply already tells the caller to call 911 (the LLM writes "911" or
+    # "9-1-1", not the TTS-spaced "9 1 1" the old guard looked for),
+    # prepending the canned advisory would make the caller hear the same
+    # instruction twice in one utterance with slightly different wording.
     stability_state = (result.updated_state.get("channel_metadata") or {}).setdefault(
         "webhook_stability", {}
     )
-    if (
-        not stability_state.get("injury_advisory_given")
-        and "9 1 1" not in result.assistant_text
-    ):
-        result.assistant_text = f"{INJURY_SAFETY_ADVISORY} {result.assistant_text}"
-        stability_state["injury_advisory_given"] = True
+    if not stability_state.get("injury_advisory_given"):
+        if _EMERGENCY_DIRECTIVE_RE.search(result.assistant_text or ""):
+            # The emergency directive was delivered this turn — mark it given
+            # so a later turn doesn't re-deliver it as a paraphrase.
+            stability_state["injury_advisory_given"] = True
+        else:
+            result.assistant_text = f"{INJURY_SAFETY_ADVISORY} {result.assistant_text}"
+            stability_state["injury_advisory_given"] = True
     return result
 
 

@@ -316,6 +316,15 @@ BIRCHWOOD_COLLISION_LUXURY_BRANDS: str = os.getenv(
 BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS: int = int(
     os.getenv("BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS", "5")
 )
+# Twilio <Gather speechTimeout> for Birchwood short-answer stages. "3" waits a
+# fixed 3s of silence after the caller stops speaking (forgiving for slow /
+# elderly speakers, but 3s of guaranteed dead air on every scripted turn);
+# "auto" lets Twilio end-point adaptively (snappier, may clip long mid-answer
+# pauses). Env-tunable so the operator can trial "auto" on the pilot line
+# without a deploy. Default unchanged ("3").
+BIRCHWOOD_SHORT_FIELD_SPEECH_TIMEOUT: str = (
+    os.getenv("BIRCHWOOD_SHORT_FIELD_SPEECH_TIMEOUT", "3").strip() or "3"
+)
 BIRCHWOOD_NARRATIVE_TIMEOUT_SECONDS: int = int(
     os.getenv("BIRCHWOOD_NARRATIVE_TIMEOUT_SECONDS", "15")
 )

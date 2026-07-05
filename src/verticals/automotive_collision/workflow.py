@@ -297,6 +297,17 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
 
         try:
             output = await run_turn(self._get_guarded(), session, user_text)
+            # De-stutter (removal-only, post-gate): the model occasionally says
+            # the same thought twice in one reply with slightly different
+            # wording. Collapsing keeps the later (more tailored) sentence and
+            # never drops safety-relevant wording.
+            from src.verticals.automotive_collision.voice_naturalness import (
+                collapse_adjacent_paraphrases,
+            )
+
+            output.response_to_caller = collapse_adjacent_paraphrases(
+                output.response_to_caller
+            )
             merge_extracted_fields(session, output)
             # Safety net: if the model just asked for the name/phone and the caller
             # answered but the model returned it empty, capture the caller's words
@@ -861,7 +872,7 @@ def _speech_settings_for_stage(field_name: str) -> tuple[str, int, str]:
     return (
         "short_field",
         config.BIRCHWOOD_SHORT_FIELD_TIMEOUT_SECONDS,
-        "3",
+        config.BIRCHWOOD_SHORT_FIELD_SPEECH_TIMEOUT,
     )
 
 
