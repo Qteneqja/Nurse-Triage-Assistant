@@ -14,12 +14,16 @@ import random
 import struct
 import wave
 
-# Pre-generated audio bytes (lazily initialized)
-_typing_wav_bytes: bytes | None = None
+# Pre-generated audio bytes (lazily initialized, keyed by duration)
+_typing_wav_cache: dict[float, bytes] = {}
 
 # Audio parameters
 _SAMPLE_RATE = 8000  # 8kHz — Twilio telephony standard
 _DURATION_S = 3.5  # seconds per loop iteration
+# Short bed for the hold loop's later cycles: the <Redirect> back to /thinking
+# only fires when the <Play> finishes, so bed length sets how quickly a
+# finished LLM turn can actually be delivered to the caller.
+_SHORT_DURATION_S = 1.6
 _CHANNELS = 1
 _SAMPLE_WIDTH = 2  # 16-bit
 
@@ -41,12 +45,12 @@ def _generate_click(length: int, amplitude: float) -> list[int]:
     return samples
 
 
-def _generate_typing_wav() -> bytes:
+def _generate_typing_wav(duration_s: float = _DURATION_S) -> bytes:
     """Generate a WAV file with faint keyboard typing sounds.
 
     Returns raw WAV bytes suitable for Twilio <Play>.
     """
-    total_samples = int(_DURATION_S * _SAMPLE_RATE)
+    total_samples = int(duration_s * _SAMPLE_RATE)
     audio: list[int] = [0] * total_samples
 
     # Seed for reproducibility across restarts (same sound each time)
@@ -85,7 +89,17 @@ def _generate_typing_wav() -> bytes:
 
 def get_typing_sound_wav() -> bytes:
     """Get the typing sound WAV bytes (cached after first generation)."""
-    global _typing_wav_bytes
-    if _typing_wav_bytes is None:
-        _typing_wav_bytes = _generate_typing_wav()
-    return _typing_wav_bytes
+    return _get_typing_wav(_DURATION_S)
+
+
+def get_short_typing_sound_wav() -> bytes:
+    """Short (~1.6s) typing bed used by the hold loop's later cycles."""
+    return _get_typing_wav(_SHORT_DURATION_S)
+
+
+def _get_typing_wav(duration_s: float) -> bytes:
+    cached = _typing_wav_cache.get(duration_s)
+    if cached is None:
+        cached = _generate_typing_wav(duration_s)
+        _typing_wav_cache[duration_s] = cached
+    return cached

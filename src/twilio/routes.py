@@ -459,9 +459,23 @@ _TTS_VOICE = "Polly.Ruth-Neural"
 # ---------------------------------------------------------------------------
 # Pending orchestrator tasks — background LLM processing with typing sounds
 # ---------------------------------------------------------------------------
-# Keyed by CallSid → asyncio.Task that resolves to (result_dict, session).
+# Keyed by CallSid → asyncio.Task that resolves to (result_dict, session) or,
+# for a background TwiML build (Birchwood scripted hold), to
+# {"action": "twiml", "twiml": "..."}.
 # Single-worker in-memory storage (same pattern as session store).
 _pending_turns: dict[str, tuple[asyncio.Task, object]] = {}
+
+# Hold-loop cycles per CallSid for the CURRENT background wait. Cycle 0 plays
+# the one verbal filler; later cycles play a quiet typing bed. Playing a
+# DIFFERENT spoken filler every poll ("Okay, one sec." … "Just a moment." …
+# "Bear with me a moment.") made the agent audibly repeat the same thought in
+# slightly different words on every slow turn.
+_hold_cycles: dict[str, int] = {}
+
+# Fail-closed cap on the /thinking poll loop (~2s per cycle → ~60s of hold).
+# Without it a hung background task looped filler audio until the caller gave
+# up. On the cap the task is cancelled and the call fails closed.
+_MAX_HOLD_CYCLES = 30
 
 
 def _optional_tts_style(value: object) -> str | None:
@@ -549,6 +563,70 @@ async def _tts_audio_url(
         ),
         expressive=expressive,
     )
+
+
+def _tts_is_instant(text: str, session: OrchestratorSession | None) -> bool:
+    """True when speaking ``text`` needs no fresh Azure synthesis.
+
+    Either the exact speech profile is already in the TTS cache (SAS URL
+    reusable) or Azure TTS is unconfigured (the Polly <Say> fallback renders
+    with no synthesis round-trip).
+    """
+    if not getattr(config, "AZURE_SPEECH_KEY", ""):
+        return True
+    from src.utils.azure_tts import get_cached_tts_url
+
+    settings = _get_tts_settings_for_session(session)
+    expressive = settings.get("profile") == "birchwood_collision" and bool(
+        getattr(config, "BIRCHWOOD_TTS_EXPRESSIVE", True)
+    )
+    return (
+        get_cached_tts_url(
+            text,
+            str(settings["voice"]),
+            rate=str(settings["rate"]),
+            pitch=str(settings["pitch"]),
+            style=(str(settings["style"]) if settings["style"] is not None else None),
+            break_ms=int(settings["break_ms"]),
+            expressive=expressive,
+        )
+        is not None
+    )
+
+
+def _scripted_hold_needed(session: OrchestratorSession | None, text: str) -> bool:
+    """Hold with filler audio only when a Birchwood scripted reply needs a
+    fresh synth. Healthcare and all other verticals keep the inline path."""
+    from src.verticals.automotive_collision.voice_naturalness import (
+        is_birchwood_session,
+    )
+
+    if session is None or not is_birchwood_session(session):
+        return False
+    return not _tts_is_instant(text, session)
+
+
+def _begin_background_twiml(
+    call_sid: str,
+    session: OrchestratorSession,
+    twiml_coro,
+) -> str:
+    """Build a spoken response in the background and hold with filler audio.
+
+    Used for Birchwood scripted turns whose reply audio is not yet cached: the
+    Azure synth + blob upload run behind the hold loop instead of as dead air
+    inside the webhook. The task resolves to {"action": "twiml", ...}, which
+    /thinking returns verbatim (and remembers for idempotent replay).
+    """
+
+    async def _build() -> dict:
+        return {"action": "twiml", "twiml": await twiml_coro}
+
+    _hold_cycles.pop(call_sid, None)
+    task = asyncio.create_task(_build())
+    _pending_turns[call_sid] = (task, session)
+    logger.info("[TWILIO] Holding for background TTS build on %s", call_sid)
+    return _typing_redirect_twiml(session, call_sid)
 
 
 def _record_scripted_prompt_metadata(
@@ -1421,7 +1499,12 @@ async def _handle_scripted_stage_response(
                 stage.stage_id,
                 attempts,
             )
-            return stage, reprompt or _stage_prompt(stage)
+            # Re-ask with the SAME wording the caller first heard (the composed
+            # prompt is memoized per stage). Falling back to the static
+            # canonical prompt here made the bot appear to repeat itself in
+            # slightly different words when the first ask used an Aurora
+            # phrasing variant.
+            return stage, reprompt or _stage_prompt_for_session(session, stage)
         logger.warning(
             "[TWILIO] Scripted intake accepted stage %s after %s failed validations: %s",
             stage.stage_id,
@@ -1443,25 +1526,89 @@ async def _prompt_for_scripted_stage(stage: ScriptedStageDefinition) -> str:
     return await _prompt_for_scripted_stage_with_session(None, stage)
 
 
-async def _prompt_for_scripted_stage_with_session(
+def _compose_scripted_prompt_text(
     session: OrchestratorSession | None,
     stage: ScriptedStageDefinition,
     *,
     preamble: str | None = None,
 ) -> str:
+    """The full spoken text for a scripted stage turn (preamble + prompt).
+
+    Factored out of the TwiML builder so the caller can probe the TTS cache
+    with the exact text and decide whether to hold with filler audio.
+    """
     if session is not None:
         _record_scripted_prompt_metadata(session, stage)
     prompt = _stage_prompt_for_session(session, stage)
     if preamble:
         prompt = f"{preamble} {prompt}"
+    if session is not None:
+        from src.verticals.automotive_collision.voice_naturalness import (
+            dedupe_leading_stutter,
+            is_birchwood_session,
+        )
+
+        if is_birchwood_session(session):
+            # Ack backchannel and the once-per-call disfluency opener are
+            # drawn from independent pools and can collide on the same word
+            # ("Okay. Okay — ..."). Collapse the stutter; healthcare wording
+            # is untouched.
+            prompt = dedupe_leading_stutter(prompt)
+    return prompt
+
+
+async def _prompt_for_scripted_stage_with_session(
+    session: OrchestratorSession | None,
+    stage: ScriptedStageDefinition,
+    *,
+    preamble: str | None = None,
+    prompt_text: str | None = None,
+) -> str:
+    if prompt_text is None:
+        prompt_text = _compose_scripted_prompt_text(session, stage, preamble=preamble)
     return await generate_twiml_gather(
-        prompt,
+        prompt_text,
         "/api/v1/voice/gather",
         timeout=stage.timeout_seconds,
         hints=stage.hints,
         speech_timeout=stage.speech_timeout,
         session=session,
     )
+
+
+def _split_trailing_question(text: str) -> tuple[str, str]:
+    """Split ``text`` into (preamble, final question sentence).
+
+    Used for an intro that ends with the opening question: the preamble
+    (disclosure + recording clause) plays non-interruptible, and only the
+    question sits inside the <Gather>. Returns ("", text) when there is no
+    trailing question to split off.
+    """
+    cleaned = (text or "").strip()
+    match = re.search(r"(?s)^(.*[.!])\s+([^.!?]+\?)\s*$", cleaned)
+    if not match:
+        return "", cleaned
+    return match.group(1).strip(), match.group(2).strip()
+
+
+async def _generate_intro_gather_twiml(
+    session: OrchestratorSession,
+    preamble_text: str,
+    question_text: str,
+    action_url: str,
+) -> str:
+    """Non-interruptible intro preamble followed by a <Gather> question."""
+    gather_twiml = await generate_twiml_gather(
+        question_text,
+        action_url,
+        timeout=8,
+        speech_timeout="auto",
+        session=session,
+    )
+    if not preamble_text:
+        return gather_twiml
+    preamble_tag = await generate_twiml_say(preamble_text, session)
+    return gather_twiml.replace("<Response>", f"<Response>\n    {preamble_tag}", 1)
 
 
 @router.post("/incoming")
@@ -1563,17 +1710,27 @@ async def handle_incoming_call(
         first_stage = (
             _initialize_scripted_intake(session, intake) if intake is not None else None
         )
-        first_question = (
-            _stage_prompt(first_stage)
-            if first_stage is not None
-            else "How can I help you today?"
-        )
-
         # Generate greeting — split into non-interruptible preamble +
         # Gather for the name question.  This prevents barge-in from
         # cutting off the legal disclaimer and ensures Jenny is used
         # (long combined text was timing out TTS on cold start).
         greeting = intake.intro_text if intake and intake.intro_text else ""
+
+        intro_preamble: str | None = None
+        intro_question: str | None = None
+        if first_stage is not None:
+            first_question = _stage_prompt(first_stage)
+        elif greeting:
+            # Conversational tier (intro text, no scripted stages): the intro
+            # carries the disclosure, the recording clause, AND the opening
+            # question — it IS this turn's spoken content. It used to be
+            # logged to the transcript but never rendered into TwiML, so
+            # callers heard only the generic fallback question.
+            intro_preamble, intro_question = _split_trailing_question(greeting)
+            first_question = greeting
+            greeting = ""
+        else:
+            first_question = "How can I help you today?"
 
         # Store greeting in conversation
         if greeting:
@@ -1597,6 +1754,13 @@ async def handle_incoming_call(
                 session,
                 greeting,
                 first_stage,
+                "/api/v1/voice/gather",
+            )
+        elif intro_question is not None:
+            twiml = await _generate_intro_gather_twiml(
+                session,
+                intro_preamble or "",
+                intro_question,
                 "/api/v1/voice/gather",
             )
         else:
@@ -1939,22 +2103,29 @@ async def handle_gather(
                 injury_advisory = stability.injury_advisory_for_recorded_state(session)
             if reprompt:
                 repo.persist_session(session)
-                twiml = await generate_twiml_gather(
-                    stability.join_preamble(injury_advisory, reprompt),
+                reprompt_text = stability.join_preamble(injury_advisory, reprompt)
+                reprompt_coro = generate_twiml_gather(
+                    reprompt_text,
                     "/api/v1/voice/gather",
                     timeout=scripted_stage.timeout_seconds,
                     hints=scripted_stage.hints,
                     speech_timeout=scripted_stage.speech_timeout,
                     session=session,
                 )
-                return _respond(twiml)
+                # Birchwood: when the reply audio needs a fresh synth, build it
+                # behind the hold loop instead of as dead air in the webhook.
+                if _scripted_hold_needed(session, reprompt_text):
+                    return _respond(
+                        _begin_background_twiml(CallSid, session, reprompt_coro)
+                    )
+                return _respond(await reprompt_coro)
             if next_stage is not None:
                 next_question = _stage_prompt_for_session(session, next_stage)
                 session.conversation.append(
                     ConversationTurn(role="assistant", text=next_question)
                 )
                 repo.persist_session(session)
-                twiml = await _prompt_for_scripted_stage_with_session(
+                prompt_text = _compose_scripted_prompt_text(
                     session,
                     next_stage,
                     preamble=stability.join_preamble(
@@ -1962,7 +2133,18 @@ async def handle_gather(
                         _scripted_stage_acknowledgement(scripted_stage, session),
                     ),
                 )
-                return _respond(twiml)
+                prompt_coro = _prompt_for_scripted_stage_with_session(
+                    session,
+                    next_stage,
+                    prompt_text=prompt_text,
+                )
+                # Birchwood: cover the TTS synth with the hold loop; cached
+                # audio (and every non-Birchwood vertical) responds inline.
+                if _scripted_hold_needed(session, prompt_text):
+                    return _respond(
+                        _begin_background_twiml(CallSid, session, prompt_coro)
+                    )
+                return _respond(await prompt_coro)
 
             logger.info(f"[TWILIO] Session {session_id} entering DYNAMIC stage")
             repo.persist_session(session)
@@ -1983,6 +2165,15 @@ async def handle_gather(
                     speech_timeout="auto",
                 )
                 return _respond(twiml)
+
+            if injury_advisory is not None:
+                # The advisory was computed for a scripted prompt that will
+                # never be spoken — the intake just completed and this turn
+                # falls through to the dynamic finalize. Re-arm it so the
+                # platform safety overlay speaks it on the finalize message
+                # instead of silently dropping it (Invariant 3).
+                stability.unmark_injury_advisory(session)
+                repo.persist_session(session)
 
         # DYNAMIC stage — multi-agent orchestrator
         if session.channel_metadata.get("stage") == STAGE_DYNAMIC:
@@ -2018,6 +2209,18 @@ async def handle_gather(
                 )
                 r = get_session_repository()
                 r.persist_session(updated_session)
+                # Pre-warm the reply audio while the hold loop is still
+                # covering the wait: the same text+voice profile hits the TTS
+                # cache when /thinking builds the final TwiML, removing the
+                # 1-4s of dead air that used to follow the last hold sound.
+                try:
+                    if res.get("message"):
+                        await _tts_audio_url(res["message"], updated_session)
+                except Exception:
+                    logger.warning(
+                        "[TWILIO] Reply TTS pre-warm failed (non-fatal)",
+                        exc_info=True,
+                    )
                 return res, updated_session
 
             # A turn already in flight for this call means this POST is a
@@ -2030,18 +2233,21 @@ async def handle_gather(
                     "flight — rejoining the wait loop",
                     CallSid,
                 )
+                # Continuation of the SAME wait — keep the cycle counter so
+                # the verbal filler is not spoken a second time.
                 return Response(
-                    content=_typing_redirect_twiml(session),
+                    content=_typing_redirect_twiml(session, CallSid),
                     media_type="application/xml",
                 )
 
+            _hold_cycles.pop(CallSid, None)  # fresh wait → one verbal filler
             task = asyncio.create_task(_run_turn(session, speech_text))
             _pending_turns[CallSid] = (task, session)
             logger.info(f"[TWILIO] Started background orchestrator for {CallSid}")
 
             # Return the hold sound (Birchwood verbal filler when available) →
             # poll via /thinking
-            return _respond(_typing_redirect_twiml(session))
+            return _respond(_typing_redirect_twiml(session, CallSid))
 
         # Should not reach here
         logger.error(f"[TWILIO] Unexpected state for session {session_id}")
@@ -2081,6 +2287,21 @@ async def handle_thinking(
             logger.warning(
                 f"[TWILIO] /thinking called with no pending task for {CallSid}"
             )
+            # Prefer replaying the last delivered response: asking the caller
+            # to repeat after a lost in-memory task (restart, webhook
+            # redelivery) produced a generic apology followed by a
+            # near-identical tailored answer — the reported double-speak.
+            try:
+                sess = get_session_repository().load_session_by_call(CallSid)
+                if sess is not None:
+                    last_twiml = stability.last_gather_twiml(sess)
+                    if last_twiml and "/api/v1/voice/thinking" not in last_twiml:
+                        logger.info("[TWILIO] Replaying last response for %s", CallSid)
+                        return Response(
+                            content=last_twiml, media_type="application/xml"
+                        )
+            except Exception:
+                logger.warning("[TWILIO] /thinking replay lookup failed", exc_info=True)
             twiml = await generate_twiml_gather(
                 "Sorry about the wait. Can you repeat that for me?",
                 "/api/v1/voice/gather",
@@ -2091,17 +2312,41 @@ async def handle_thinking(
 
         task, session_obj = pending
 
-        # Task still running — play a hold sound and loop back. For Birchwood
-        # calls this is a short spoken filler (when pre-rendered); every other
-        # call keeps the keyboard-typing bed.
+        # Task still running — play a hold sound and loop back. Cycle 0 of a
+        # wait plays the one Birchwood verbal filler (when pre-rendered);
+        # later cycles play the quiet typing bed. A hung task fails closed at
+        # the cycle cap instead of looping hold audio forever.
         if not task.done():
+            if _hold_cycles.get(CallSid, 0) >= _MAX_HOLD_CYCLES:
+                logger.error(
+                    "[TWILIO] Hold-loop cap reached for %s — failing closed",
+                    CallSid,
+                )
+                task.cancel()
+                _pending_turns.pop(CallSid, None)
+                _hold_cycles.pop(CallSid, None)
+                if not _is_healthcare_session(
+                    session_obj
+                    if isinstance(session_obj, OrchestratorSession)
+                    else None
+                ):
+                    return await _fail_closed_response(
+                        session_obj, reason="hold_loop_cap"
+                    )
+                twiml = await generate_twiml_say_and_hangup(
+                    "I'm sorry, something went wrong. "
+                    "Please call back and we'll help you."
+                )
+                return Response(content=twiml, media_type="application/xml")
             twiml = _thinking_loop_twiml(
-                session_obj if isinstance(session_obj, OrchestratorSession) else None
+                session_obj if isinstance(session_obj, OrchestratorSession) else None,
+                CallSid,
             )
             return Response(content=twiml, media_type="application/xml")
 
         # ── Task complete — deliver the result ────────────────────────────
         del _pending_turns[CallSid]
+        _hold_cycles.pop(CallSid, None)
 
         # Check for exceptions — fail closed either way. Healthcare keeps its
         # original wording; non-clinical verticals promise a callback and the
@@ -2136,6 +2381,23 @@ async def handle_thinking(
             return Response(content=twiml, media_type="application/xml")
 
         task_result = task.result()
+
+        # Background TwiML build (Birchwood scripted hold): the response was
+        # fully composed and synthesized behind the hold loop — return it and
+        # remember it so a redelivered webhook replays the real response.
+        if isinstance(task_result, dict) and task_result.get("action") == "twiml":
+            twiml = str(task_result["twiml"])
+            if isinstance(session_obj, OrchestratorSession):
+                try:
+                    stability.remember_gather_twiml(session_obj, twiml)
+                    get_session_repository().persist_session(session_obj)
+                except Exception:
+                    logger.warning(
+                        "[TWILIO] Could not persist hold-delivery replay state for %s",
+                        CallSid,
+                    )
+            return Response(content=twiml, media_type="application/xml")
+
         if (
             isinstance(task_result, tuple)
             and len(task_result) == 2
@@ -2245,6 +2507,20 @@ async def handle_thinking(
                 speech_timeout="auto",
                 session=session,
             )
+            # Remember the DELIVERED response for idempotent replay. The
+            # /gather handler remembered the hold-redirect TwiML for this
+            # input; replaying that on a redelivery sent the call back into
+            # /thinking with no pending task ("Sorry about the wait…" →
+            # double-processing). Replaying the real question is safe.
+            if isinstance(session, OrchestratorSession):
+                try:
+                    stability.remember_gather_twiml(session, twiml)
+                    repo.persist_session(session)
+                except Exception:
+                    logger.warning(
+                        "[TWILIO] Could not persist delivery replay state for %s",
+                        CallSid,
+                    )
             _tts_ms = (_time.monotonic() - _t_tts) * 1000
             logger.info(f"[TWILIO] TTS={_tts_ms:.0f}ms for session {session_id}")
             return Response(content=twiml, media_type="application/xml")
@@ -2253,6 +2529,7 @@ async def handle_thinking(
         logger.error(f"[TWILIO] Error in /thinking: {e}", exc_info=True)
         # Clean up pending task
         _pending_turns.pop(CallSid, None)
+        _hold_cycles.pop(CallSid, None)
         error_twiml = await generate_twiml_say_and_hangup(
             "Sorry, we encountered an error. Please try again later."
         )
@@ -2291,11 +2568,14 @@ def _maybe_schedule_enrichment(
         )
 
 
-def _typing_redirect_twiml(session: OrchestratorSession | None = None) -> str:
+def _typing_redirect_twiml(
+    session: OrchestratorSession | None = None,
+    call_sid: str | None = None,
+) -> str:
     """TwiML hold loop that polls /thinking. For Birchwood (when the verbal
     fillers are pre-rendered) it plays a spoken filler; otherwise the
     keyboard-typing bed. Same logic as the /thinking loop's hold sound."""
-    return _thinking_loop_twiml(session)
+    return _thinking_loop_twiml(session, call_sid)
 
 
 def _birchwood_filler_url(session: OrchestratorSession | None) -> str | None:
@@ -2323,10 +2603,35 @@ def _birchwood_filler_url(session: OrchestratorSession | None) -> str | None:
     return f"/api/v1/voice/audio/birchwood-fillers/{chosen}"
 
 
-def _thinking_loop_twiml(session: OrchestratorSession | None = None) -> str:
-    """The /thinking 'still working' TwiML: a Birchwood verbal filler when
-    available, otherwise the unchanged typing-sound bed."""
-    play_url = _birchwood_filler_url(session) or "/api/v1/voice/audio/typing.wav"
+def _thinking_loop_twiml(
+    session: OrchestratorSession | None = None,
+    call_sid: str | None = None,
+) -> str:
+    """The /thinking 'still working' TwiML.
+
+    Cycle 0 of a wait plays ONE Birchwood verbal filler (when pre-rendered);
+    every later cycle plays a quiet typing bed — short for Birchwood so a
+    finished reply is delivered promptly, the classic 3.5s bed for everyone
+    else (healthcare behavior unchanged). One spoken filler per wait: chaining
+    different hold PHRASES made the agent repeat itself in other words.
+    """
+    cycle = 0
+    if call_sid is not None:
+        cycle = _hold_cycles.get(call_sid, 0)
+        _hold_cycles[call_sid] = cycle + 1
+
+    play_url = None
+    if cycle == 0:
+        play_url = _birchwood_filler_url(session)
+    if play_url is None:
+        from src.verticals.automotive_collision.voice_naturalness import (
+            is_birchwood_session,
+        )
+
+        if cycle > 0 and session is not None and is_birchwood_session(session):
+            play_url = "/api/v1/voice/audio/typing-short.wav"
+        else:
+            play_url = "/api/v1/voice/audio/typing.wav"
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Play>{play_url}</Play>
