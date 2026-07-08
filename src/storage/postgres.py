@@ -28,6 +28,11 @@ from src.storage.models import (
     TriageTurnModel,
 )
 from src.safety.phi_masking import mask_phi
+from src.storage.state_redaction import (
+    collect_identity_values,
+    redact_session_state,
+    scrub_identity_literals,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +107,34 @@ class PostgresStorage(StorageInterface):
                 workflow_id=session.workflow_id,
                 workflow_version=session.workflow_version,
                 phone_number_id=session.phone_number_id,
-                metadata_json={"session_state": session.model_dump(mode="json")},
+                metadata_json={
+                    "session_state": self._serialized_session_state(session)
+                },
             )
             db.add(db_session)
             db.commit()
 
         logger.info(f"[PostgresStorage] Created session {session_id} (call={call_sid})")
         return session
+
+    @staticmethod
+    def _serialized_session_state(session: OrchestratorSession) -> dict:
+        """Serialized session for the ``metadata_json`` blob.
+
+        With ``STORE_PHI=false`` a FINALIZED session is redacted before it is
+        written (see ``state_redaction`` for exactly what is masked and why),
+        so the at-rest record carries no unmasked caller identifiers,
+        entities, or transcript text. Active (in-flight) sessions are written
+        raw ON PURPOSE: the blob is the call's working memory — webhooks are
+        stateless and every turn rehydrates from it — so masking a live call
+        would destroy the intake mid-call. Every session's final at-rest
+        state is redacted; the raw window lasts only while the call is live.
+        ``STORE_PHI=true`` behavior is unchanged.
+        """
+        state = session.model_dump(mode="json")
+        if not STORE_PHI and session.is_finalized:
+            state = redact_session_state(state)
+        return state
 
     def save_session(self, session: OrchestratorSession) -> None:
         with self._SessionFactory() as db:
@@ -131,7 +157,7 @@ class PostgresStorage(StorageInterface):
             db_session.workflow_version = session.workflow_version
             db_session.phone_number_id = session.phone_number_id
             db_session.metadata_json = {
-                "session_state": session.model_dump(mode="json")
+                "session_state": self._serialized_session_state(session)
             }
 
             if session.is_finalized:
@@ -512,8 +538,10 @@ class PostgresStorage(StorageInterface):
             session.call_sid = call_sid
             changed = True
         if changed:
+            # Same redaction seam as save_session — this repair path rewrites
+            # the blob on load and must not become a STORE_PHI bypass.
             db_session.metadata_json = {
-                "session_state": session.model_dump(mode="json")
+                "session_state": self._serialized_session_state(session)
             }
             db_session.updated_at = datetime.now(timezone.utc)
             db.commit()
@@ -559,9 +587,24 @@ class PostgresStorage(StorageInterface):
         )
         existing_indices = set(existing_count)
 
+        # The identifiers the session explicitly captured (name, callback
+        # number, plate, ...) are scrubbed from the text columns as literals —
+        # regex masking alone misses them when they are echoed mid-sentence
+        # ("Thanks John Smith, we'll call you back").
+        identity_literals: set[str] = set()
+        if not STORE_PHI:
+            identity_literals = collect_identity_values(session.model_dump(mode="json"))
+
         for entry in session.decision_trace:
             if entry.turn_number in existing_indices:
                 continue  # Already persisted
+
+            # Entities are structured PII (a bare "John Smith" defeats the
+            # regex masking applied to the text columns) — redact them the
+            # same way the session blob is redacted when STORE_PHI is false.
+            entities = entry.extracted_entities or None
+            if entities and not STORE_PHI:
+                entities = redact_session_state(entities, "extracted_entities")
 
             turn = TriageTurnModel(
                 session_id=session.session_id,
@@ -569,16 +612,24 @@ class PostgresStorage(StorageInterface):
                 timestamp=entry.timestamp,
                 user_text=entry.user_text
                 if STORE_PHI
-                else (mask_phi(entry.user_text) if entry.user_text else None),
+                else (
+                    scrub_identity_literals(
+                        mask_phi(entry.user_text), identity_literals
+                    )
+                    if entry.user_text
+                    else None
+                ),
                 system_text=entry.system_response
                 if STORE_PHI
                 else (
-                    mask_phi(entry.system_response) if entry.system_response else None
+                    scrub_identity_literals(
+                        mask_phi(entry.system_response), identity_literals
+                    )
+                    if entry.system_response
+                    else None
                 ),
                 phi_masked=not STORE_PHI,
-                extracted_entities=entry.extracted_entities
-                if entry.extracted_entities
-                else None,
+                extracted_entities=entities,
                 red_flags_triggered=entry.red_flags_triggered
                 if entry.red_flags_triggered
                 else None,
