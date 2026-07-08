@@ -190,6 +190,20 @@ async def conversation_relay_action(
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             f"<Response>\n    <Dial>{num}</Dial>\n</Response>"
         )
+    elif action == "dial_birchwood" and config.BIRCHWOOD_TRANSFER_NUMBER:
+        # Birchwood warm transfer (parity with the gather path): the number
+        # comes from config ONLY — handoffData carries the intent, never a
+        # number. The <Dial action> callback (/birchwood-dial-status,
+        # signature-validated) speaks the honest callback close if the dial
+        # is busy/unanswered/fails, so the caller is never stranded.
+        num = saxutils.escape(config.BIRCHWOOD_TRANSFER_NUMBER)
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<Response>\n"
+            f'    <Dial action="/api/v1/voice/birchwood-dial-status" '
+            f'method="POST" timeout="20">{num}</Dial>\n'
+            "</Response>"
+        )
     else:
         twiml = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -556,6 +570,23 @@ class ConversationRelaySession:
         updated = OrchestratorSession.model_validate(turn_result.updated_state)
         if not updated.is_finalized:
             updated.is_finalized = True
+        if config.BIRCHWOOD_TRANSFER_NUMBER:
+            # Live warm transfer (parity with the gather path): persist the
+            # intake/callback record FIRST so a failed dial always has a real
+            # callback record behind its promise, speak a connect line, and
+            # carry the dial intent to the <Connect action> callback.
+            transfer_meta = updated.channel_metadata.setdefault(
+                "birchwood_transfer", {}
+            )
+            transfer_meta.update({"attempted": True, "source": "cr_scripted"})
+            repo.persist_session(updated)
+            connect_text = rt._birchwood_transfer_connect_text(
+                turn_result.assistant_text
+            )
+            await self._send_response(connect_text, updated)
+            await self._settle_final_speech(connect_text)
+            await self._end(handoff={"action": "dial_birchwood"})
+            return
         repo.persist_session(updated)
         await self._send_response(turn_result.assistant_text, updated)
         await self._settle_final_speech(turn_result.assistant_text)
@@ -579,6 +610,21 @@ class ConversationRelaySession:
                 "workflow_error" if action == "escalate" else "sufficient_information"
             ),
         )
+        # Birchwood warm transfer (conversational tier): the caller asked for
+        # a human and a transfer line is configured — swap the callback close
+        # for the connect line (injury advisory preserved) and dial after
+        # `end`. The record persists BEFORE any dial; escalations never dial.
+        birchwood_dial = (
+            action == "finalize"
+            and bool(config.BIRCHWOOD_TRANSFER_NUMBER)
+            and rt._birchwood_transfer_requested(session)
+        )
+        if birchwood_dial:
+            transfer_meta = session.channel_metadata.setdefault(
+                "birchwood_transfer", {}
+            )
+            transfer_meta.update({"attempted": True, "source": "cr_conversational"})
+            spoken = rt._birchwood_transfer_connect_text(spoken)
         repo.persist_session(session)
 
         scheduler = _AsyncTaskScheduler()
@@ -598,20 +644,28 @@ class ConversationRelaySession:
         rt._maybe_schedule_enrichment(scheduler, session)
 
         await self._send_response(spoken, session)
-        # Nurse warm-transfer (healthcare finalize + NURSE_TRANSFER_NUMBER) is
-        # performed by the <Connect action> callback (/relay-action) after `end`.
-        # We decide dial-vs-hangup HERE (we still hold the live session) and carry
-        # the intent in handoffData; escalations always hang up.
+        # Warm transfers are performed by the <Connect action> callback
+        # (/relay-action) after `end`: "dial" = nurse queue (healthcare
+        # finalize + NURSE_TRANSFER_NUMBER, unchanged), "dial_birchwood" =
+        # Birchwood transfer line (computed above). We decide HERE (we still
+        # hold the live session) and carry only the INTENT in handoffData;
+        # escalations always hang up.
         should_dial = (
             action == "finalize"
             and rt._is_healthcare_session(session)
             and bool(config.NURSE_TRANSFER_NUMBER)
         )
+        if should_dial:
+            handoff_action = "dial"
+        elif birchwood_dial:
+            handoff_action = "dial_birchwood"
+        else:
+            handoff_action = "hangup"
         # Let the goodbye finish playing before ending the session (CR cuts off
         # in-flight audio the moment it sees `end`). For a dial handoff this also
         # ensures the caller hears the message before the warm transfer connects.
         await self._settle_final_speech(spoken)
-        await self._end(handoff={"action": "dial" if should_dial else "hangup"})
+        await self._end(handoff={"action": handoff_action})
 
     async def _fail_closed(
         self, session: OrchestratorSession, repo, *, reason: str

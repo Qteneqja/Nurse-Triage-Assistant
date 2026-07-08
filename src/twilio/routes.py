@@ -313,6 +313,18 @@ _NAME_BLOCKLIST: frozenset[str] = frozenset(
         "what",
         "who",
         "well",
+        # Transfer-intent words — must NEVER be captured as a caller's
+        # name: if intent detection somehow misses ("transfer" heard at
+        # the name stage), the stage must reprompt, not book "Transfer"
+        # in as the customer.
+        "transfer",
+        "transferred",
+        "transferring",
+        "operator",
+        "representative",
+        "agent",
+        "human",
+        "zero",
     }
 )
 
@@ -720,6 +732,11 @@ def _compose_stage_prompt(
     return f"{preamble} {prompt}"
 
 
+# "transfer", "transferred", "transferring", "transfers" — but NOT the
+# drivetrain part "transfer case".
+_TRANSFER_WORD_RE = re.compile(r"\btransfer(?:red|ring|s)?\b(?!\s+case\b)")
+
+
 def _is_birchwood_scripted_transfer_request(
     session: OrchestratorSession,
     speech_text: str | None,
@@ -743,19 +760,33 @@ def _is_birchwood_scripted_transfer_request(
     if digits == "0":
         return True
     normalized = (speech_text or "").strip().lower()
-    return (
-        normalized == "transfer"
-        or normalized.startswith("transfer ")
-        or any(
-            phrase in normalized
-            for phrase in [
-                "speak with someone",
-                "person please",
-                "human please",
-                "representative",
-                "operator",
-            ]
-        )
+    # Twilio STT decorates single-word answers ("Transfer." / "Transfer,
+    # please.") and callers phrase the ask freely ("can you transfer me",
+    # "I'd like to be transferred"), so match the word anywhere — except
+    # "transfer case", a real drivetrain part a collision caller may be
+    # describing. Over-matching is the safe direction (a human takes the
+    # intake); under-matching captures "Transfer" as the caller's name.
+    if _TRANSFER_WORD_RE.search(normalized):
+        return True
+    # Bare "zero" only as the WHOLE utterance ("say transfer or press
+    # zero") — never as a token, or dictating a phone number ("two zero
+    # four...") would divert the call.
+    if re.sub(r"[^a-z0-9]+", "", normalized) in {"zero", "0"}:
+        return True
+    return any(
+        phrase in normalized
+        for phrase in [
+            "speak with someone",
+            "speak to someone",
+            "talk to someone",
+            "talk to a person",
+            "real person",
+            "person please",
+            "human please",
+            "a human",
+            "representative",
+            "operator",
+        ]
     )
 
 
