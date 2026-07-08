@@ -31,7 +31,7 @@ aiosqlite==0.19.0
 # Development
 pytest>=9.1.1,<10.0.0
 pytest-asyncio>=1.4.0,<2.0.0
-deepeval==4.0.2
+deepeval==4.0.7
 requests>=2.34.2         # used by test_intake_flow.py (live-server integration test)
 
 # Error Monitoring (Step 4 - Production Hardening)
