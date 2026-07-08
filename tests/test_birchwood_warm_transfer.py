@@ -307,6 +307,172 @@ def test_transfer_detection_still_defers_to_conversational_stage():
 
 
 # ---------------------------------------------------------------------------
+# ConversationRelay transport parity (the LIVE pilot line runs
+# VOICE_PIPELINE=conversation_relay + BIRCHWOOD_CONVERSATIONAL_INTAKE=true:
+# a transfer request must dial there too, not say-goodbye-and-hangup)
+# ---------------------------------------------------------------------------
+
+
+def test_relay_action_dials_birchwood_number_with_fallback_callback(monkeypatch):
+    import json as _json
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr("src.config.BIRCHWOOD_TRANSFER_NUMBER", TEST_TRANSFER_NUMBER)
+    from src.main import app
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/voice/relay-action",
+            data={
+                "CallSid": "CX-BW",
+                "HandoffData": _json.dumps({"action": "dial_birchwood"}),
+            },
+        )
+    assert resp.status_code == 200
+    assert f">{TEST_TRANSFER_NUMBER}</Dial>" in resp.text
+    assert 'action="/api/v1/voice/birchwood-dial-status"' in resp.text
+
+
+def test_relay_action_hangs_up_for_birchwood_without_number(monkeypatch):
+    import json as _json
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr("src.config.BIRCHWOOD_TRANSFER_NUMBER", "")
+    from src.main import app
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/voice/relay-action",
+            data={
+                "CallSid": "CX-BW2",
+                "HandoffData": _json.dumps({"action": "dial_birchwood"}),
+            },
+        )
+    assert resp.status_code == 200
+    assert "<Hangup/>" in resp.text
+    assert "<Dial" not in resp.text
+
+
+def test_relay_action_never_dials_a_payload_number(monkeypatch):
+    """handoffData carries intent only — a number smuggled into the payload
+    must never become the dial target."""
+    import json as _json
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr("src.config.BIRCHWOOD_TRANSFER_NUMBER", TEST_TRANSFER_NUMBER)
+    from src.main import app
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/voice/relay-action",
+            data={
+                "CallSid": "CX-BW3",
+                "HandoffData": _json.dumps(
+                    {"action": "dial_birchwood", "number": "+19998887777"}
+                ),
+            },
+        )
+    assert "+19998887777" not in resp.text
+    assert f">{TEST_TRANSFER_NUMBER}</Dial>" in resp.text
+
+
+def _cr_session_handler(monkeypatch):
+    """A ConversationRelaySession with the WS/speech seams stubbed so
+    _finalize's intent decision can be exercised directly."""
+    from src.twilio.conversation_relay import ConversationRelaySession
+
+    handler = ConversationRelaySession.__new__(ConversationRelaySession)
+    handler.call_sid = "CA-cr-test"
+    handler.session_id = "cr-test"
+    handler.closed = False
+    calls = {"spoken": [], "handoff": None}
+
+    async def _send_response(text, session=None, **kwargs):
+        calls["spoken"].append(text)
+
+    async def _settle(text):
+        pass
+
+    async def _end(handoff=None):
+        calls["handoff"] = handoff
+
+    handler._send_response = _send_response
+    handler._settle_final_speech = _settle
+    handler._end = _end
+    return handler, calls
+
+
+def test_cr_conversational_transfer_finalize_carries_dial_intent(monkeypatch):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr("src.config.BIRCHWOOD_TRANSFER_NUMBER", TEST_TRANSFER_NUMBER)
+    monkeypatch.setattr(rt, "_maybe_schedule_enrichment", lambda *a, **k: None)
+    handler, calls = _cr_session_handler(monkeypatch)
+
+    session = _birchwood_session()
+    session.finalization_reason = "automotive_collision_conversational_transfer_request"
+    repo = _FakeRepo()
+    asyncio.run(
+        handler._finalize(
+            session,
+            repo,
+            result={},
+            action="finalize",
+            spoken="Thanks, an advisor will call you back.",
+        )
+    )
+    assert calls["handoff"] == {"action": "dial_birchwood"}
+    # Connect copy replaces the callback close before the dial.
+    assert BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE in calls["spoken"][0]
+    assert repo.persisted
+    persisted = repo.persisted[-1]
+    assert persisted.channel_metadata["birchwood_transfer"]["attempted"] is True
+
+
+def test_cr_finalize_without_transfer_request_hangs_up(monkeypatch):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr("src.config.BIRCHWOOD_TRANSFER_NUMBER", TEST_TRANSFER_NUMBER)
+    monkeypatch.setattr(rt, "_maybe_schedule_enrichment", lambda *a, **k: None)
+    handler, calls = _cr_session_handler(monkeypatch)
+
+    session = _birchwood_session()
+    session.finalization_reason = "automotive_collision_intake_complete"
+    asyncio.run(
+        handler._finalize(
+            session,
+            repo=_FakeRepo(),
+            result={},
+            action="finalize",
+            spoken="Thanks, you're all set.",
+        )
+    )
+    assert calls["handoff"] == {"action": "hangup"}
+    assert BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE not in calls["spoken"][0]
+
+
+def test_cr_escalation_never_dials(monkeypatch):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr("src.config.BIRCHWOOD_TRANSFER_NUMBER", TEST_TRANSFER_NUMBER)
+    monkeypatch.setattr(rt, "_maybe_schedule_enrichment", lambda *a, **k: None)
+    handler, calls = _cr_session_handler(monkeypatch)
+
+    session = _birchwood_session()
+    session.finalization_reason = "automotive_collision_conversational_transfer_request"
+    asyncio.run(
+        handler._finalize(
+            session,
+            repo=_FakeRepo(),
+            result={},
+            action="escalate",
+            spoken="Please seek medical attention.",
+        )
+    )
+    assert calls["handoff"] == {"action": "hangup"}
+
+
+# ---------------------------------------------------------------------------
 # Safety invariants: disclosure intact, injury advisory never dropped
 # ---------------------------------------------------------------------------
 
