@@ -170,15 +170,37 @@ async def _generate_orchestrator_report_background(
         patient_name = session_metadata.get("patient_name", "")
         disposition = finalize.disposition.value if finalize else "HUMAN_REVIEW"
 
+        # STORE_PHI=false covers the report FILES too (they land on local
+        # disk and in Azure Blob): the JSON twin gets the same structural
+        # redaction as the at-rest session blob, the SBAR/instructions keep
+        # their mask_phi treatment strengthened with the captured-identity
+        # literal scrub, and the filename drops the patient name (it is
+        # embedded in the path and the blob URL otherwise). Full-detail
+        # handoff files = run with STORE_PHI=true.
+        from src.storage.state_redaction import (
+            collect_identity_values,
+            redact_session_state,
+            scrub_identity_literals,
+        )
+
+        identity_literals: set[str] = set()
+        if not STORE_PHI:
+            structured = redact_session_state(structured)
+            identity_literals = collect_identity_values(
+                orch_session.model_dump(mode="json")
+            )
+
+        filename_patient_name = patient_name if STORE_PHI else ""
+
         generate_report_filename(
             session_id=session_id,
-            patient_name=patient_name,
+            patient_name=filename_patient_name,
             disposition=disposition,
         )
         report_base = generate_report_path(
             reports_dir=REPORTS_DIR,
             session_id=session_id,
-            patient_name=patient_name,
+            patient_name=filename_patient_name,
             disposition=disposition,
         )
         report_json_path = report_base.with_suffix(".json")
@@ -190,7 +212,11 @@ async def _generate_orchestrator_report_background(
                 json.dump(structured, f, indent=2, default=str)
 
             # Apply PHI masking to file-written text when STORE_PHI is disabled
-            sbar_for_file = sbar_text if STORE_PHI else mask_phi(sbar_text)
+            sbar_for_file = (
+                sbar_text
+                if STORE_PHI
+                else scrub_identity_literals(mask_phi(sbar_text), identity_literals)
+            )
 
             with open(report_txt_path, "w") as f:
                 f.write("Triage Handoff Report (Orchestrator)\n")
@@ -201,7 +227,9 @@ async def _generate_orchestrator_report_background(
                 if finalize and finalize.safety_net_instructions:
                     instructions = chr(10).join(finalize.safety_net_instructions)
                     if not STORE_PHI:
-                        instructions = mask_phi(instructions)
+                        instructions = scrub_identity_literals(
+                            mask_phi(instructions), identity_literals
+                        )
                     f.write(f"\n\nSafety-Net Instructions:\n{instructions}")
 
             logger.info(f"[BACKGROUND] Orchestrator report saved: {report_json_path}")
@@ -752,11 +780,57 @@ async def _handle_birchwood_scripted_transfer_request(
         workflow_input,
     )
     updated_session = OrchestratorSession.model_validate(turn_result.updated_state)
+    if config.BIRCHWOOD_TRANSFER_NUMBER:
+        # Live warm transfer: the intake/callback record is persisted FIRST,
+        # then we dial — so a failed dial always has a real callback record
+        # behind its promise. The dial target is config-only (never payload).
+        transfer_meta = updated_session.channel_metadata.setdefault(
+            "birchwood_transfer", {}
+        )
+        transfer_meta.update({"attempted": True, "source": "scripted"})
+        repo.persist_session(updated_session)
+        connect_text = _birchwood_transfer_connect_text(turn_result.assistant_text)
+        return await generate_twiml_birchwood_transfer(
+            connect_text,
+            session=updated_session,
+        )
     repo.persist_session(updated_session)
     return await generate_twiml_say_and_hangup(
         turn_result.assistant_text,
         session=updated_session,
     )
+
+
+def _birchwood_transfer_connect_text(final_text: str) -> str:
+    """Connect line for a Birchwood warm transfer, preserving a spoken
+    injury advisory (Invariant 3: the advisory is never dropped) if the
+    finalize text carried one."""
+    from src.verticals.automotive_collision.prompts import (
+        BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE,
+    )
+
+    if (final_text or "").startswith(INJURY_SAFETY_ADVISORY):
+        return f"{INJURY_SAFETY_ADVISORY} {BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE}"
+    return BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE
+
+
+def _birchwood_transfer_requested(session) -> bool:
+    """True when a finalized Birchwood session ended because the caller asked
+    for a human (conversational tier sets ``*_transfer_request``); used by
+    /thinking to route that finalize to the warm-transfer TwiML instead of
+    say-and-hangup. Healthcare and other verticals never match."""
+    if not isinstance(session, OrchestratorSession):
+        return False
+    try:
+        from src.verticals.automotive_collision.voice_naturalness import (
+            is_birchwood_session,
+        )
+
+        if not is_birchwood_session(session):
+            return False
+    except Exception:
+        return False
+    return (session.finalization_reason or "").endswith("transfer_request")
 
 
 def _birchwood_scripted_gather_supports_dtmf(
@@ -1184,6 +1258,105 @@ async def generate_twiml_handoff(
             "</Response>"
         )
     return await generate_twiml_say_and_hangup(text, session=session)
+
+
+_BIRCHWOOD_DIAL_STATUS_URL = "/api/v1/voice/birchwood-dial-status"
+
+
+async def generate_twiml_birchwood_transfer(
+    text: str,
+    session: OrchestratorSession | None = None,
+) -> str:
+    """Speak a connect line, then <Dial> the Birchwood transfer number.
+
+    Mirrors ``generate_twiml_handoff`` (healthcare) without touching it or
+    ``NURSE_TRANSFER_NUMBER``. The dial target comes from
+    ``config.BIRCHWOOD_TRANSFER_NUMBER`` ONLY — never from the call payload.
+    The <Dial action> callback (``/birchwood-dial-status``) decides what the
+    caller hears when the dial ends: completed → hangup; busy/failed/
+    unanswered → the honest callback close. Callers of this function persist
+    the intake record BEFORE dialing, so the fallback's callback promise is
+    always real. Defensive guard: with no configured number this degrades to
+    say-and-hangup — never a dead or broken <Dial>.
+    """
+    number = config.BIRCHWOOD_TRANSFER_NUMBER
+    if not number:
+        return await generate_twiml_say_and_hangup(text, session=session)
+
+    num = saxutils.escape(number)
+    audio_url = await _tts_audio_url(text, session)
+    if audio_url:
+        speech_tag = f"    <Play>{saxutils.escape(audio_url)}</Play>"
+    else:
+        speech_tag = f'    <Say voice="{_TTS_VOICE}">{saxutils.escape(text)}</Say>'
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<Response>\n"
+        f"{speech_tag}\n"
+        f'    <Dial action="{_BIRCHWOOD_DIAL_STATUS_URL}" method="POST" '
+        f'timeout="20">{num}</Dial>\n'
+        "</Response>"
+    )
+
+
+@router.post("/birchwood-dial-status")
+async def handle_birchwood_dial_status(
+    request: Request,
+    CallSid: str = Form(...),
+    DialCallStatus: str | None = Form(None),
+):
+    """<Dial action> callback for the Birchwood warm transfer.
+
+    Signature-validated like every voice webhook (router dependency). The
+    intake/callback record was persisted before the dial was attempted, so
+    this endpoint only decides what the caller hears next: a completed dial
+    ends the call; anything else (busy / no-answer / failed / canceled /
+    missing) falls back to the honest callback close — the caller is never
+    left with dead air or a silently dropped transfer.
+    """
+    from src.verticals.automotive_collision.prompts import (
+        BIRCHWOOD_TRANSFER_DIAL_FALLBACK_MESSAGE,
+    )
+
+    status = (DialCallStatus or "").strip().lower()
+    repo = get_session_repository()
+    session = None
+    try:
+        session = repo.load_session_by_call(CallSid)
+    except Exception:
+        logger.warning(
+            "[TWILIO] birchwood-dial-status: session lookup failed for %s",
+            CallSid,
+        )
+    if isinstance(session, OrchestratorSession):
+        transfer_meta = session.channel_metadata.setdefault("birchwood_transfer", {})
+        transfer_meta["dial_status"] = status or "unknown"
+        try:
+            repo.persist_session(session)
+        except Exception:
+            logger.warning(
+                "[TWILIO] birchwood-dial-status: could not persist dial status for %s",
+                CallSid,
+            )
+
+    if status == "completed":
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<Response>\n    <Hangup/>\n</Response>"
+        )
+        return Response(content=twiml, media_type="application/xml")
+
+    logger.info(
+        "[TWILIO] Birchwood transfer dial did not connect (status=%s) for %s "
+        "— falling back to callback close",
+        status or "unknown",
+        CallSid,
+    )
+    twiml = await generate_twiml_say_and_hangup(
+        BIRCHWOOD_TRANSFER_DIAL_FALLBACK_MESSAGE,
+        session=session if isinstance(session, OrchestratorSession) else None,
+    )
+    return Response(content=twiml, media_type="application/xml")
 
 
 def _get_workflow_for_session(session: OrchestratorSession):
@@ -2491,6 +2664,23 @@ async def handle_thinking(
                 _maybe_schedule_enrichment(background_tasks, session)
             if _is_healthcare_session(session):
                 twiml = await generate_twiml_handoff(spoken_message, session=session)
+            elif config.BIRCHWOOD_TRANSFER_NUMBER and _birchwood_transfer_requested(
+                session
+            ):
+                # Conversational-tier "transfer" request: the finalized
+                # intake/callback record was persisted above, so dial now;
+                # a failed dial falls back to the callback close via the
+                # <Dial action> callback. Injury advisory (if prepended to
+                # spoken_message above) is preserved, never dropped.
+                transfer_meta = session.channel_metadata.setdefault(
+                    "birchwood_transfer", {}
+                )
+                transfer_meta.update({"attempted": True, "source": "conversational"})
+                repo.persist_session(session)
+                twiml = await generate_twiml_birchwood_transfer(
+                    _birchwood_transfer_connect_text(spoken_message),
+                    session=session,
+                )
             else:
                 twiml = await generate_twiml_say_and_hangup(
                     spoken_message,
