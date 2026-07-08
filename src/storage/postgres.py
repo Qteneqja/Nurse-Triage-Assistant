@@ -189,11 +189,40 @@ class PostgresStorage(StorageInterface):
             db.commit()
 
     def save_extraction(self, extraction: Any) -> None:
-        """Persist a post-call structured extraction."""
+        """Persist a post-call structured extraction.
+
+        Extractions are post-finalize artifacts (written once, read only by
+        the dashboard), so with ``STORE_PHI=false`` they get the same at-rest
+        redaction as the session blob: identity-keyed entities ``[REDACTED]``,
+        free text through ``mask_phi`` plus the captured-identity literal
+        scrub. Raw model output is dropped outright — verbatim LLM output
+        cannot be reliably masked. ``STORE_PHI=true`` is unchanged.
+        """
         raw_output = getattr(extraction, "raw_model_output", None)
         raw_output_json = (
             {"raw": raw_output} if isinstance(raw_output, str) else raw_output
         )
+
+        summary = extraction.summary
+        entities = extraction.entities or {}
+        recommended_actions = list(extraction.recommended_actions or [])
+        flags = list(extraction.flags or [])
+        if not STORE_PHI:
+            redacted = redact_session_state(
+                {
+                    "entities": entities,
+                    "summary": summary,
+                    "recommended_actions": recommended_actions,
+                    # LLM-sourced flag strings describe caller utterances
+                    # verbatim; rule-id slugs pass through mask_phi unchanged.
+                    "flags": flags,
+                }
+            )
+            entities = redacted["entities"]
+            summary = redacted["summary"]
+            recommended_actions = redacted["recommended_actions"]
+            flags = redacted["flags"]
+            raw_output_json = None
 
         with self._SessionFactory() as db:
             record = ConversationExtractionModel(
@@ -203,11 +232,11 @@ class PostgresStorage(StorageInterface):
                 vertical_key=extraction.vertical,
                 workflow_id=extraction.workflow_id,
                 schema_version=extraction.schema_version,
-                summary=extraction.summary,
-                entities_json=extraction.entities or {},
+                summary=summary,
+                entities_json=entities,
                 metrics_json=extraction.metrics or {},
-                flags_json=extraction.flags or [],
-                recommended_actions_json=extraction.recommended_actions or [],
+                flags_json=flags,
+                recommended_actions_json=recommended_actions,
                 confidence_score=extraction.confidence_score,
                 raw_output_json=raw_output_json,
                 created_at=extraction.created_at,

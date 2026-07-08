@@ -170,15 +170,37 @@ async def _generate_orchestrator_report_background(
         patient_name = session_metadata.get("patient_name", "")
         disposition = finalize.disposition.value if finalize else "HUMAN_REVIEW"
 
+        # STORE_PHI=false covers the report FILES too (they land on local
+        # disk and in Azure Blob): the JSON twin gets the same structural
+        # redaction as the at-rest session blob, the SBAR/instructions keep
+        # their mask_phi treatment strengthened with the captured-identity
+        # literal scrub, and the filename drops the patient name (it is
+        # embedded in the path and the blob URL otherwise). Full-detail
+        # handoff files = run with STORE_PHI=true.
+        from src.storage.state_redaction import (
+            collect_identity_values,
+            redact_session_state,
+            scrub_identity_literals,
+        )
+
+        identity_literals: set[str] = set()
+        if not STORE_PHI:
+            structured = redact_session_state(structured)
+            identity_literals = collect_identity_values(
+                orch_session.model_dump(mode="json")
+            )
+
+        filename_patient_name = patient_name if STORE_PHI else ""
+
         generate_report_filename(
             session_id=session_id,
-            patient_name=patient_name,
+            patient_name=filename_patient_name,
             disposition=disposition,
         )
         report_base = generate_report_path(
             reports_dir=REPORTS_DIR,
             session_id=session_id,
-            patient_name=patient_name,
+            patient_name=filename_patient_name,
             disposition=disposition,
         )
         report_json_path = report_base.with_suffix(".json")
@@ -190,7 +212,11 @@ async def _generate_orchestrator_report_background(
                 json.dump(structured, f, indent=2, default=str)
 
             # Apply PHI masking to file-written text when STORE_PHI is disabled
-            sbar_for_file = sbar_text if STORE_PHI else mask_phi(sbar_text)
+            sbar_for_file = (
+                sbar_text
+                if STORE_PHI
+                else scrub_identity_literals(mask_phi(sbar_text), identity_literals)
+            )
 
             with open(report_txt_path, "w") as f:
                 f.write("Triage Handoff Report (Orchestrator)\n")
@@ -201,7 +227,9 @@ async def _generate_orchestrator_report_background(
                 if finalize and finalize.safety_net_instructions:
                     instructions = chr(10).join(finalize.safety_net_instructions)
                     if not STORE_PHI:
-                        instructions = mask_phi(instructions)
+                        instructions = scrub_identity_literals(
+                            mask_phi(instructions), identity_literals
+                        )
                     f.write(f"\n\nSafety-Net Instructions:\n{instructions}")
 
             logger.info(f"[BACKGROUND] Orchestrator report saved: {report_json_path}")

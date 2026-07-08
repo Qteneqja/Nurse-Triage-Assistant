@@ -140,8 +140,31 @@ FREE_TEXT_KEYS = frozenset(
         "relevant_history",
         "meds",
         "allergies",
+        # report/extraction artifacts
+        "reasoning",
+        "reason_for_audit",
+        "recommended_actions",
+        # safety-flag text: deterministic flags are rule-id joins (mask_phi
+        # is a no-op on them; the literal scrub only bites if a captured
+        # identity value is a substring of a rule id — accepted as remote),
+        # but LLM-sourced flags describe caller utterances verbatim.
+        "flag",
+        "script_to_say",
+        "flags",
     }
 )
+
+# Sentinel values routinely stored under identity keys when nothing was
+# captured. They carry no PHI, must not be force-redacted (losing the "we
+# don't know" audit signal), and above all must never become scrub literals —
+# a "name" of "Unknown" would shred the word "unknown" across every free-text
+# string in the record.
+PLACEHOLDER_VALUES = frozenset({"unknown", "not documented", "none", "n/a", ""})
+
+
+def _is_placeholder(value: str) -> bool:
+    return value.strip().lower() in PLACEHOLDER_VALUES
+
 
 # Containers whose keys are open-ended entity names: every string inside gets
 # at least mask_phi, so an unanticipated entity key never means an unmasked
@@ -172,7 +195,11 @@ def collect_identity_values(value: Any, key: str | None = None) -> set[str]:
             found.update(collect_identity_values(item, key))
     elif isinstance(value, str) and _is_identity(key):
         found.add(value)
-    return {v.strip() for v in found if len(v.strip()) >= _MIN_SCRUB_LEN}
+    return {
+        v.strip()
+        for v in found
+        if len(v.strip()) >= _MIN_SCRUB_LEN and not _is_placeholder(v)
+    }
 
 
 def _strings_within(value: Any) -> set[str]:
@@ -251,6 +278,10 @@ def _walk(
         if not value:
             return value
         if force or _is_identity(key):
+            # "Unknown"/"not documented" sentinels carry no PHI — keep them
+            # so the record still says the field was never captured.
+            if _is_placeholder(value):
+                return value
             return _MASK
         if soft or (key is not None and key.lower() in FREE_TEXT_KEYS):
             # Free-text/entity strings get mask_phi AND the literal scrub.
