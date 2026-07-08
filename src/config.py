@@ -379,6 +379,17 @@ TWILIO_VALIDATE_SIGNATURE: bool = os.getenv(
 # queue without hearing dead air.  Leave empty (default) to hang up.
 NURSE_TRANSFER_NUMBER: str = os.getenv("NURSE_TRANSFER_NUMBER", "")
 
+# Phone number for the Birchwood collision warm transfer (E.164, e.g.
+# "+1XXXXXXXXXX"). When set, a Birchwood caller who says "transfer" or presses
+# 0 is connected live via <Dial>; if the dial is busy/unanswered/fails, the
+# call falls back to the honest callback close (the intake record is persisted
+# BEFORE dialing, so the callback promise is always real). Leave empty
+# (default) to keep the callback-only path — an unset number must never
+# produce a dead or broken dial. The dial target comes from this config value
+# ONLY; it is never read from the call payload. Intentionally separate from
+# NURSE_TRANSFER_NUMBER (healthcare), which is unchanged.
+BIRCHWOOD_TRANSFER_NUMBER: str = os.getenv("BIRCHWOOD_TRANSFER_NUMBER", "")
+
 # ---------------------------------------------------------------------------
 # Voice pipeline selection + ConversationRelay (voice-cr migration)
 # ---------------------------------------------------------------------------

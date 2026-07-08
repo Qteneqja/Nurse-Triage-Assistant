@@ -111,6 +111,21 @@ BIRCHWOOD_COLLISION_CONVERSATIONAL_OUTRO = (
 )
 
 
+# Warm-transfer copy (BIRCHWOOD_TRANSFER_NUMBER). Static, pre-approved lines —
+# spoken only by the deterministic transfer path, never composed by the LLM.
+# The connect line is spoken right before <Dial>; the fallback line is spoken
+# by the <Dial action> callback when the dial is busy/unanswered/failed, and
+# its callback promise is honest: the intake record is persisted BEFORE the
+# dial is attempted. Do not soften the fallback into a transfer promise.
+BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE = (
+    "Of course — let me connect you with one of our team right now. One moment please."
+)
+BIRCHWOOD_TRANSFER_DIAL_FALLBACK_MESSAGE = (
+    "I wasn't able to connect you just now — I'll have one of our advisors "
+    "call you right back. Thanks so much for calling Birchwood, and take care."
+)
+
+
 # Spoken right after the caller confirms the readback.
 BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE = (
     "Perfect - you're all set, and we'll get you booked in. Here's what "

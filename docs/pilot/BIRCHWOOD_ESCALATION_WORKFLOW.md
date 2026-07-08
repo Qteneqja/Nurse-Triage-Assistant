@@ -21,11 +21,25 @@ In the shop (human, same business day — sooner if the call is recent):
 5. If the callback raises any concern (injury sounds serious, customer
    unreachable), escalate to the shop manager; note it on the record.
 
-## Urgent records (non-injury)
+## Transfer requests (non-injury)
 
-Transfers (`TRANSFER_COLLISION_CENTER` — undrivable or caller pressed 0)
-arrive `escalated`. The live transfer already happened or was attempted;
-the watcher confirms the hand-off happened and completes the record.
+When a caller says "transfer" or presses 0, what happens depends on the
+`BIRCHWOOD_TRANSFER_NUMBER` config (env-only — the dial target is never
+taken from the call payload):
+
+- **Configured:** the intake record is persisted first, then ORCA dials
+  the Birchwood transfer line live (`<Dial>`). If the dial is busy,
+  unanswered, or fails, the caller hears an honest callback close ("I
+  wasn't able to connect you just now — I'll have one of our advisors
+  call you right back") — the persisted record backs that promise. The
+  record's `birchwood_transfer` metadata carries `attempted` and the
+  final `dial_status`.
+- **Unconfigured (default):** no dial is attempted. The caller hears the
+  callback close and the record lands in the dashboard callback queue.
+
+The watcher checks `dial_status`: `completed` means the hand-off
+happened live; anything else means the callback promise is theirs to
+keep — call the customer back and complete the record.
 
 ## System-failure callbacks
 
