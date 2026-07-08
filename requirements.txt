@@ -1,5 +1,5 @@
 # FastAPI Backend
-fastapi>=0.138.0
+fastapi>=0.139.0
 uvicorn[standard]>=0.47.0
 gunicorn>=26.0.0          # Production multi-worker server
 pydantic>=2.10.0
