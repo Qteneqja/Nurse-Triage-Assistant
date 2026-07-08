@@ -249,6 +249,64 @@ def test_transfer_requested_false_for_other_reasons_and_verticals():
 
 
 # ---------------------------------------------------------------------------
+# Live-call regression: transfer intent must survive real STT output
+# (Field report: caller said "transfer", STT decorated it, detection missed,
+# and "Transfer" was captured as the caller's NAME.)
+# ---------------------------------------------------------------------------
+
+
+def test_transfer_detected_across_real_stt_variants():
+    session = _birchwood_session()
+    for utterance in (
+        "transfer",
+        "Transfer.",
+        "Transfer, please.",
+        "TRANSFER",
+        "Can you transfer me?",
+        "I want to be transferred",
+        "please transfer me to a person",
+        "Transferring me to someone would be great",
+        "Zero.",
+        "I'd like to talk to someone",
+        "get me a real person",
+    ):
+        assert rt._is_birchwood_scripted_transfer_request(session, utterance, None), (
+            utterance
+        )
+
+
+def test_transfer_not_triggered_by_normal_answers():
+    session = _birchwood_session()
+    for utterance in (
+        # "transfer case" is a drivetrain part, not a transfer request.
+        "The transfer case is cracked and leaking.",
+        "My name is Johnathan Smithers",
+        "Rear bumper is dented",
+        # Dictating a phone number must never divert the call.
+        "two zero four eight nine zero one six eight four",
+        "204 555 0142",
+    ):
+        assert not rt._is_birchwood_scripted_transfer_request(
+            session, utterance, None
+        ), utterance
+
+
+def test_transfer_words_can_never_be_captured_as_a_name():
+    for word in ("Transfer.", "Transfer", "transferred", "Operator.", "Agent"):
+        assert rt._looks_like_name(word) is False, word
+    # Real names still pass.
+    assert rt._looks_like_name("Johnathan") is True
+    assert rt._looks_like_name("Test Patient, Ten") is True
+
+
+def test_transfer_detection_still_defers_to_conversational_stage():
+    session = _birchwood_session()
+    session.channel_metadata["stage"] = "DYNAMIC"
+    # The conversational tier owns transfer detection in DYNAMIC.
+    assert not rt._is_birchwood_scripted_transfer_request(session, "transfer", None)
+
+
+# ---------------------------------------------------------------------------
 # Safety invariants: disclosure intact, injury advisory never dropped
 # ---------------------------------------------------------------------------
 
