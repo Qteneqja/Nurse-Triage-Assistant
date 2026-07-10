@@ -523,6 +523,21 @@ class BirchwoodCollisionIntakeWorkflow(SpecDrivenWorkflow):
         session: OrchestratorSession,
         stage: ScriptedStageDefinition,
     ) -> str | None:
+        # Language plumbing (BIRCHWOOD_FRENCH_ENABLED): every scripted stage
+        # prompt is looked up by (stage.field_name, session language). A
+        # non-English selection only takes effect when a REAL translation
+        # exists — while the French catalog is [FR TODO] placeholders this
+        # falls through to the English path below (fail closed; a
+        # placeholder is never spoken). Transport-neutral: both the gather
+        # path and ConversationRelay reach this via _stage_prompt_for_session.
+        from src.verticals.automotive_collision import languages as bw_languages
+
+        selected_language = bw_languages.get_session_language(session)
+        if selected_language != bw_languages.DEFAULT_LANGUAGE and (
+            bw_languages.has_translation(stage.field_name, selected_language)
+        ):
+            return bw_languages.get_prompt(stage.field_name, selected_language)
+
         if stage.field_name != "confirmation_ack":
             # Aurora naturalness: deterministic per-call phrasing variant +
             # slot-echo for the scripted stages. Returns None when the field has
@@ -1197,59 +1212,44 @@ def _spoken_final_message(
     final_result: WorkflowFinalResult,
     session: OrchestratorSession | None = None,
 ) -> str:
+    # Language plumbing: every deterministic final message is looked up by
+    # (key, session language) in the vertical catalog. English entries are
+    # the previous inline strings verbatim; a non-English selection only
+    # changes the copy once a real translation exists (fail closed to
+    # English while the French catalog is [FR TODO] placeholders).
+    from src.verticals.automotive_collision import languages as bw_languages
+
+    language = bw_languages.get_session_language(session)
+
+    def _msg(key: str) -> str:
+        return bw_languages.get_prompt(key, language)
+
     record = final_result.structured_output.get("intake_record", {})
     flags = set(record.get("flags") or [])
     if disposition == "TRANSFER_COLLISION_CENTER":
-        return (
-            "No problem at all. Since the vehicle may not be safe to drive - "
-            "or you'd just rather talk with a person - let me get you "
-            "straight through to our collision team."
-        )
+        return _msg("final_transfer_collision_center")
     if disposition == "TRANSFER_GLASS_DEPARTMENT":
-        return (
-            "That sounds like glass-only damage, and our glass team takes "
-            "care of those directly - let me get this over to them for you."
-        )
+        return _msg("final_transfer_glass_department")
     if disposition == "DECLINED_VEHICLE_YEAR":
-        return (
-            "I really appreciate you calling. Unfortunately, our collision "
-            "centers are only able to take vehicles from 2012 and newer. "
-            "Thanks so much for thinking of Birchwood."
-        )
+        return _msg("final_declined_vehicle_year")
     if disposition == "DECLINED_REBUILT_SALVAGE":
-        return (
-            "Thanks for letting me know. Unfortunately, our collision "
-            "centers aren't able to service rebuilt or salvage title "
-            "vehicles. I really appreciate you calling Birchwood."
-        )
+        return _msg("final_declined_rebuilt_salvage")
     if "private_pay" in flags:
-        return (
-            "No problem at all - I've noted the repair as out of pocket. "
-            + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
-        )
+        return _msg("final_private_pay_prefix") + _msg("next_steps_close")
     if "missing_claim_number" in flags:
-        return (
-            "That's no problem at all - I've noted that the claim number is "
-            "still to come, and your advisor will grab it when they call "
-            "you back. Thanks so much for calling Birchwood, and take care."
-        )
+        return _msg("final_missing_claim_number")
     if disposition == "INCOMPLETE_CALLBACK_NEEDED":
-        return (
-            "Thanks so much. I've saved everything you've told me, and one "
-            "of our service advisors will call you back to fill in the last "
-            "couple of details. Thanks for calling Birchwood, and take care."
-        )
+        return _msg("final_incomplete_callback")
     if disposition == "HUMAN_REVIEW":
-        return (
-            "Thank you. I've passed this along for our team to double-check "
-            "a few details, and someone will follow up with you shortly. "
-            "Thanks for calling Birchwood."
-        )
+        return _msg("final_human_review")
     if "readback_correction" in flags:
-        return (
-            "Thanks - I've noted that correction for your advisor to "
-            "double-check. " + BIRCHWOOD_COLLISION_NEXT_STEPS_CLOSE
-        )
+        return _msg("final_readback_correction_prefix") + _msg("next_steps_close")
+    # A real translated close wins over the English naturalness variants —
+    # variants are English-only copy.
+    if language != bw_languages.DEFAULT_LANGUAGE and bw_languages.has_translation(
+        "next_steps_close", language
+    ):
+        return _msg("next_steps_close")
     # Aurora naturalness: vary the standard completed-intake close (every
     # variant preserves the no-promise disclaimer). Falls back to the canonical
     # close for non-Birchwood sessions or when no session is supplied.

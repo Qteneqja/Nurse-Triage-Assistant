@@ -64,7 +64,9 @@ Question: "Has the vehicle ever been written off by insurance and rebuilt? It ma
 
 Warm opening:
 
-"Thanks for calling Birchwood Collision. I'm ORCA, a voice assistant helping the team collect collision repair details. I'll ask a few quick questions so the right person can follow up. If your vehicle isn't safe to drive, or you'd rather speak with someone, just say transfer or press 0."
+"Thank you for calling Birchwood Automotive Group. My name's Aurora — I'm an automated assistant, and I'm here to get your vehicle booked in and back on the road as quickly as possible. This call may be recorded for training and quality purposes. And if you'd rather speak with one of our team right away, just press zero."
+
+(The spoken handoff instruction is press zero only; saying "transfer" still works as an unadvertised fallback.)
 
 Narrative prompt:
 

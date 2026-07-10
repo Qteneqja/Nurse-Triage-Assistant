@@ -390,6 +390,19 @@ NURSE_TRANSFER_NUMBER: str = os.getenv("NURSE_TRANSFER_NUMBER", "")
 # NURSE_TRANSFER_NUMBER (healthcare), which is unchanged.
 BIRCHWOOD_TRANSFER_NUMBER: str = os.getenv("BIRCHWOOD_TRANSFER_NUMBER", "")
 
+# Birchwood language-selection plumbing (English/French). When true, the
+# dedicated Birchwood scripted line opens with a brief bilingual DTMF menu
+# ("For English, press 1. Pour le français, appuyez sur le 2.") and the
+# selected language flows through the vertical's (prompt, language) catalog
+# (src/verticals/automotive_collision/languages.py). PLUMBING ONLY: the
+# French catalog is [FR TODO] placeholders pending professional translation
+# and the lookup fails closed to English — a placeholder is never spoken.
+# KEEP FALSE until every launch blocker in languages.py's docstring is
+# cleared (full professional translation incl. safety lines, French-capable
+# TTS voice, CR wiring). False (default) = no language menu, every call
+# proceeds in English exactly as before.
+BIRCHWOOD_FRENCH_ENABLED: bool = _env_flag("BIRCHWOOD_FRENCH_ENABLED", "false")
+
 # ---------------------------------------------------------------------------
 # Voice pipeline selection + ConversationRelay (voice-cr migration)
 # ---------------------------------------------------------------------------
