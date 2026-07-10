@@ -581,7 +581,8 @@ class ConversationRelaySession:
             transfer_meta.update({"attempted": True, "source": "cr_scripted"})
             repo.persist_session(updated)
             connect_text = rt._birchwood_transfer_connect_text(
-                turn_result.assistant_text
+                turn_result.assistant_text,
+                session=updated,
             )
             await self._send_response(connect_text, updated)
             await self._settle_final_speech(connect_text)
@@ -624,7 +625,7 @@ class ConversationRelaySession:
                 "birchwood_transfer", {}
             )
             transfer_meta.update({"attempted": True, "source": "cr_conversational"})
-            spoken = rt._birchwood_transfer_connect_text(spoken)
+            spoken = rt._birchwood_transfer_connect_text(spoken, session=session)
         repo.persist_session(session)
 
         scheduler = _AsyncTaskScheduler()

@@ -371,6 +371,10 @@ STAGE_SEX = "SEX"
 STAGE_CHIEF_COMPLAINT = "CHIEF_COMPLAINT"
 STAGE_DYNAMIC = "DYNAMIC"
 STAGE_VERTICAL_MENU = "VERTICAL_MENU"
+# Birchwood-only bilingual language menu (BIRCHWOOD_FRENCH_ENABLED, default
+# off). Plays BEFORE the intro; the selected language is stored on the
+# session and every vertical prompt is then looked up by (stage, language).
+STAGE_LANGUAGE_MENU = "BIRCHWOOD_LANGUAGE_MENU"
 
 # Maximum name re-prompts before accepting whatever was given
 _MAX_NAME_RETRIES = 3
@@ -753,6 +757,10 @@ def _is_birchwood_scripted_transfer_request(
         return False
     if session.channel_metadata.get("stage") in {
         STAGE_VERTICAL_MENU,
+        # At the language menu a 0 is a mis-key on a digits menu, not a
+        # transfer ask — the menu reprompts (and defaults to English) before
+        # any intake exists to hand off.
+        STAGE_LANGUAGE_MENU,
         STAGE_DYNAMIC,
         "FINAL",
     }:
@@ -822,7 +830,10 @@ async def _handle_birchwood_scripted_transfer_request(
         )
         transfer_meta.update({"attempted": True, "source": "scripted"})
         repo.persist_session(updated_session)
-        connect_text = _birchwood_transfer_connect_text(turn_result.assistant_text)
+        connect_text = _birchwood_transfer_connect_text(
+            turn_result.assistant_text,
+            session=updated_session,
+        )
         return await generate_twiml_birchwood_transfer(
             connect_text,
             session=updated_session,
@@ -834,17 +845,26 @@ async def _handle_birchwood_scripted_transfer_request(
     )
 
 
-def _birchwood_transfer_connect_text(final_text: str) -> str:
+def _birchwood_transfer_connect_text(
+    final_text: str,
+    session: OrchestratorSession | None = None,
+) -> str:
     """Connect line for a Birchwood warm transfer, preserving a spoken
     injury advisory (Invariant 3: the advisory is never dropped) if the
-    finalize text carried one."""
-    from src.verticals.automotive_collision.prompts import (
-        BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE,
-    )
+    finalize text carried one.
 
+    The connect line is looked up by (key, session language); the injury
+    advisory itself is platform English copy — English is the fail-closed
+    language, and the advisory is never localized silently."""
+    from src.verticals.automotive_collision import languages as bw_languages
+
+    connecting = bw_languages.get_prompt(
+        "transfer_connecting",
+        bw_languages.get_session_language(session),
+    )
     if (final_text or "").startswith(INJURY_SAFETY_ADVISORY):
-        return f"{INJURY_SAFETY_ADVISORY} {BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE}"
-    return BIRCHWOOD_TRANSFER_CONNECTING_MESSAGE
+        return f"{INJURY_SAFETY_ADVISORY} {connecting}"
+    return connecting
 
 
 def _birchwood_transfer_requested(session) -> bool:
@@ -887,6 +907,7 @@ def _birchwood_scripted_gather_supports_dtmf(
     return session.channel_metadata.get("stage") not in {
         None,
         STAGE_VERTICAL_MENU,
+        STAGE_LANGUAGE_MENU,
         STAGE_DYNAMIC,
         "FINAL",
     }
@@ -972,6 +993,119 @@ async def _generate_vertical_menu_twiml(reprompt: bool = False) -> str:
     </Gather>
     <Redirect method="POST">/api/v1/voice/gather</Redirect>
 </Response>"""
+
+
+# One reprompt, then the call defaults to English and proceeds — a caller is
+# never stranded at (or hung up on from) the language menu.
+_MAX_LANGUAGE_MENU_ATTEMPTS = 2
+
+
+def _birchwood_language_menu_applies(workflow_id: str | None) -> bool:
+    """Whether an incoming call should open with the bilingual language menu.
+
+    True only for the Birchwood scripted tier with BIRCHWOOD_FRENCH_ENABLED
+    on. The conversational tier is excluded until its copy is language-wired
+    — it simply proceeds in English as today. Flag off (the default) = this
+    is False for every call and nothing changes.
+    """
+    try:
+        from src.verticals.automotive_collision import languages as bw_languages
+        from src.verticals.automotive_collision.constants import (
+            BIRCHWOOD_COLLISION_WORKFLOW_ID,
+        )
+    except Exception:
+        return False
+    if workflow_id != BIRCHWOOD_COLLISION_WORKFLOW_ID:
+        return False
+    if getattr(config, "BIRCHWOOD_CONVERSATIONAL_INTAKE", False):
+        return False
+    return bw_languages.language_menu_enabled()
+
+
+async def _generate_birchwood_language_menu_twiml(
+    session: OrchestratorSession | None = None,
+) -> str:
+    """DTMF-only gather for the bilingual language menu.
+
+    Static, pre-approved bilingual copy (never LLM-composed). DTMF only —
+    the menu advertises keys, and phone STT on a one-word bilingual answer
+    is not reliable enough to route a whole-call language decision.
+    """
+    from src.verticals.automotive_collision.languages import (
+        BIRCHWOOD_LANGUAGE_MENU_PROMPT,
+    )
+
+    prompt = BIRCHWOOD_LANGUAGE_MENU_PROMPT
+    audio_url = await _tts_audio_url(prompt, session)
+    prompt_tag = (
+        f"<Play>{saxutils.escape(audio_url)}</Play>"
+        if audio_url
+        else f'<Say voice="{_TTS_VOICE}">{saxutils.escape(prompt)}</Say>'
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Gather input="dtmf" numDigits="1" timeout="6" action="/api/v1/voice/gather" method="POST">
+        {prompt_tag}
+    </Gather>
+    <Redirect method="POST">/api/v1/voice/gather</Redirect>
+</Response>"""
+
+
+async def _start_birchwood_scripted_after_language_menu(
+    *,
+    session: OrchestratorSession,
+    repo,
+    language: str,
+) -> str:
+    """Record the selected language, then open the scripted intake.
+
+    Mirrors the normal /incoming Birchwood start (intro + first stage
+    question) with one difference: the intro and the first question are
+    looked up by (key, language). While the French catalog is [FR TODO]
+    placeholders that lookup fails closed to English, so a caller who
+    pressed 2 hears the standard English call — never placeholder copy and
+    never a French greeting on an English call.
+    """
+    from src.verticals.automotive_collision import languages as bw_languages
+
+    bw_languages.set_session_language(session, language)
+    workflow = _get_workflow_for_session(session)
+    intake = workflow.get_scripted_intake_definition()
+    first_stage = (
+        _initialize_scripted_intake(session, intake) if intake is not None else None
+    )
+    selected = bw_languages.get_session_language(session)
+    intro_text = (
+        bw_languages.get_prompt("intro", selected)
+        if intake is not None and intake.intro_text
+        else ""
+    )
+    if first_stage is None:
+        # Defensive: the scripted tier always has stages; if not, proceed
+        # exactly like the normal dynamic start.
+        question = intro_text or "How can I help you today?"
+        session.conversation.append(ConversationTurn(role="assistant", text=question))
+        repo.persist_session(session)
+        return await generate_twiml_gather(
+            question,
+            "/api/v1/voice/gather",
+            timeout=8,
+            speech_timeout="auto",
+            session=session,
+        )
+
+    first_question = bw_languages.get_prompt(first_stage.field_name, selected)
+    if intro_text:
+        session.conversation.append(ConversationTurn(role="assistant", text=intro_text))
+    session.conversation.append(ConversationTurn(role="assistant", text=first_question))
+    repo.persist_session(session)
+    return await _generate_initial_scripted_twiml(
+        session,
+        intro_text,
+        first_stage,
+        "/api/v1/voice/gather",
+        first_question=first_question,
+    )
 
 
 def _shared_vertical_menu_enabled_for(called_phone_number: str | None) -> bool:
@@ -1215,12 +1349,18 @@ async def _generate_initial_scripted_twiml(
     intro_text: str | None,
     first_stage: ScriptedStageDefinition,
     action_url: str,
+    first_question: str | None = None,
 ) -> str:
-    """Generate first scripted-intake TwiML from workflow stage metadata."""
+    """Generate first scripted-intake TwiML from workflow stage metadata.
+
+    ``first_question`` overrides the stage's static prompt text (used by the
+    Birchwood language-menu start, where the first question is looked up by
+    (stage, language)); default None keeps the existing behavior.
+    """
 
     _record_scripted_prompt_metadata(session, first_stage)
 
-    prompt = _stage_prompt(first_stage)
+    prompt = first_question or _stage_prompt(first_stage)
     if not intro_text:
         return await generate_twiml_gather(
             prompt,
@@ -1347,9 +1487,7 @@ async def handle_birchwood_dial_status(
     missing) falls back to the honest callback close — the caller is never
     left with dead air or a silently dropped transfer.
     """
-    from src.verticals.automotive_collision.prompts import (
-        BIRCHWOOD_TRANSFER_DIAL_FALLBACK_MESSAGE,
-    )
+    from src.verticals.automotive_collision import languages as bw_languages
 
     status = (DialCallStatus or "").strip().lower()
     repo = get_session_repository()
@@ -1385,9 +1523,15 @@ async def handle_birchwood_dial_status(
         status or "unknown",
         CallSid,
     )
+    # The honest callback close, looked up by (key, session language) —
+    # English fail-closed while the French catalog is placeholders.
+    fallback_session = session if isinstance(session, OrchestratorSession) else None
     twiml = await generate_twiml_say_and_hangup(
-        BIRCHWOOD_TRANSFER_DIAL_FALLBACK_MESSAGE,
-        session=session if isinstance(session, OrchestratorSession) else None,
+        bw_languages.get_prompt(
+            "transfer_dial_fallback",
+            bw_languages.get_session_language(fallback_session),
+        ),
+        session=fallback_session,
     )
     return Response(content=twiml, media_type="application/xml")
 
@@ -1910,6 +2054,33 @@ async def handle_incoming_call(
         session = repo.create_session(call_sid=CallSid, workflow_route=route)
         session.channel_metadata["called_phone_number"] = To
 
+        # Birchwood bilingual language menu (BIRCHWOOD_FRENCH_ENABLED,
+        # default off): a brief "For English, press 1. Pour le français,
+        # appuyez sur le 2." DTMF menu BEFORE the intro. The intro (with the
+        # disclosure + recording clause) plays right after the selection, in
+        # the selected language, before any intake question. Flag off = this
+        # branch never runs and the call proceeds exactly as before.
+        if _birchwood_language_menu_applies(route.workflow_id):
+            session.channel_metadata["stage"] = STAGE_LANGUAGE_MENU
+            session.channel_metadata["language_selection"] = {
+                "prompted_at": datetime.now(UTC).isoformat(),
+            }
+            from src.verticals.automotive_collision.languages import (
+                BIRCHWOOD_LANGUAGE_MENU_PROMPT,
+            )
+
+            session.conversation.append(
+                ConversationTurn(role="assistant", text=BIRCHWOOD_LANGUAGE_MENU_PROMPT)
+            )
+            twiml = await _generate_birchwood_language_menu_twiml(session)
+            stability.remember_incoming_twiml(session, twiml)
+            repo.persist_session(session)
+            logger.info(
+                "[TWILIO] Birchwood language menu started for session %s",
+                session.session_id,
+            )
+            return Response(content=twiml, media_type="application/xml")
+
         # Track scripted intake stage
         workflow = ensure_default_workflows_registered().get(route.workflow_id)
         intake = workflow.get_scripted_intake_definition()
@@ -2183,6 +2354,40 @@ async def handle_gather(
                 session=session,
                 repo=repo,
                 selected_vertical=choice,
+            )
+            return _respond(twiml)
+
+        if session.channel_metadata.get("stage") == STAGE_LANGUAGE_MENU:
+            # Runs BEFORE the transfer check on purpose: at a digits menu a
+            # stray 0 is a mis-key, and there is no intake yet to hand off.
+            from src.verticals.automotive_collision import languages as bw_languages
+
+            choice = bw_languages.resolve_language_choice(SpeechResult, Digits)
+            selection_state = session.channel_metadata.setdefault(
+                "language_selection",
+                {},
+            )
+            if choice is None:
+                selection_state["attempts"] = (
+                    int(selection_state.get("attempts", 0)) + 1
+                )
+                if selection_state["attempts"] < _MAX_LANGUAGE_MENU_ATTEMPTS:
+                    repo.persist_session(session)
+                    twiml = await _generate_birchwood_language_menu_twiml(session)
+                    return _respond(twiml)
+                # Fail toward English: proceed with the standard call rather
+                # than strand the caller at the menu.
+                choice = bw_languages.DEFAULT_LANGUAGE
+                selection_state["defaulted"] = True
+            answer_text = (Digits or (SpeechResult or "")).strip()
+            if answer_text:
+                session.conversation.append(
+                    ConversationTurn(role="caller", text=answer_text)
+                )
+            twiml = await _start_birchwood_scripted_after_language_menu(
+                session=session,
+                repo=repo,
+                language=choice,
             )
             return _respond(twiml)
 
@@ -2711,7 +2916,7 @@ async def handle_thinking(
                 transfer_meta.update({"attempted": True, "source": "conversational"})
                 repo.persist_session(session)
                 twiml = await generate_twiml_birchwood_transfer(
-                    _birchwood_transfer_connect_text(spoken_message),
+                    _birchwood_transfer_connect_text(spoken_message, session=session),
                     session=session,
                 )
             else:
