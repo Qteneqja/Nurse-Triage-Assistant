@@ -480,7 +480,10 @@ def test_cr_escalation_never_dials(monkeypatch):
 def test_intro_disclosure_and_transfer_offer_intact():
     assert "automated assistant" in BIRCHWOOD_COLLISION_INTRO
     assert "recorded for training and quality purposes" in BIRCHWOOD_COLLISION_INTRO
-    assert "say transfer or press zero" in BIRCHWOOD_COLLISION_INTRO
+    # Press-0 pass: the spoken handoff instruction is press zero ONLY; the
+    # spoken word "transfer" is still recognized but no longer advertised.
+    assert "press zero" in BIRCHWOOD_COLLISION_INTRO
+    assert "say transfer" not in BIRCHWOOD_COLLISION_INTRO
 
 
 def test_connect_text_preserves_injury_advisory():

@@ -81,8 +81,9 @@ def test_intro_introduces_aurora_and_discloses_automated_assistant():
     # Disclosure + brand + recording-consent clause all preserved.
     assert "Thank you for calling Birchwood Automotive Group" in intro
     assert "recorded for training and quality purposes" in intro
-    # Caller can still reach a human.
-    assert "transfer" in intro.lower()
+    # Caller can still reach a human — advertised as press zero only (the
+    # spoken word "transfer" keeps working as an unadvertised fallback).
+    assert "press zero" in intro.lower()
 
 
 # ---------------------------------------------------------------------------

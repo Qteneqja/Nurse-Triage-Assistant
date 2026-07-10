@@ -28,12 +28,16 @@ unchanged.
 # assistant up front. The brand line and the recording-consent clause are
 # preserved verbatim; the automated-assistant disclosure is deliberate and
 # must not be removed or softened.
+# Press-0 pass: the advertised handoff instruction is "press zero" only.
+# The spoken word "transfer" is still RECOGNIZED as a trigger (harmless
+# fallback in routes._is_birchwood_scripted_transfer_request); it is just
+# no longer part of the spoken copy.
 BIRCHWOOD_COLLISION_INTRO = (
     "Thank you for calling Birchwood Automotive Group. My name's Aurora — "
     "I'm an automated assistant, and I'm here to get your vehicle booked in "
     "and back on the road as quickly as possible. This call may be recorded "
     "for training and quality purposes. And if you'd rather speak with one of "
-    "our team right away, just say transfer or press zero."
+    "our team right away, just press zero."
 )
 
 # Conversational tier greeting (BIRCHWOOD_CONVERSATIONAL_INTAKE). Same persona,

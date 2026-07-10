@@ -766,11 +766,13 @@ def _is_birchwood_scripted_transfer_request(
     # "transfer case", a real drivetrain part a collision caller may be
     # describing. Over-matching is the safe direction (a human takes the
     # intake); under-matching captures "Transfer" as the caller's name.
+    # The intro now advertises press zero only; the spoken word stays
+    # recognized as an unadvertised fallback.
     if _TRANSFER_WORD_RE.search(normalized):
         return True
-    # Bare "zero" only as the WHOLE utterance ("say transfer or press
-    # zero") — never as a token, or dictating a phone number ("two zero
-    # four...") would divert the call.
+    # Bare "zero" only as the WHOLE utterance (the intro says "just press
+    # zero", and callers often SAY it instead) — never as a token, or
+    # dictating a phone number ("two zero four...") would divert the call.
     if re.sub(r"[^a-z0-9]+", "", normalized) in {"zero", "0"}:
         return True
     return any(
