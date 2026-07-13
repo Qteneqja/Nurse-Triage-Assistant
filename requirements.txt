@@ -3,7 +3,7 @@ fastapi>=0.139.0
 uvicorn[standard]>=0.47.0
 gunicorn>=26.0.0          # Production multi-worker server
 pydantic>=2.10.0
-pydantic-settings>=2.14.1
+pydantic-settings>=2.14.2
 python-multipart>=0.0.29  # Required for Twilio form data
 twilio>=9.10.9             # Twilio SDK (signature validation + utilities)
 
